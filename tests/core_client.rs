@@ -40,10 +40,10 @@ async fn non_admin_reads_and_clones_reuse_transport_with_exact_request_counts() 
     .await?;
     let client = core.client(TEST_TIMEOUT);
     assert_eq!(client.detect_version().await?.to_string(), "2.3.2");
-    let servers = client.clone().list_servers().await?;
+    let servers = client.clone().read(server_page()).await?;
     assert_eq!(servers[0].name, "fixture-server");
     assert_eq!(servers[0].info.region, "fixture");
-    assert!(client.list_servers().await?.is_empty());
+    assert!(client.read(server_page()).await?.is_empty());
     assert_eq!(
         core.connections(),
         1,
@@ -115,11 +115,11 @@ async fn typed_failures_and_recovery_drop_all_upstream_error_text() -> Result<()
                 .await
                 .unwrap_err()
         } else {
-            client.list_servers().await.unwrap_err()
+            client.read(server_page()).await.unwrap_err()
         };
         check_error(&error, kind, Some(status));
         assert_eq!(error.operation, operation);
-        assert!(client.list_servers().await?.is_empty());
+        assert!(client.read(server_page()).await?.is_empty());
         core.assert_finished(&["GetVersion", operation, "ListServers"]);
     }
     Ok(())
@@ -143,9 +143,11 @@ async fn deadlines_cover_delayed_headers_and_stalled_success_and_error_bodies() 
             .await?;
             let client = core.client(DEADLINE);
             client.detect_version().await?;
-            let error = timeout_request(client.list_servers()).await.unwrap_err();
+            let error = timeout_request(client.read(server_page()))
+                .await
+                .unwrap_err();
             check_error(&error, ErrorKind::Timeout, None);
-            assert!(client.list_servers().await?.is_empty());
+            assert!(client.read(server_page()).await?.is_empty());
             core.assert_finished(&["GetVersion", "ListServers", "ListServers"]);
         }
     }
@@ -269,7 +271,7 @@ async fn concurrent_reads_keep_their_own_deadlines_and_results() -> Result<()> {
     let client = core.client(DEADLINE);
     client.detect_version().await?;
     let slow_client = client.clone();
-    let slow = tokio::spawn(async move { slow_client.list_servers().await });
+    let slow = tokio::spawn(async move { slow_client.read(server_page()).await });
     core.wait_requests(2).await?;
     let permission = client
         .read(GetServer {
@@ -278,7 +280,7 @@ async fn concurrent_reads_keep_their_own_deadlines_and_results() -> Result<()> {
         .await
         .unwrap_err();
     check_error(&permission, ErrorKind::PermissionDenied, Some(500));
-    assert_eq!(client.list_servers().await?[0].name, "fixture-server");
+    assert_eq!(client.read(server_page()).await?[0].name, "fixture-server");
     let error = tokio::time::timeout(TEST_TIMEOUT, slow)
         .await??
         .unwrap_err();

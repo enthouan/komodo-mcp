@@ -2,12 +2,17 @@ use std::fmt;
 
 use reqwest::StatusCode;
 use rmcp::model::{CallToolResult, ContentBlock};
+use rmcp::schemars::{self, JsonSchema};
 use serde::Serialize;
 
 /// Stable public categories. No variant contains a raw upstream error.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
+    InvalidArguments,
+    NotFound,
+    AmbiguousTarget,
+    IncompleteResolution,
     Configuration,
     Authentication,
     PermissionDenied,
@@ -20,6 +25,10 @@ pub enum ErrorKind {
 impl ErrorKind {
     pub fn id(self) -> &'static str {
         match self {
+            Self::InvalidArguments => "invalid_arguments",
+            Self::NotFound => "not_found",
+            Self::AmbiguousTarget => "ambiguous_target",
+            Self::IncompleteResolution => "incomplete_resolution",
             Self::Configuration => "configuration",
             Self::Authentication => "authentication",
             Self::PermissionDenied => "permission_denied",
@@ -32,6 +41,16 @@ impl ErrorKind {
 
     fn message(self) -> &'static str {
         match self {
+            Self::InvalidArguments => "Correct the tool arguments using its input schema.",
+            Self::NotFound => {
+                "Target was not found or is not visible; list this resource family, retry with a returned ID, and check Read access."
+            }
+            Self::AmbiguousTarget => {
+                "Multiple visible targets match; retry with one explicit candidate ID."
+            }
+            Self::IncompleteResolution => {
+                "The bounded name search could not establish a unique match; list this family and retry with an explicit ID."
+            }
             Self::Configuration => "Correct the indicated configuration field.",
             Self::Authentication => {
                 "Core rejected authentication; check the API key, secret, and enabled user."
@@ -54,7 +73,8 @@ impl ErrorKind {
 }
 
 /// Only application-owned messages and selected, nonsensitive metadata survive.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AppError {
     pub kind: ErrorKind,
     pub message: &'static str,
@@ -65,6 +85,16 @@ pub struct AppError {
     pub field: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correction: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub candidates: Option<Vec<Candidate>>,
+}
+
+/// A bounded ambiguity hint, never a raw upstream resource.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Candidate {
+    pub id: String,
+    pub name: String,
 }
 
 impl AppError {
@@ -80,6 +110,7 @@ impl AppError {
             status: status.map(|status| status.as_u16()),
             field: None,
             correction: None,
+            candidates: None,
         }
     }
 
@@ -88,6 +119,13 @@ impl AppError {
             field: Some(field),
             correction: Some(correction),
             ..Self::new(ErrorKind::Configuration, "configure", None)
+        }
+    }
+
+    pub(crate) fn arguments(operation: &'static str, correction: &'static str) -> Self {
+        Self {
+            correction: Some(correction),
+            ..Self::new(ErrorKind::InvalidArguments, operation, None)
         }
     }
 
@@ -116,6 +154,10 @@ impl AppError {
             ErrorKind::PermissionDenied
         } else if transport.is_some_and(reqwest::Error::is_connect) {
             ErrorKind::Unreachable
+        } else if status == Some(StatusCode::INTERNAL_SERVER_ERROR)
+            && core_2_3_2_missing_target(operation, &error)
+        {
+            ErrorKind::NotFound
         } else if status.is_some_and(|status| status.is_success()) {
             ErrorKind::InvalidResponse
         } else {
@@ -123,6 +165,26 @@ impl AppError {
         };
         Self::new(kind, operation, status)
     }
+}
+
+// Only the tagged resource::get helper on the supported detail operations.
+// Classification happens before discarding the chain; no target text survives.
+fn core_2_3_2_missing_target(operation: &str, error: &anyhow::Error) -> bool {
+    let resource = match operation {
+        "GetServer" => "Server",
+        "GetStack" => "Stack",
+        "GetDeployment" => "Deployment",
+        _ => return false,
+    };
+    let prefix = format!("Did not find any {resource} matching ");
+    error.chain().any(|cause| {
+        cause
+            .to_string()
+            .strip_prefix(&prefix)
+            .is_some_and(|target| {
+                target.len() == 24 && target.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+    })
 }
 
 // Core v2.3.2 permission::get_check_permissions returns anyhow -> mogh_error
@@ -164,6 +226,8 @@ impl fmt::Display for AppError {
         }
         if let (Some(field), Some(correction)) = (self.field, self.correction) {
             write!(f, " {field} {correction}.")?;
+        } else if let Some(correction) = self.correction {
+            write!(f, " {correction}.")?;
         }
         Ok(())
     }

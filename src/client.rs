@@ -2,7 +2,7 @@ use std::{fmt, sync::Arc, time::Duration};
 
 use komodo_client::{
     KomodoClient,
-    api::read::{GetVersion, KomodoReadRequest, ListServers, ListServersResponse},
+    api::read::{GetVersion, KomodoReadRequest},
 };
 use reqwest::{Client, redirect::Policy};
 use serde::{Serialize, de::DeserializeOwned};
@@ -92,6 +92,10 @@ impl CoreClient {
             "GetVersion" => "GetVersion",
             "ListServers" => "ListServers",
             "GetServer" => "GetServer",
+            "ListStacks" => "ListStacks",
+            "GetStack" => "GetStack",
+            "ListDeployments" => "ListDeployments",
+            "GetDeployment" => "GetDeployment",
             _ => "read",
         };
         match tokio::time::timeout(self.0.policy.operation_timeout, self.0.sdk.read(request)).await
@@ -109,12 +113,7 @@ impl CoreClient {
         Ok(CoreVersion(self.0.redactor.redact(&response.version)))
     }
 
-    /// One finite page for foundation tests; issue #3 adds public inventory tools.
-    pub async fn list_servers(&self) -> Result<ListServersResponse, AppError> {
-        self.read(ListServers {
-            limit: Some(30),
-            ..Default::default()
-        })
-        .await
+    pub(crate) fn redact(&self, value: &str) -> String {
+        self.0.redactor.redact(value)
     }
 }

@@ -1,0 +1,21 @@
+[
+  {
+    "id": "000000000000000000000003",
+    "type": "Deployment",
+    "name": "fixture-deployment",
+    "template": false,
+    "tags": [],
+    "info": {
+      "state": "running",
+      "status": "Up 2 hours",
+      "custom_name": "fixture-web",
+      "image": "nginx:stable",
+      "update_available": true,
+      "swarm_id": "",
+      "swarm_name": "",
+      "server_id": "000000000000000000000001",
+      "server_name": "fixture-server",
+      "build_id": null
+    }
+  }
+]

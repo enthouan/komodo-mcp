@@ -1,5 +1,7 @@
 #![allow(dead_code)] // Shared by integration binaries exercising different surfaces.
 
+pub mod inventory;
+
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
@@ -8,7 +10,7 @@ use std::{
 
 use anyhow::{Context, Result, ensure};
 use komodo_client::{
-    api::read::ListServers,
+    api::read::{KomodoReadRequest, ListServers},
     entities::{
         ResourceTarget,
         permission::{Permission, PermissionLevel, UserTarget},
@@ -65,12 +67,30 @@ impl Reply {
 
 pub struct Step {
     pub operation: &'static str,
+    pub params: Value,
     pub reply: Reply,
 }
 
 impl Step {
     pub fn new(operation: &'static str, reply: Reply) -> Self {
-        Self { operation, reply }
+        let params = match operation {
+            "GetVersion" => json!({}),
+            "ListServers" => serde_json::to_value(server_page()).unwrap(),
+            "GetServer" => json!({"server":"restricted-server"}),
+            _ => panic!("use Step::read for explicit typed fixture requests"),
+        };
+        Self {
+            operation,
+            params,
+            reply,
+        }
+    }
+    pub fn read<T: serde::Serialize + KomodoReadRequest>(request: T, reply: Reply) -> Self {
+        Self {
+            operation: T::req_type(),
+            params: serde_json::to_value(request).unwrap(),
+            reply,
+        }
     }
     pub fn version() -> Self {
         Self::new("GetVersion", Reply::new(200, VERSION))
@@ -114,6 +134,31 @@ impl MockCore {
             matches!(&permission.resource_target, ResourceTarget::Server(id) if id == "000000000000000000000001"),
             "permission must refer to inventory server"
         );
+        let permissions: Vec<Permission> = serde_json::from_str(include_str!(
+            "../fixtures/core-2.3.2/reader-permissions.json"
+        ))?;
+        for permission in &permissions {
+            ensure!(
+                permission.level == PermissionLevel::Read && permission.specific.is_empty(),
+                "inventory grants must be Read only"
+            );
+            ensure!(
+                matches!(&permission.user_target, UserTarget::User(id) if id == &user.id),
+                "grant must belong to fixture identity"
+            );
+        }
+        for resource in [
+            ResourceTarget::Server("000000000000000000000001".into()),
+            ResourceTarget::Stack("000000000000000000000002".into()),
+            ResourceTarget::Deployment("000000000000000000000003".into()),
+        ] {
+            ensure!(
+                permissions
+                    .iter()
+                    .any(|permission| permission.resource_target == resource),
+                "inventory family must have a Read grant"
+            );
+        }
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = format!("http://{}/komodo", listener.local_addr()?);
         let state = Arc::new(Mutex::new(State {
@@ -254,18 +299,22 @@ async fn serve(stream: TcpStream, state: &Mutex<State>, changed: &Notify) {
                     .context("unexpected extra request")?
             };
             ensure!(step.operation == operation, "wrong fixture operation");
-            let params = match operation {
-                "GetVersion" => json!({}),
-                "ListServers" => serde_json::to_value(ListServers {
-                    limit: Some(30),
-                    ..Default::default()
-                })?,
-                "GetServer" => json!({"server":"restricted-server"}),
-                _ => anyhow::bail!("fixture rejects unexpected SDK request"),
-            };
             ensure!(
-                envelope == json!({"type":operation,"params":params}),
-                "incorrect SDK request envelope"
+                matches!(
+                    operation,
+                    "GetVersion"
+                        | "ListServers"
+                        | "ListStacks"
+                        | "ListDeployments"
+                        | "GetServer"
+                        | "GetStack"
+                        | "GetDeployment"
+                ),
+                "fixture rejects unexpected SDK request"
+            );
+            ensure!(
+                envelope == json!({"type":operation,"params":step.params}),
+                "incorrect SDK request envelope for {operation}"
             );
             Ok::<_, anyhow::Error>(Some(step.reply))
         }
@@ -308,4 +357,26 @@ async fn serve(stream: TcpStream, state: &Mutex<State>, changed: &Notify) {
 pub fn assert_safe(text: &str) {
     assert!(!text.contains(KEY), "API key leaked");
     assert!(!text.contains(SECRET), "API secret leaked");
+    for marker in SENSITIVE_MARKERS {
+        assert!(
+            !text.contains(marker),
+            "sensitive fixture field leaked: {marker}"
+        );
+    }
+}
+
+pub const SENSITIVE_MARKERS: &[&str] = &[
+    "sensitive-config-credential-marker",
+    "sensitive-environment-marker",
+    "sensitive-compose-marker",
+    "sensitive-stored-file-marker",
+    "sensitive-raw-trace-marker",
+    "sensitive-description-marker",
+];
+
+pub fn server_page() -> ListServers {
+    ListServers {
+        limit: Some(30),
+        ..Default::default()
+    }
 }

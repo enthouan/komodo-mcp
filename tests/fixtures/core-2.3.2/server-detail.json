@@ -1,0 +1,17 @@
+{
+  "_id": {
+    "$oid": "000000000000000000000001"
+  },
+  "name": "fixture-server",
+  "template": false,
+  "config": {
+    "region": "fixture",
+    "enabled": true,
+    "passkey": "sensitive-config-credential-marker"
+  },
+  "info": {
+    "public_key": "sensitive-stored-file-marker",
+    "attempted_public_key": "sensitive-raw-trace-marker"
+  },
+  "description": "sensitive-description-marker"
+}

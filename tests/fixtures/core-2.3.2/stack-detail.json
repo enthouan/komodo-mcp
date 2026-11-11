@@ -1,0 +1,32 @@
+{
+  "_id": {
+    "$oid": "000000000000000000000002"
+  },
+  "name": "fixture-stack",
+  "template": false,
+  "config": {
+    "server_id": "000000000000000000000001",
+    "swarm_id": "",
+    "project_name": "fixture-next-project",
+    "environment": "DATABASE_PASSWORD=sensitive-environment-marker",
+    "file_contents": "services:\n  web:\n    environment:\n      SECRET: sensitive-compose-marker",
+    "git_account": "sensitive-config-credential-marker"
+  },
+  "info": {
+    "deployed_project_name": "fixture-project",
+    "deployed_contents": [
+      {
+        "path": "compose.yaml",
+        "contents": "sensitive-stored-file-marker"
+      }
+    ],
+    "deployed_config": "sensitive-compose-marker",
+    "remote_errors": [
+      {
+        "path": "compose.yaml",
+        "contents": "sensitive-raw-trace-marker"
+      }
+    ]
+  },
+  "description": "sensitive-description-marker"
+}

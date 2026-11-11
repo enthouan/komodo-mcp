@@ -7,12 +7,20 @@
     "tags": [],
     "info": {
       "state": "NotOk",
-      "err": null,
+      "err": {
+        "error": "sensitive-raw-trace-marker",
+        "trace": [
+          "sensitive-raw-trace-marker"
+        ]
+      },
       "stats": null,
       "alerting_thresholds": {
-        "cpu_warning": 90.0, "cpu_critical": 99.0,
-        "mem_warning": 90.0, "mem_critical": 99.0,
-        "disk_warning": 90.0, "disk_critical": 99.0
+        "cpu_warning": 90.0,
+        "cpu_critical": 99.0,
+        "mem_warning": 90.0,
+        "mem_critical": 99.0,
+        "disk_warning": 90.0,
+        "disk_critical": 99.0
       },
       "core_count": null,
       "logical_core_count": null,
