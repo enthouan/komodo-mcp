@@ -181,6 +181,7 @@ pub struct Report {
     pub address: String,
     pub child_id: u32,
     pub status: ExitStatus,
+    pub forced_kill: bool,
     pub stderr: String,
     pub transcript: Vec<Value>,
     pub requests: Vec<RequestEvidence>,
@@ -213,6 +214,9 @@ impl Process {
                 command.env("KOMODO_API_SECRET", "wrong-synthetic-secret");
             }
         }
+        Self::start(command)
+    }
+    fn start(mut command: Command) -> Result<Self> {
         let mut child = command
             .env("RUST_LOG", "trace")
             .stdin(Stdio::piped())
@@ -295,15 +299,21 @@ impl Process {
             Ok(answer)
         })
     }
-    async fn finish(&mut self) -> Result<ExitStatus> {
+    async fn finish(&mut self) -> Result<(ExitStatus, bool)> {
         drop(self.child.stdin.take());
-        let exit = match timeout(SHUTDOWN_DEADLINE, self.child.wait()).await {
-            Ok(result) => result.context("reap server"),
+        let (exit, forced_kill) = match timeout(SHUTDOWN_DEADLINE, self.child.wait()).await {
+            Ok(result) => (result.context("reap server"), false),
             Err(_) => {
-                timeout(SHUTDOWN_DEADLINE, self.child.kill())
-                    .await
-                    .context("kill/reap deadline")??;
-                bail!("server did not exit after closing MCP stdin; killed and reaped it");
+                // Keep the actual exit status and original scenario failure even
+                // when cancellation needs a forced shutdown. Always drain below.
+                self.child.start_kill().context("kill stalled server")?;
+                (
+                    timeout(SHUTDOWN_DEADLINE, self.child.wait())
+                        .await
+                        .context("kill/reap deadline")?
+                        .context("reap killed server"),
+                    true,
+                )
             }
         };
         let drained = timeout(SHUTDOWN_DEADLINE, &mut self.reader).await;
@@ -314,7 +324,7 @@ impl Process {
             .context("stderr drain deadline")?
             .context("stderr reader task")?
             .context("capture server stderr")?;
-        exit
+        Ok((exit?, forced_kill))
     }
 }
 impl Drop for Process {
@@ -524,8 +534,13 @@ pub async fn run_with_control(
     verified?;
     check_safe(&stderr)?;
     check_safe(&serde_json::to_string(&transcript)?)?;
-    let status = exit.with_context(|| format!("captured server stderr:\n{stderr}"))?;
+    let (status, forced_kill) =
+        exit.with_context(|| format!("captured server stderr:\n{stderr}"))?;
     let result = result.and_then(|answer| {
+        ensure!(
+            !forced_kill,
+            "server did not exit after closing MCP stdin; killed and reaped it"
+        );
         ensure!(
             status.success(),
             "server exited unsuccessfully after the scenario"
@@ -537,6 +552,7 @@ pub async fn run_with_control(
         address,
         child_id,
         status,
+        forced_kill,
         stderr,
         transcript,
         requests,
@@ -546,7 +562,15 @@ pub async fn run_with_control(
 
 pub async fn demonstrate(executable: &Path, name: &str) -> Result<Answer> {
     let report = run(executable, name, Configuration::Synthetic, None).await?;
-    eprintln!("Cleanup: MCP child exited {}; mock stopped.", report.status);
+    eprintln!(
+        "Cleanup: MCP child exited {}{}; mock stopped.",
+        report.status,
+        if report.forced_kill {
+            " (shutdown deadline; killed and reaped)"
+        } else {
+            ""
+        }
+    );
     if report.result.is_err() {
         eprintln!("Captured komodo-mcp stderr:\n{}", report.stderr);
     }
@@ -569,6 +593,22 @@ pub async fn demonstrate(executable: &Path, name: &str) -> Result<Answer> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn forced_shutdown_reaps_the_child_and_finishes_stderr_capture() -> Result<()> {
+        let mut command = Command::new("/bin/sh");
+        // The shell stops itself without spawning a descendant. Closing stdin
+        // cannot wake it; the cleanup deadline must kill and reap this process.
+        command.args(["-c", "kill -STOP $$"]);
+        let mut process = Process::start(command)?;
+        let (status, forced) = process.finish().await?;
+        assert!(forced);
+        assert!(!status.success());
+        assert!(process.child.id().is_none(), "child must be reaped");
+        assert!(process.reader.is_finished(), "stderr capture must finish");
+        Ok(())
+    }
 
     #[test]
     fn rejects_stalled_skipped_inconsistent_and_missing_continuations() -> Result<()> {
