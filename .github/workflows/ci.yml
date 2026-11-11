@@ -20,3 +20,15 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --all-targets
+      - run: cargo build --locked --release --bin komodo-mcp
+      - run: cargo build --locked --examples
+      - name: Run the documented fresh stdio demonstration
+        run: cargo run --locked --example stacks_on_server -- ./target/release/komodo-mcp
+      - name: Verify a scenario failure exits nonzero after cleanup
+        run: |
+          if cargo run --locked --example stacks_on_server -- ./target/release/komodo-mcp missing-server > target/demo-failure.log 2>&1; then
+            cat target/demo-failure.log
+            exit 1
+          fi
+          cat target/demo-failure.log
+          grep -qF 'mock stopped' target/demo-failure.log

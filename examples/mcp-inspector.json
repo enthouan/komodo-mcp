@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "komodo-mock": {
+      "type": "stdio",
+      "command": "__ABSOLUTE_KOMODO_MCP_EXECUTABLE__",
+      "args": [],
+      "env": {
+        "KOMODO_ADDRESS": "http://127.0.0.1:8089/komodo",
+        "KOMODO_API_KEY": "fixture-API-KEY-7d42",
+        "KOMODO_API_SECRET": "fixture-API-SECRET-a913"
+      },
+      "protocolEra": "legacy",
+      "connectionTimeout": 25000,
+      "requestTimeout": 25000
+    }
+  }
+}
