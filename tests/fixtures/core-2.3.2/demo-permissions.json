@@ -1,0 +1,134 @@
+[
+  {
+    "user_target": {
+      "type": "User",
+      "id": "000000000000000000000002"
+    },
+    "resource_target": {
+      "type": "Server",
+      "id": "000000000000000000000001"
+    },
+    "level": "Read",
+    "specific": []
+  },
+  {
+    "user_target": {
+      "type": "User",
+      "id": "000000000000000000000002"
+    },
+    "resource_target": {
+      "type": "Server",
+      "id": "000000000000000000000009"
+    },
+    "level": "Read",
+    "specific": []
+  },
+  {
+    "user_target": {
+      "type": "User",
+      "id": "000000000000000000000002"
+    },
+    "resource_target": {
+      "type": "Server",
+      "id": "00000000000000000000000a"
+    },
+    "level": "Read",
+    "specific": []
+  },
+  {
+    "user_target": {
+      "type": "User",
+      "id": "000000000000000000000002"
+    },
+    "resource_target": {
+      "type": "Stack",
+      "id": "000000000000000000000002"
+    },
+    "level": "Read",
+    "specific": []
+  },
+  {
+    "user_target": {
+      "type": "User",
+      "id": "000000000000000000000002"
+    },
+    "resource_target": {
+      "type": "Stack",
+      "id": "000000000000000000000004"
+    },
+    "level": "Read",
+    "specific": []
+  },
+  {
+    "user_target": {
+      "type": "User",
+      "id": "000000000000000000000002"
+    },
+    "resource_target": {
+      "type": "Stack",
+      "id": "000000000000000000000005"
+    },
+    "level": "Read",
+    "specific": []
+  },
+  {
+    "user_target": {
+      "type": "User",
+      "id": "000000000000000000000002"
+    },
+    "resource_target": {
+      "type": "Stack",
+      "id": "000000000000000000000006"
+    },
+    "level": "Read",
+    "specific": []
+  },
+  {
+    "user_target": {
+      "type": "User",
+      "id": "000000000000000000000002"
+    },
+    "resource_target": {
+      "type": "Stack",
+      "id": "000000000000000000000007"
+    },
+    "level": "Read",
+    "specific": []
+  },
+  {
+    "user_target": {
+      "type": "User",
+      "id": "000000000000000000000002"
+    },
+    "resource_target": {
+      "type": "Stack",
+      "id": "000000000000000000000008"
+    },
+    "level": "Read",
+    "specific": []
+  },
+  {
+    "user_target": {
+      "type": "User",
+      "id": "000000000000000000000002"
+    },
+    "resource_target": {
+      "type": "Deployment",
+      "id": "000000000000000000000003"
+    },
+    "level": "Read",
+    "specific": []
+  },
+  {
+    "user_target": {
+      "type": "User",
+      "id": "000000000000000000000002"
+    },
+    "resource_target": {
+      "type": "Swarm",
+      "id": "000000000000000000000008"
+    },
+    "level": "Read",
+    "specific": []
+  }
+]

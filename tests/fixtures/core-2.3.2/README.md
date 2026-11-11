@@ -79,3 +79,23 @@ secret to verify redaction.
 The bounded name-search stress fixtures generate 100 near matches per page to
 exercise the 400-summary bound; they are not deployed Core captures. No live
 Core, production infrastructure, or private credentials were used.
+
+## Reusable quickstart mock (issue #4)
+
+`examples/support/mock_core.rs` reuses the base summary/detail/version/error
+fixtures above, extending them according to `demo.json`. It embeds all files at
+compile time. Three Servers (`fixture-server`, `other-server`, `empty-server`)
+and six Stacks exercise multiple matching pages, another Server, Swarm precedence,
+and an unassigned Stack. `demo-permissions.json` explicitly grants the existing
+reader Read access to these resources, the original Deployment, and the Swarm.
+The assembled wire shapes and grants are validated when the mock starts.
+
+Unlike the ordered `tests/support/MockCore`, this mock dispatches by official
+request type without consuming a queue. Repeated independent clients work in
+any order. It models the production tools' common filters, Name ordering, and
+pagination, rejects unsupported query features and non-read requests, and records
+safe request evidence. Unknown/missing details use the tagged Core's HTTP 500
+missing-resource shape; `restricted-server` uses `permission.json`. Rejected
+credential headers return the tagged HTTP 401 authentication fixture. No real
+Core or authorization engine is run. The separate sequence-based harness remains
+useful for exact-request, adversarial response, and race tests.

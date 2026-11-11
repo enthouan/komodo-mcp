@@ -1,0 +1,60 @@
+{
+  "servers": [
+    {
+      "id": "000000000000000000000001",
+      "name": "fixture-server"
+    },
+    {
+      "id": "000000000000000000000009",
+      "name": "other-server"
+    },
+    {
+      "id": "00000000000000000000000a",
+      "name": "empty-server"
+    }
+  ],
+  "stacks": [
+    {
+      "id": "000000000000000000000002",
+      "name": "alpha-web",
+      "server_id": "000000000000000000000001",
+      "swarm_id": "",
+      "state": "running"
+    },
+    {
+      "id": "000000000000000000000004",
+      "name": "beta-other",
+      "server_id": "000000000000000000000009",
+      "swarm_id": "",
+      "state": "running"
+    },
+    {
+      "id": "000000000000000000000005",
+      "name": "gamma-jobs",
+      "server_id": "000000000000000000000001",
+      "swarm_id": "",
+      "state": "stopped"
+    },
+    {
+      "id": "000000000000000000000006",
+      "name": "omega-swarm",
+      "server_id": "000000000000000000000001",
+      "swarm_id": "000000000000000000000008",
+      "state": "running"
+    },
+    {
+      "id": "000000000000000000000007",
+      "name": "unassigned",
+      "server_id": "",
+      "swarm_id": "",
+      "state": "unknown"
+    },
+    {
+      "id": "000000000000000000000008",
+      "name": "zeta-metrics",
+      "server_id": "000000000000000000000001",
+      "swarm_id": "",
+      "state": "paused"
+    }
+  ]
+}
