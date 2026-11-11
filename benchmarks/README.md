@@ -138,9 +138,12 @@ Unexpected reads and all mutation/execution requests are rejected.
 These are **synthetic wire fixtures and simulated permissions**. They do not run
 Core's database, authorization engine, Docker, networking or deployment logic,
 and establish neither deployed Core performance nor authorization behavior.
-The ordered Rust `Step` mock and its assertions remain unchanged. Issue #4 was
-unimplemented when this harness was designed; its eventual installation example
-can reuse this fixture/client without making the benchmark depend on its work.
+The ordered Rust `Step` mock and its assertions remain unchanged. The installation
+workflow in #4 / PR #56 supplies a Rust mock/client for its demonstration. It was
+not merged when this harness was implemented; this driver uses the existing wire
+fixture foundation with Python phase instrumentation and the pinned reference's
+additional HTTP route format. The benchmark's separate CI workflow avoids a
+merge-order dependency on the installation demonstration.
 The versioned workload/result format can support #10/#49 later; incident,
 concurrent-caller and broader reference-matrix workloads are outside this change.
 
