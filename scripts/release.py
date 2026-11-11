@@ -124,7 +124,10 @@ class Git:
         url = self.run("remote", "get-url", "--push", "--all", "origin")
         fetch = self.run("remote", "get-url", "--all", "origin")
         allowed = {f"git@github.com:{REPO}.git", f"https://github.com/{REPO}.git", f"https://github.com/{REPO}"}
-        require(url in allowed and fetch in allowed, f"unexpected origin: fetch={fetch}, push={url}")
+        # Rejected URLs may contain credentials in userinfo, queries or fragments.
+        # Do not echo them into retained release logs.
+        require(url in allowed and fetch in allowed,
+                f"unexpected origin: expected one credential-free fetch/push URL for github.com/{REPO}")
 
     def accepted_main(self, commit):
         self.run("fetch", "--no-tags", "origin", "main")
@@ -254,6 +257,31 @@ def inspect(git, github, expected, commit):
     return local, remote, release, releases
 
 
+def stable_policy(releases, expected):
+    stable = [r for r in releases if not r["draft"] and not r["prerelease"]]
+    newer = []
+    for item in stable:
+        base, pre = version_info(item["tag_name"].removeprefix("v"))
+        require(not pre, f"stable release has prerelease tag: {item['tag_name']}")
+        if base > version_info(expected["version"])[0]:
+            newer.append(item["id"])
+    return stable, newer
+
+
+def verify_latest(github, expected, release, releases):
+    stable, newer = stable_policy(releases, expected)
+    latest_id = github.latest() if stable else None
+    if expected["prerelease"]:
+        require(latest_id != release["id"], "prerelease is incorrectly Latest")
+    elif newer:
+        require(latest_id in newer,
+                f"Latest conflict: expected a newer stable release {newer}, observed {latest_id}")
+    else:
+        require(latest_id == release["id"],
+                f"Latest conflict: expected newest stable release {release['id']}, observed {latest_id}")
+    return latest_id
+
+
 def reconcile(git, github, expected, commit, publish=False, sleep=time.sleep):
     """Inspect before any write. Lost write responses get reads, never a write retry."""
     visibility = github.preflight()
@@ -275,13 +303,7 @@ def reconcile(git, github, expected, commit, publish=False, sleep=time.sleep):
             require(remote == local, f"tag push not verified; original error: {write_error}")
         # Re-read all state after tag publication and immediately before release creation.
         _, remote, release, releases = inspect(git, github, expected, commit)
-        stable = [r for r in releases if not r["draft"] and not r["prerelease"]]
-        newer = False
-        for item in stable:
-            # An unrecognized stable title/tag cannot safely participate in Latest selection.
-            base, pre = version_info(item["tag_name"].removeprefix("v"))
-            require(not pre, f"stable release has prerelease tag: {item['tag_name']}")
-            newer |= base > version_info(expected["version"])[0]
+        stable, newer = stable_policy(releases, expected)
         latest = not expected["prerelease"] and not newer
         previous_latest = github.latest() if stable else None
         if not (release and not release["draft"]):
@@ -303,13 +325,14 @@ def reconcile(git, github, expected, commit, publish=False, sleep=time.sleep):
             elif previous_latest is not None:
                 require(github.latest() == previous_latest, "recovery changed the existing Latest release")
     # Independent final remote reads, including visibility. target_commitish is not identity evidence.
-    _, final_tag, release, _ = inspect(git, github, expected, commit)
+    _, final_tag, release, releases = inspect(git, github, expected, commit)
     require(final_tag == remote and release and not release["draft"] and release["published_at"],
             "final remote publication identity is incomplete or changed")
+    latest_id = verify_latest(github, expected, release, releases)
     require(github.preflight() == visibility, "repository visibility changed during publication")
     return {"repository": REPO, "tag": expected["tag"], "tag_object": final_tag,
             "annotation": expected["tag"], "commit": commit, "release_url": release["html_url"],
-            "release_id": release["id"], "prerelease": expected["prerelease"],
+            "release_id": release["id"], "latest_release_id": latest_id, "prerelease": expected["prerelease"],
             "notes_sha256": expected["notes_sha256"], "visibility": visibility,
             "verified_at": datetime.now(timezone.utc).isoformat()}
 

@@ -205,7 +205,10 @@ gh release create vX.Y.Z --repo enthouan/komodo-mcp --verify-tag \
 Prereleases add `--prerelease --latest=false`. Older stable recovery selects
 `--latest=false` when a newer stable release exists and verifies the previous
 Latest designation was preserved. A matching published release is never edited
-just to alter Latest. A matching draft uses `gh release edit vX.Y.Z --draft=false
+just to alter Latest. Every completed-state recovery and read-only verification
+also checks Latest: the newest stable release must be Latest, an older release
+must leave Latest with a newer stable release, and a prerelease cannot be Latest.
+A mismatch is reported without editing published state. A matching draft uses `gh release edit vX.Y.Z --draft=false
 --latest=...` after identity, notes and classification checks. No Actions
 publisher is involved; this process does not rely on tag-trigger behavior or
 `GITHUB_TOKEN` event chaining.

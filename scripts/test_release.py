@@ -167,6 +167,25 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(self.github.latest_id, 2)
         self.assertEqual(self.github.writes, [("create", "v0.1.0", False)])
 
+    def test_completed_recovery_and_read_only_verify_reject_wrong_latest(self):
+        self.publish()
+        self.github.latest_id = 12345
+        for publish in (False, True):
+            with self.subTest(publish=publish), self.assertRaisesRegex(release.ReleaseError, "Latest conflict"):
+                release.reconcile(self.git, self.github, self.spec, self.commit, publish=publish)
+        self.assertEqual(len(self.github.writes), 1, "never edit a published release to repair Latest")
+
+    def test_older_completed_release_must_leave_latest_with_a_newer_stable(self):
+        self.publish()
+        older = self.github.items[0]
+        self.github.items.append(api_release(expected("0.2.0"), identity=2))
+        self.github.latest_id = 2
+        self.assertEqual(self.publish()["latest_release_id"], 2)
+        self.github.latest_id = older["id"]
+        with self.assertRaisesRegex(release.ReleaseError, "expected a newer stable"):
+            self.publish()
+        self.assertEqual(len(self.github.writes), 1)
+
     def test_prerelease_is_never_latest(self):
         self.spec = expected("0.1.0-rc.1")
         self.publish()
@@ -241,6 +260,15 @@ class PublicationTests(unittest.TestCase):
                     self.publish()
         self.assertIsNone(self.git.local_tag("v0.1.0", self.commit))
         self.assertEqual(self.github.writes, [])
+
+    def test_rejected_origin_does_not_echo_embedded_credentials(self):
+        marker = "synthetic-token-do-not-log"
+        for url in (f"https://user:{marker}@github.com/{release.REPO}.git",
+                    f"https://github.com/{release.REPO}.git?token={marker}"):
+            self.git.run("remote", "set-url", "origin", url)
+            with self.assertRaisesRegex(release.ReleaseError, "credential-free") as raised:
+                self.git.origin()
+            self.assertNotIn(marker, str(raised.exception))
 
     def test_identity_conflict_is_not_a_retryable_read(self):
         with patch.object(self.github, "releases", side_effect=release.ReleaseError("conflict")) as mocked:
