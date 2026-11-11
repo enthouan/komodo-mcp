@@ -170,7 +170,7 @@ class Git:
         return self.local_tag(tag, commit)
 
     def push_tag(self, tag):
-        self.run("push", "origin", f"refs/tags/{tag}:refs/tags/{tag}")
+        self.run("push", "--no-follow-tags", "origin", f"refs/tags/{tag}:refs/tags/{tag}")
 
 
 class GitHub:

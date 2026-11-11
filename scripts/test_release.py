@@ -147,6 +147,15 @@ class PublicationTests(unittest.TestCase):
         oid = self.git.create_tag("v0.1.0", self.commit)
         self.assertEqual(self.publish()["tag_object"], oid)
 
+    def test_push_follow_tags_cannot_publish_unrelated_local_tags(self):
+        self.git.run("config", "push.followTags", "true")
+        unrelated = self.git.create_tag("unrelated-archive", self.commit)
+        self.publish()
+        remote_refs = self.git.run("ls-remote", "--tags", "origin")
+        self.assertIn("refs/tags/v0.1.0", remote_refs)
+        self.assertNotIn("unrelated-archive", remote_refs)
+        self.assertEqual(self.git.local_tag("unrelated-archive", self.commit), unrelated)
+
     def test_remote_tag_without_local_tag_resumes_missing_release(self):
         self.push_tag()
         oid = self.git.local_tag("v0.1.0", self.commit)

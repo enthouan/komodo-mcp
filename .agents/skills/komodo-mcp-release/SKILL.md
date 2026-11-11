@@ -197,12 +197,14 @@ releases (including drafts) before writes. Its conditional publication commands:
 
 ```sh
 git tag --no-sign -a vX.Y.Z CAPTURED_MERGED_SHA -m vX.Y.Z
-git push origin refs/tags/vX.Y.Z:refs/tags/vX.Y.Z
+git push --no-follow-tags origin refs/tags/vX.Y.Z:refs/tags/vX.Y.Z
 gh release create vX.Y.Z --repo enthouan/komodo-mcp --verify-tag \
   --title vX.Y.Z --notes-file REVIEWED_NOTES_FILE --latest=true
 ```
 
-Prereleases add `--prerelease --latest=false`. Older stable recovery selects
+`--no-follow-tags` prevents a maintainer's `push.followTags=true` configuration
+from publishing unrelated local annotated tags. Prereleases add
+`--prerelease --latest=false`. Older stable recovery selects
 `--latest=false` when a newer stable release exists and verifies the previous
 Latest designation was preserved. A matching published release is never edited
 just to alter Latest. Every completed-state recovery and read-only verification
@@ -262,6 +264,7 @@ remote state, not just command success.
 ## Official command references
 
 [Git annotated tags](https://git-scm.com/docs/git-tag),
+[explicit tag push](https://git-scm.com/docs/git-push),
 [GitHub tag objects](https://docs.github.com/en/rest/git/tags),
 [GitHub refs](https://docs.github.com/en/rest/git/refs),
 [Release creation flags](https://cli.github.com/manual/gh_release_create),
