@@ -4,6 +4,12 @@ Release sections are the reviewed source for GitHub Release notes. Application
 versions follow SemVer; publication dates and commit identities belong in the
 GitHub Release and tracking evidence.
 
+New changes go under `Unreleased` until the next release is prepared.
+
+## Unreleased
+
+No changes recorded.
+
 ## v0.1.0
 
 First release of the Rust stdio MCP server for inspecting Komodo inventory.
