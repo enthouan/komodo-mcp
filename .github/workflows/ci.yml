@@ -17,6 +17,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.99.1
         with:
           components: rustfmt, clippy
+      - name: Test release metadata, publication and recovery without network writes
+        run: python3 -m unittest discover -s scripts -v
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --all-targets
@@ -24,6 +26,11 @@ jobs:
       - run: cargo build --locked --examples
       - name: Run the documented fresh stdio demonstration
         run: cargo run --locked --example stacks_on_server -- ./target/release/komodo-mcp
+      - name: Verify release metadata and the actual executable's MCP version
+        run: |
+          release_version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')"
+          python3 scripts/release.py metadata --version "$release_version"
+          cargo run --locked --example release_version -- ./target/release/komodo-mcp "$release_version"
       - name: Verify a scenario failure exits nonzero after cleanup
         run: |
           if cargo run --locked --example stacks_on_server -- ./target/release/komodo-mcp missing-server > target/demo-failure.log 2>&1; then

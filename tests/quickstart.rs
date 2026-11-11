@@ -39,6 +39,24 @@ async fn stopped(address: &str) -> Result<()> {
 }
 
 #[tokio::test]
+async fn release_verification_checks_the_selected_executables_mcp_version() -> Result<()> {
+    let evidence = scenario::verify_release(executable(), env!("CARGO_PKG_VERSION")).await?;
+    assert_eq!(evidence["observed_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(evidence["child_exit_success"], true);
+    assert_eq!(evidence["forced_kill"], false);
+    assert_eq!(evidence["mock_stopped"], true);
+    let error = scenario::verify_release(executable(), "9.9.9")
+        .await
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("MCP version mismatch: expected 9.9.9")
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn quickstart_answers_from_initialized_stdio_and_all_inventory_pages() -> Result<()> {
     let report =
         scenario::run(executable(), DEFAULT_SERVER, Configuration::Synthetic, None).await?;

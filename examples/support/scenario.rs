@@ -590,6 +590,56 @@ pub async fn demonstrate(executable: &Path, name: &str) -> Result<Answer> {
     Ok(answer)
 }
 
+/// Use the same official client, fixture, deadlines and cleanup as the walkthrough.
+/// The requested application version is independent of MCP and Core versions.
+pub async fn verify_release(executable: &Path, expected: &str) -> Result<Value> {
+    let executable = executable
+        .canonicalize()
+        .context("resolve release executable")?;
+    let report = run(
+        &executable,
+        super::mock_core::DEFAULT_SERVER,
+        Configuration::Synthetic,
+        None,
+    )
+    .await?;
+    eprintln!(
+        "Cleanup: MCP child exited {}; mock stopped; forced kill: {}.",
+        report.status, report.forced_kill
+    );
+    if report.result.is_err() {
+        eprintln!("Captured komodo-mcp stderr:\n{}", report.stderr);
+    }
+    let answer = report.result?;
+    ensure!(
+        answer.pages == 3
+            && answer.visible == 6
+            && answer
+                .stacks
+                .iter()
+                .map(|s| s.name.as_str())
+                .collect::<Vec<_>>()
+                == ["alpha-web", "gamma-jobs", "zeta-metrics"],
+        "release inventory differs from the synthetic oracle"
+    );
+    let observed = report.transcript[0]["result"]["serverInfo"]["version"]
+        .as_str()
+        .context("initialize omitted serverInfo.version")?;
+    ensure!(
+        observed == expected,
+        "MCP version mismatch: expected {expected}, observed {observed}"
+    );
+    Ok(json!({
+        "executable": executable,
+        "expected_version": expected,
+        "observed_version": observed,
+        "inventory": answer.stacks.iter().map(|s| &s.name).collect::<Vec<_>>(),
+        "child_exit_success": report.status.success(),
+        "forced_kill": report.forced_kill,
+        "mock_stopped": true,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
