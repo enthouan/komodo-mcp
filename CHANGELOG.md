@@ -8,7 +8,7 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
-No changes recorded.
+- Clarify the dedicated changelog release cut and exact release commit/PR naming.
 
 ## v0.1.0
 
