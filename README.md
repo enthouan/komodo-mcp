@@ -348,6 +348,10 @@ cargo tree --locked -e features -i reqwest
 
 CI runs formatting, Clippy, and tests on Linux for pull requests and pushes to
 `main`, using only local fixtures and synthetic credentials.
+It also verifies release metadata and initializes the actual release executable
+to check its MCP application version. Release notes live in [CHANGELOG.md](CHANGELOG.md);
+maintainers use [the release skill](.agents/skills/komodo-mcp-release/SKILL.md)
+for validation, publication, and recovery.
 The subprocess smoke test launches Cargo's compiled binary and explicitly uses
 MCP **2025-11-25**: configured startup, initialization, six-tool discovery, list
 and ID/name detail calls in every family, inventory continuation to an exactly
