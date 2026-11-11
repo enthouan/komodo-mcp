@@ -10,7 +10,7 @@ use std::{
 use anyhow::{Context, Result, bail, ensure};
 use rmcp::model::{ErrorCode, ProtocolVersion, RequestId, ServerJsonRpcMessage, ServerResult};
 use serde_json::{Value, json};
-use support::{KEY, MockCore, Reply, SECRET, Step, assert_safe};
+use support::{KEY, MockCore, Reply, SECRET, Step, assert_safe, inventory::*};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, Command},
@@ -195,7 +195,7 @@ fn decode_frame(frame: &[u8]) -> Result<ServerJsonRpcMessage> {
     );
     let message: ServerJsonRpcMessage =
         serde_json::from_str(text).context("stdout is not an SDK MCP server message")?;
-    // The empty registry does not change and emits no unsolicited notifications.
+    // The production registry is fixed and emits no unsolicited notifications.
     ensure!(
         matches!(
             message,
@@ -206,7 +206,7 @@ fn decode_frame(frame: &[u8]) -> Result<ServerJsonRpcMessage> {
     Ok(message)
 }
 
-async fn list_empty_tools(process: &mut Process, id: &str) -> Result<()> {
+async fn list_tools(process: &mut Process, id: &str) -> Result<()> {
     process
         .send(json!({"jsonrpc": "2.0", "id": id, "method": "tools/list", "params": {}}))
         .await
@@ -214,7 +214,22 @@ async fn list_empty_tools(process: &mut Process, id: &str) -> Result<()> {
     match process.receive(id).await.context("receive tools/list")? {
         ServerJsonRpcMessage::Response(response) => match response.result {
             ServerResult::ListToolsResult(result) => {
-                ensure!(result.tools.is_empty(), "expected empty tools array");
+                let names: std::collections::BTreeSet<_> =
+                    result.tools.iter().map(|tool| tool.name.as_ref()).collect();
+                let expected: std::collections::BTreeSet<_> = FAMILIES
+                    .iter()
+                    .flat_map(|family| [family.list_tool(), family.get_tool()])
+                    .collect();
+                ensure!(names == expected, "expected all six inventory tools");
+                for tool in &result.tools {
+                    ensure!(tool.output_schema.is_some(), "missing output schema");
+                    let metadata = serde_json::to_value(tool)?;
+                    ensure!(
+                        metadata["annotations"]["readOnlyHint"] == true
+                            && metadata["annotations"]["idempotentHint"] == true,
+                        "missing read-only annotations"
+                    );
+                }
                 ensure!(result.next_cursor.is_none(), "unexpected tools pagination");
                 Ok(())
             }
@@ -269,7 +284,7 @@ async fn exchange(process: &mut Process) -> Result<()> {
         .send(json!({"jsonrpc": "2.0", "method": "notifications/initialized"}))
         .await
         .context("send notifications/initialized")?;
-    list_empty_tools(process, "smoke-tools-before").await?;
+    list_tools(process, "smoke-tools-before").await?;
 
     process
         .send(json!({
@@ -298,7 +313,86 @@ async fn exchange(process: &mut Process) -> Result<()> {
         }
         other => bail!("expected SDK unknown-tool protocol error, got {other:?}"),
     }
-    list_empty_tools(process, "smoke-tools-after").await
+    // Exercise the deployed router, projections, ID/name selectors and continuation.
+    for family in FAMILIES {
+        let listed = call(
+            process,
+            &format!("smoke-{}", family.list_tool()),
+            family.list_tool(),
+            json!({}),
+        )
+        .await?;
+        let data = assert_success(&listed);
+        assert_keys(&data["items"][0], &family.keys(false));
+        let id = data["items"][0]["id"].clone();
+        for (field, value) in [("id", id), ("name", family.summary()["name"].clone())] {
+            let inspected = call(
+                process,
+                &format!("smoke-{}-{field}", family.get_tool()),
+                family.get_tool(),
+                json!({field:value}),
+            )
+            .await?;
+            assert_keys(assert_success(&inspected), &family.keys(true));
+        }
+    }
+    let first = call(
+        process,
+        "smoke-page-0",
+        "list_servers",
+        json!({"page_size":1}),
+    )
+    .await?;
+    let data = assert_success(&first);
+    ensure!(
+        data["has_more"] == true && data["next_page"] == 1,
+        "missing continuation"
+    );
+    let last = call(
+        process,
+        "smoke-page-1",
+        "list_servers",
+        json!({"page":data["next_page"],"page_size":1}),
+    )
+    .await?;
+    let data = assert_success(&last);
+    ensure!(
+        data["has_more"] == false && data["next_page"].is_null(),
+        "expected exhausted exact-boundary page"
+    );
+
+    let failure = call(
+        process,
+        "smoke-missing",
+        "get_stack",
+        json!({"name":"missing-stack"}),
+    )
+    .await?;
+    assert_failure(&failure, "not_found");
+    let failure = call(
+        process,
+        "smoke-arguments",
+        "get_deployment",
+        json!({"name":{"credential":SECRET},KEY:SECRET}),
+    )
+    .await?;
+    assert_failure(&failure, "invalid_arguments");
+    let failure = call(process, "smoke-upstream", "list_deployments", json!({})).await?;
+    assert_failure(&failure, "upstream");
+    let recovery = call(process, "smoke-recovery", "list_deployments", json!({})).await?;
+    assert_success(&recovery);
+    list_tools(process, "smoke-tools-after").await
+}
+
+async fn call(process: &mut Process, id: &str, tool: &str, arguments: Value) -> Result<Value> {
+    process.send(json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":tool,"arguments":arguments}})).await?;
+    match process.receive(id).await? {
+        ServerJsonRpcMessage::Response(response) => match response.result {
+            ServerResult::CallToolResult(result) => Ok(serde_json::to_value(result)?),
+            other => bail!("expected tool result, got {other:?}"),
+        },
+        other => bail!("expected tool response, got {other:?}"),
+    }
 }
 
 fn validate_captured_output(captured: &Captured) -> Result<()> {
@@ -313,8 +407,8 @@ fn validate_captured_output(captured: &Captured) -> Result<()> {
         count += 1;
     }
     ensure!(
-        count == 4,
-        "expected exactly four MCP responses, got {count}"
+        count == 19,
+        "expected exactly nineteen MCP responses, got {count}"
     );
     let stderr = std::str::from_utf8(&captured.stderr).context("stderr is not UTF-8")?;
     assert_safe(stderr);
@@ -340,7 +434,49 @@ fn validate_captured_output(captured: &Captured) -> Result<()> {
 
 #[tokio::test]
 async fn stdio_initialize_tools_and_eof() -> Result<()> {
-    let core = MockCore::start(vec![Step::version()]).await?;
+    let mut steps = vec![Step::version()];
+    for family in FAMILIES {
+        let summary = family.summary();
+        steps.push(family.list(0, 30, std::slice::from_ref(&summary)));
+        for field in ["id", "name"] {
+            steps.push(family.lookup(
+                summary[field].as_str().unwrap(),
+                std::slice::from_ref(&summary),
+            ));
+            steps.push(family.get(
+                summary["id"].as_str().unwrap(),
+                Reply::new(200, family.detail().to_string()),
+            ));
+        }
+    }
+    let first = Family::Server.summary();
+    let mut last = first.clone();
+    last["id"] = json!("000000000000000000000004");
+    last["name"] = json!("fixture-server-next");
+    steps.extend([
+        Family::Server.list(0, 1, &[first]),
+        Family::Server.list(1, 1, std::slice::from_ref(&last)),
+        Family::Server.list(1, 1, &[last]),
+        Family::Server.list(2, 1, &[]),
+        Family::Stack.lookup("missing-stack", &[]),
+        Family::Deployment.list_step(
+            0,
+            30,
+            &[],
+            &[],
+            Reply::new(
+                502,
+                json!({
+                    "error": format!("proxy {KEY} {SECRET}"),
+                    "trace": [support::SENSITIVE_MARKERS[4]]
+                })
+                .to_string(),
+            ),
+        ),
+        Family::Deployment.list(0, 30, &[]),
+    ]);
+    let operations: Vec<_> = steps.iter().map(|step| step.operation).collect();
+    let core = MockCore::start(steps).await?;
     let mut process = Process::spawn(&[
         ("KOMODO_ADDRESS", Some(&core.address)),
         ("KOMODO_API_KEY", Some(KEY)),
@@ -363,7 +499,7 @@ async fn stdio_initialize_tools_and_eof() -> Result<()> {
         String::from_utf8_lossy(&captured.stdout),
         String::from_utf8_lossy(&captured.stderr)
     );
-    core.assert_finished(&["GetVersion"]);
+    core.assert_finished(&operations);
     Ok(())
 }
 

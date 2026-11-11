@@ -1,0 +1,25 @@
+{
+  "_id": {
+    "$oid": "000000000000000000000003"
+  },
+  "name": "fixture-deployment",
+  "template": false,
+  "config": {
+    "server_id": "000000000000000000000001",
+    "swarm_id": "",
+    "environment": "PASSWORD=sensitive-environment-marker",
+    "image_registry_account": "sensitive-config-credential-marker",
+    "command": "cat sensitive-stored-file-marker",
+    "image": {
+      "type": "Image",
+      "params": {
+        "image": "nginx:stable"
+      }
+    }
+  },
+  "info": {
+    "deployed_name": "fixture-web",
+    "latest_image_digest": "sensitive-stored-file-marker"
+  },
+  "description": "sensitive-description-marker"
+}

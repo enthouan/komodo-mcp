@@ -42,7 +42,7 @@ impl ServerHandler for TestHandler {
                 .await
                 .map(|_| ())
         } else {
-            self.0.list_servers().await.map(|_| ())
+            self.0.read(server_page()).await.map(|_| ())
         };
         Ok(match read {
             Ok(()) => CallToolResult::success(vec![ContentBlock::text("read succeeded")]),

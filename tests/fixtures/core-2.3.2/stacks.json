@@ -1,0 +1,44 @@
+[
+  {
+    "id": "000000000000000000000002",
+    "type": "Stack",
+    "name": "fixture-stack",
+    "template": false,
+    "tags": [],
+    "info": {
+      "swarm_id": "",
+      "swarm_name": "",
+      "server_id": "000000000000000000000001",
+      "server_name": "fixture-server",
+      "files_on_host": false,
+      "file_contents": true,
+      "linked_repo": "",
+      "linked_repo_name": "",
+      "git_provider": "github.com",
+      "repo": "fixtures/compose",
+      "branch": "main",
+      "repo_link": "https://example.test/fixtures",
+      "state": "running",
+      "status": "running(2)",
+      "services": [
+        {
+          "service": "web",
+          "image": "nginx:stable",
+          "latest_image": null,
+          "update_available": false
+        },
+        {
+          "service": "db",
+          "image": "postgres:17",
+          "latest_image": null,
+          "update_available": false
+        }
+      ],
+      "auto_update_all_services": false,
+      "project_missing": false,
+      "missing_files": [],
+      "deployed_hash": null,
+      "latest_hash": null
+    }
+  }
+]
