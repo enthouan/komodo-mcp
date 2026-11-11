@@ -26,6 +26,10 @@ Passing checks or automated review does not grant authorization. History
 rewrites, moving/deleting published tags, and replacing conflicting published
 state require separate explicit authorization. Preserve repository visibility.
 
+When user feedback establishes a reusable release convention, update the
+relevant instruction in this skill during the same task. Keep authorization
+for a particular merge or publication in that session's evidence.
+
 ## Tools and initial inspection
 
 Use Git, Python 3.11+ (standard library only), the repository's pinned Rust
@@ -82,10 +86,17 @@ Tag and Release title are `v` plus the exact application version. SemVer
 prereleases (for example `0.2.0-rc.1`) use `--prerelease` and never become Latest;
 build metadata alone does not imply prerelease.
 
-Maintain an exact `## vX.Y.Z` section in `CHANGELOG.md`. For the first release,
-explicitly summarize shipped scope from history and completed issues; do not
-invent a previous tag. Later releases use the previous **verified published**
-release's annotated tag and target through the intended candidate:
+Keep `## Unreleased` above the latest versioned section in `CHANGELOG.md`.
+Prepare the release cut by moving its reviewed changes into an exact
+`## vX.Y.Z` section and leaving `Unreleased` for subsequent work. If the
+versioned notes already exist, establish this boundary without rewriting the
+reviewed release scope. Publication dates and commit identities belong in the
+GitHub Release and tracking evidence.
+
+For the first release, explicitly summarize shipped scope from history and
+completed issues; do not invent a previous tag. Later releases use the previous
+**verified published** release's annotated tag and target through the intended
+candidate:
 
 ```sh
 git log --oneline PREVIOUS_VERIFIED_TAG..CANDIDATE_SHA
@@ -103,12 +114,20 @@ artifact verification together as those capabilities land.
 
 ## Release PR and completed review
 
-Use `antoine/release-vX.Y.Z` from fresh `origin/main`, keeping related work in
-one PR. Inspect the full diff, stage only release work, use existing imperative
-commit style and omit agent attribution. Use PR title `vX.Y.Z`. Describe the
-skill, publication/recovery mechanism, version alignment, notes, artifact scope,
-validation and remaining authorization boundary. Use `Tracks #58` (or the
-applicable tracking issue), never a closing reference before verified publication.
+Create a dedicated release preparation commit using the changelog cut, even
+when Cargo already has the target version or a general tooling PR added the
+notes earlier. Reuse an existing correct release-cut commit; do not manufacture
+an empty duplicate.
+
+Use `antoine/release-vX.Y.Z` from fresh `origin/main`, keeping related release
+work in one PR. The release preparation commit, PR title, and final squash
+commit subject are exactly the release name `vX.Y.Z`. This repository convention
+takes precedence over ordinary imperative commit subjects for release cuts.
+Inspect the full diff, stage only release work, and omit agent attribution.
+Describe version alignment, the changelog cut, notes, artifact scope, validation,
+and remaining authorization. Include release tooling or skill changes when they
+are part of the diff. Use `Tracks #58` (or the applicable tracking issue), never
+a closing reference before verified publication.
 
 Run the complete local gate on the exact clean candidate commit:
 
@@ -165,13 +184,15 @@ checks and threads. Merge through GitHub with an inspected head SHA guard,
 respecting any required approvals/queue; never bypass rules. For permitted squash:
 
 ```sh
-gh pr merge PR_NUMBER --repo enthouan/komodo-mcp --squash --match-head-commit REVIEWED_HEAD_SHA
+gh pr merge PR_NUMBER --repo enthouan/komodo-mcp --squash \
+  --match-head-commit REVIEWED_HEAD_SHA --subject vX.Y.Z
 gh pr view PR_NUMBER --repo enthouan/komodo-mcp --json state,mergedAt,mergeCommit,url
 git fetch --no-tags origin main
 ```
 
-Capture the **actual merged SHA** from the PR read-back and require ancestry in
-fetched main. Do not assume a squash/rebase preserves the PR head. Use a clean
+Capture the **actual merged SHA** from the PR read-back, require ancestry in
+fetched main, and confirm its commit subject is exactly `vX.Y.Z`. Do not assume
+a squash/rebase preserves the PR head. Use a clean
 checkout/worktree detached at that exact SHA, check metadata and notes, and
 rerun `validate` above. Wait for **CI** and **Inventory benchmark** main-push
 runs at that exact commit, plus any other applicable required checks/statuses.
