@@ -90,7 +90,11 @@ def prepare(args):
     version = command([node, "--version"])
     if int(version.lstrip("v").split(".")[0]) < 22:
         raise ValueError("reference requires Node >=22; select --node explicitly")
-    npm, cargo, rustc = [executable(x) for x in (args.npm, args.cargo, args.rustc)]
+    npm, cargo = [executable(x) for x in (args.npm, args.cargo)]
+    # Resolve rustup/asdf shims before Cargo changes cwd into dependency sources.
+    # A cwd-sensitive shim supplied as RUSTC can lose the checkout's toolchain.
+    sysroot = command([executable(args.rustc), "--print", "sysroot"])
+    rustc = executable(Path(sysroot) / "bin/rustc")
     commands = []
 
     def execute(argv, cwd, overrides=None):

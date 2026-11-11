@@ -35,6 +35,8 @@ target path prevents inherited output/target settings from selecting a stale
 executable. `--node`, `--npm`, `--cargo`, and `--rustc` accept installed executable
 paths, including paths containing spaces. The measured Node path is resolved
 through `process.execPath`.
+The Rust compiler is resolved through `rustc --print sysroot` so toolchain-manager
+shims cannot lose the selected version when Cargo compiles dependencies elsewhere.
 
 Preparation writes `target/benchmark/artifacts.json`, including commands,
 source/build identities, toolchain versions, actual executable size/hash,
