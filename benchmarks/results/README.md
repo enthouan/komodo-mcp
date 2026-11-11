@@ -4,14 +4,14 @@
 `komodo-inventory-benchmark/v1` archive, including all raw samples, 3,918 HTTP
 events, expected inventory, equivalence digests, per-batch distributions, RSS
 observations and artifact identities. Run ID:
-`be78a681-5321-48d1-85c1-1bafd45a874a`.
+`603d77fc-4439-4814-ac43-bafb402600df`.
 
-The run took place on **November 10, 2026 (Pacific)**, 04:08–04:10 UTC on
+The run took place on **November 10, 2026 (Pacific)**, 04:17–04:18 UTC on
 November 11. Both build source and runner were clean at
-`1d31e7694a8157ee6202d1775b4cfbfdca7b4f95`; the later reporting commit adds this
+`805f95ec6d78797226814de1ce1688d53685113e`; the later reporting commit adds this
 archive and interpretation without relabeling the measured revision. Preparation
-and all 12 correctness tests were reproduced in an isolated checkout. Both the
-checkout and freshly cloned reference paths contained spaces.
+and all 13 correctness tests were reproduced in an isolated checkout. Both the
+checkout and reference paths contained spaces.
 
 Host: macOS 15.8.3, x86_64, Macmini8,1, Intel Core i5-8500B @ 3.00 GHz, 6 logical
 CPUs, 64 GiB memory. The kernel reported `kern.hv_vmm_present=0`; processes ran
@@ -30,10 +30,10 @@ or unknown states. Both needed 5 MCP calls per complete inventory.
 
 | Metric | Rust release executable | Pinned TypeScript reference |
 | --- | ---: | ---: |
-| Fresh-process startup p50 / p95, ms | 36.666 / 65.020 | 1,746.616 / 2,940.150 |
-| Complete warm inventory p50 / p95, ms | 20.451 / 33.809 | 50.531 / 144.824 |
-| Idle RSS median, MiB | 5.46 | 98.76 |
-| Highest sampled peak RSS, MiB | 9.52 | 173.66 |
+| Fresh-process startup p50 / p95, ms | 17.419 / 20.163 | 608.796 / 947.517 |
+| Complete warm inventory p50 / p95, ms | 11.544 / 14.376 | 28.754 / 36.298 |
+| Idle RSS median, MiB | 5.43 | 98.47 |
+| Highest sampled peak RSS, MiB | 9.19 | 175.14 |
 | MCP response bytes per inventory, median | 55,554 | 30,767 |
 | Observed Core requests per inventory | 10 | 5 |
 | Observed Core response body bytes per inventory | 169,232 | 470,065 |
@@ -45,11 +45,11 @@ The Rust executable was **12,737,480 bytes** (Cargo release defaults, explicit
 No JavaScript entry-file size is treated as an equivalent native executable size.
 Both processes produced zero stderr bytes at the declared log level in this run.
 
-Direct authenticated, paginated Core inventory p50/p95 was **8.676/18.128 ms**;
-direct `GetVersion` was **0.549/1.587 ms**. The direct inventory uses the same
+Direct authenticated, paginated Core inventory p50/p95 was **5.963/8.250 ms**;
+direct `GetVersion` was **0.415/1.145 ms**. The direct inventory uses the same
 page size and verifies the same 125 records, with an extra empty read at this
 exact boundary. Fixture handler service time across all phases had p50/p95
-**0.638/2.524 ms**. Configured delay was explicitly zero; serialization,
+**0.438/1.686 ms**. Configured delay was explicitly zero; serialization,
 scheduling, loopback and instrumented fixture work still take time. These
 baselines accompany MCP timings; subtraction would not precisely measure
 internal server overhead.
@@ -63,12 +63,22 @@ reference's compact summaries and rendered text. The reference also starts its
 full tool registry and supporting framework. This is equivalence of the
 inventory projection, not equivalence of every feature or payload.
 
-Variance remains material. Per-batch Rust warm p95 was **24.37, 24.59, 81.61 ms**;
-reference warm p95 was **144.82, 92.63, 201.60 ms**. The pooled percentile does not
-describe every batch equally. RSS peaks are sampled maxima with a 20 ms sleep
+Per-batch Rust warm p95 was **14.38, 14.81, 13.79 ms**; reference warm p95 was
+**38.31, 32.46, 36.10 ms**. The pooled percentile does not describe every batch
+equally. RSS peaks are sampled maxima with a 20 ms sleep
 between observations, and can miss brief peaks. There are no performance
 thresholds or general claims about deployed Core or other hosts; initial targets
 and conclusions remain **provisional**.
+
+The earlier successful capture is retained in full as
+[`macos-x86_64-initial.json.gz`](macos-x86_64-initial.json.gz), run
+`be78a681-5321-48d1-85c1-1bafd45a874a`, clean revision `1d31e76`. Its pooled warm
+p50/p95 was **20.451/33.809 ms** (Rust) and **50.531/144.824 ms** (reference), with
+the same native binary hash, fixture and workload controls. The current capture
+repeats measurement after fixing preparation's handling of toolchain proxy
+symlinks. These distinct runs are not pooled; their substantial variation on a
+shared host reinforces the provisional interpretation. Both archives preserve
+every sample.
 
 ## Reproduce or inspect
 

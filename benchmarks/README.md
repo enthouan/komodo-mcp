@@ -186,7 +186,9 @@ them does not precisely isolate internal server overhead.
 
 [`results/macos-x86_64.json.gz`](results/macos-x86_64.json.gz) retains the complete
 baseline; [`results/README.md`](results/README.md) interprets it. The final report
-commit can be later than the measured implementation commit: `repository`
+also retains an [earlier complete capture](results/macos-x86_64-initial.json.gz)
+to make observed host/run variance visible. These captures are not pooled.
+A reporting commit can be later than the measured implementation commit: `repository`
 records the runner checkout; `artifacts.rust.repository` records the source
 at build time; dirty flags/status and source/file hashes identify uncommitted
 changes accurately. Never relabel a measurement with a later, unmeasured revision.
