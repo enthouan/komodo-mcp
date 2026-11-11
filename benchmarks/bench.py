@@ -81,7 +81,9 @@ def executable(value):
     resolved = shutil.which(str(value))
     if not resolved:
         raise ValueError(f"missing executable {value!r}; provide an installed executable path")
-    return str(Path(resolved).resolve())
+    # Multicall executables (notably rustup) dispatch using argv[0]. Resolving
+    # rustc/cargo symlinks to rustup changes which command actually runs.
+    return str(Path(resolved).absolute())
 
 
 def prepare(args):

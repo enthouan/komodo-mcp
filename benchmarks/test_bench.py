@@ -73,6 +73,18 @@ def valid_report():
 
 
 class PureTests(unittest.TestCase):
+    def test_executable_preserves_multicall_symlink_name(self):
+        with tempfile.TemporaryDirectory(prefix="toolchain paths ") as temp:
+            directory = Path(temp)
+            proxy = directory / "multicall"
+            proxy.write_text('#!/bin/sh\nprintf "%s\\n" "${0##*/}"\n')
+            proxy.chmod(0o755)
+            for name in ("rustc", "cargo", "npm"):
+                link = directory / name
+                link.symlink_to(proxy.name)
+                self.assertEqual(bench.executable(link), str(link))
+                self.assertEqual(bench.command([bench.executable(link), "--version"]), name)
+
     def test_percentile_nearest_rank(self):
         self.assertEqual(bench.percentile([4, 1, 3, 2], .5), 2)
         self.assertEqual(bench.percentile(list(range(1, 101)), .95), 95)
