@@ -1,5 +1,10 @@
 # komodo-mcp
 
+The [inventory benchmark](benchmarks/README.md) compares the release executable
+with a pinned TypeScript stdio reference using synthetic Core fixtures. See the
+[archived measurements and interpretation](benchmarks/results/README.md) for
+provisional results and repeatable commands.
+
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.8.0 SDK](https://docs.rs/rmcp/3.8.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned

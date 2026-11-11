@@ -10,3 +10,6 @@ target/
 
 # macOS metadata
 .DS_Store
+
+# Benchmark Python bytecode
+__pycache__/
