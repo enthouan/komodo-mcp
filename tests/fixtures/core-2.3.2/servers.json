@@ -1,0 +1,35 @@
+[
+  {
+    "id": "000000000000000000000001",
+    "type": "Server",
+    "name": "fixture-server",
+    "template": false,
+    "tags": [],
+    "info": {
+      "state": "NotOk",
+      "err": null,
+      "stats": null,
+      "alerting_thresholds": {
+        "cpu_warning": 90.0, "cpu_critical": 99.0,
+        "mem_warning": 90.0, "mem_critical": 99.0,
+        "disk_warning": 90.0, "disk_critical": 99.0
+      },
+      "core_count": null,
+      "logical_core_count": null,
+      "region": "fixture",
+      "address": null,
+      "external_address": null,
+      "public_ip": null,
+      "send_unreachable_alerts": false,
+      "send_cpu_alerts": false,
+      "send_mem_alerts": false,
+      "send_disk_alerts": false,
+      "send_version_mismatch_alerts": false,
+      "version": null,
+      "public_key": null,
+      "attempted_public_key": null,
+      "terminals_disabled": true,
+      "container_terminals_disabled": true
+    }
+  }
+]

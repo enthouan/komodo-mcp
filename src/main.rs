@@ -1,44 +1,82 @@
-mod server;
+use std::{fmt, process::ExitCode};
 
-use std::process::ExitCode;
-
-use anyhow::{Context, Result, bail};
+use komodo_mcp::{
+    client::{CoreClient, RequestPolicy},
+    config::Config,
+    diagnostics::SafeDiagnostics,
+    error::AppError,
+    server::KomodoServer,
+};
 use rmcp::{ServiceExt, service::QuitReason, transport::stdio};
 use tracing_subscriber::EnvFilter;
+
+// Keep this reporting boundary closed to raw SDK/protocol error chains.
+#[derive(Debug)]
+enum StartupError {
+    Core(AppError),
+    Runtime(&'static str),
+}
+
+impl From<AppError> for StartupError {
+    fn from(error: AppError) -> Self {
+        Self::Core(error)
+    }
+}
+
+impl fmt::Display for StartupError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Core(error) => error.fmt(f),
+            Self::Runtime(message) => f.write_str(message),
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> ExitCode {
     match run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("komodo-mcp failed: {error:#}");
+            eprintln!("komodo-mcp failed: {error}");
             ExitCode::FAILURE
         }
     }
 }
 
-async fn run() -> Result<()> {
+async fn run() -> Result<(), StartupError> {
+    let config = Config::from_env()?;
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
-        .with_writer(std::io::stderr)
+        .with_writer(SafeDiagnostics::new(&config, std::io::stderr))
         .with_ansi(false)
         .without_time()
         .try_init()
-        .map_err(|error| anyhow::anyhow!("failed to configure diagnostics: {error}"))?;
+        .map_err(|_| StartupError::Runtime("failed to configure diagnostics"))?;
+
+    let client = CoreClient::new(config, RequestPolicy::default())?;
+    let core_version = client.detect_version().await?;
+    tracing::info!(version = %core_version, "connected to Komodo Core");
 
     tracing::info!("starting komodo-mcp over stdio");
-    let service = server::KomodoServer
-        .serve(stdio())
-        .await
-        .context("failed to initialize MCP service over stdio")?;
+    let service = KomodoServer {
+        client,
+        core_version,
+    }
+    .serve(stdio())
+    .await
+    .map_err(|_| StartupError::Runtime("failed to initialize MCP service over stdio"))?;
 
-    match service.waiting().await.context("MCP service task failed")? {
+    match service
+        .waiting()
+        .await
+        .map_err(|_| StartupError::Runtime("MCP service task failed"))?
+    {
         // rmcp reports stdin EOF as Closed after a session has initialized.
         QuitReason::Closed => tracing::info!("MCP session closed"),
-        QuitReason::JoinError(error) => return Err(error).context("MCP request task failed"),
-        reason => bail!("MCP service stopped unexpectedly: {reason:?}"),
+        QuitReason::JoinError(_) => return Err(StartupError::Runtime("MCP request task failed")),
+        _ => return Err(StartupError::Runtime("MCP service stopped unexpectedly")),
     }
     Ok(())
 }

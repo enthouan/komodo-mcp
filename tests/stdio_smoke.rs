@@ -1,3 +1,5 @@
+mod support;
+
 use std::{
     io,
     process::{ExitStatus, Stdio},
@@ -8,6 +10,7 @@ use std::{
 use anyhow::{Context, Result, bail, ensure};
 use rmcp::model::{ErrorCode, ProtocolVersion, RequestId, ServerJsonRpcMessage, ServerResult};
 use serde_json::{Value, json};
+use support::{KEY, MockCore, Reply, SECRET, Step, assert_safe};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, Command},
@@ -16,9 +19,10 @@ use tokio::{
     time::timeout,
 };
 
-const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(10);
-const SESSION_TIMEOUT: Duration = Duration::from_secs(40);
-const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+// The production startup probe has a 15-second deadline.
+const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(25);
+const SESSION_TIMEOUT: Duration = Duration::from_secs(60);
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(25);
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const PROTOCOL_VERSION: &str = "2025-11-25";
 
@@ -38,9 +42,20 @@ struct Process {
 }
 
 impl Process {
-    fn spawn() -> Result<Self> {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_komodo-mcp"))
-            .env("RUST_LOG", "komodo_mcp=info,rmcp=info")
+    fn spawn(overrides: &[(&str, Option<&str>)]) -> Result<Self> {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_komodo-mcp"));
+        for field in ["KOMODO_ADDRESS", "KOMODO_API_KEY", "KOMODO_API_SECRET"] {
+            command.env_remove(field);
+        }
+        for (field, value) in overrides {
+            if let Some(value) = value {
+                command.env(field, value);
+            } else {
+                command.env_remove(field);
+            }
+        }
+        let mut child = command
+            .env("RUST_LOG", "trace")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -147,7 +162,7 @@ impl Process {
         }
     }
 
-    async fn finish(&mut self, force_kill: bool) -> Result<()> {
+    async fn finish(&mut self, force_kill: bool) -> Result<ExitStatus> {
         let exit = self.wait_for_exit(force_kill).await;
         // Await both streams even when the exchange or process wait failed.
         let readers = timeout(DRAIN_TIMEOUT, async {
@@ -165,9 +180,7 @@ impl Process {
         stderr
             .context("stderr reader task")?
             .context("read stderr")?;
-        let status = exit?;
-        ensure!(status.success(), "komodo-mcp exited with {status}");
-        Ok(())
+        exit
     }
 }
 
@@ -220,7 +233,7 @@ async fn exchange(process: &mut Process) -> Result<()> {
             "params": {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": "stdio-smoke", "version": "1.0.0"}
+                "clientInfo": {"name": KEY, "version": SECRET}
             }
         }))
         .await
@@ -263,7 +276,7 @@ async fn exchange(process: &mut Process) -> Result<()> {
             "jsonrpc": "2.0",
             "id": "smoke-unknown-tool",
             "method": "tools/call",
-            "params": {"name": "nonexistent-tool", "arguments": {}}
+            "params": {"name": "nonexistent-tool", "arguments": {"key": KEY, "secret": SECRET}}
         }))
         .await
         .context("send unknown tools/call")?;
@@ -304,6 +317,12 @@ fn validate_captured_output(captured: &Captured) -> Result<()> {
         "expected exactly four MCP responses, got {count}"
     );
     let stderr = std::str::from_utf8(&captured.stderr).context("stderr is not UTF-8")?;
+    assert_safe(stderr);
+    assert_safe(std::str::from_utf8(&captured.stdout)?);
+    ensure!(
+        stderr.contains("connected to Komodo Core") && stderr.contains("2.3.2"),
+        "missing observed Core version"
+    );
     ensure!(
         stderr.contains("starting komodo-mcp over stdio"),
         "missing application startup diagnostic on stderr"
@@ -321,13 +340,21 @@ fn validate_captured_output(captured: &Captured) -> Result<()> {
 
 #[tokio::test]
 async fn stdio_initialize_tools_and_eof() -> Result<()> {
-    let mut process = Process::spawn()?;
+    let core = MockCore::start(vec![Step::version()]).await?;
+    let mut process = Process::spawn(&[
+        ("KOMODO_ADDRESS", Some(&core.address)),
+        ("KOMODO_API_KEY", Some(KEY)),
+        ("KOMODO_API_SECRET", Some(SECRET)),
+    ])?;
     let protocol = timeout(SESSION_TIMEOUT, exchange(&mut process))
         .await
         .context("whole-session exchange deadline")
         .and_then(|result| result);
     // Always clean up before asserting, including timeout and malformed-frame paths.
-    let shutdown = process.finish(protocol.is_err()).await;
+    let shutdown = process.finish(protocol.is_err()).await.and_then(|status| {
+        ensure!(status.success(), "komodo-mcp exited with {status}");
+        Ok(())
+    });
     let captured = process.captured.lock().unwrap();
     let output = validate_captured_output(&captured);
     ensure!(
@@ -336,5 +363,115 @@ async fn stdio_initialize_tools_and_eof() -> Result<()> {
         String::from_utf8_lossy(&captured.stdout),
         String::from_utf8_lossy(&captured.stderr)
     );
+    core.assert_finished(&["GetVersion"]);
+    Ok(())
+}
+
+async fn startup_failure(overrides: &[(&str, Option<&str>)], expected: &str) -> Result<()> {
+    let mut process = Process::spawn(overrides)?;
+    let status = process.finish(false).await?;
+    let captured = process.captured.lock().unwrap();
+    ensure!(!status.success(), "startup must fail");
+    ensure!(captured.stdout.is_empty(), "failed startup emitted stdout");
+    let stderr = std::str::from_utf8(&captured.stderr)?;
+    assert_safe(stderr);
+    ensure!(
+        stderr.contains(expected),
+        "missing safe failure identifier: {stderr}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn missing_and_invalid_environment_fail_safely() -> Result<()> {
+    for missing in ["KOMODO_ADDRESS", "KOMODO_API_KEY", "KOMODO_API_SECRET"] {
+        startup_failure(
+            &[
+                ("KOMODO_ADDRESS", Some("http://127.0.0.1:1")),
+                ("KOMODO_API_KEY", Some(KEY)),
+                ("KOMODO_API_SECRET", Some(SECRET)),
+                (missing, None),
+            ],
+            missing,
+        )
+        .await?;
+    }
+    for (field, value) in [
+        (
+            "KOMODO_ADDRESS",
+            format!("https://{KEY}:{SECRET}@core.invalid"),
+        ),
+        ("KOMODO_API_KEY", format!("{KEY}\n{SECRET}")),
+        ("KOMODO_API_SECRET", String::new()),
+    ] {
+        startup_failure(
+            &[
+                ("KOMODO_ADDRESS", Some("http://127.0.0.1:1")),
+                ("KOMODO_API_KEY", Some(KEY)),
+                ("KOMODO_API_SECRET", Some(SECRET)),
+                (field, Some(&value)),
+            ],
+            field,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn upstream_startup_failures_have_safe_stderr() -> Result<()> {
+    for (reply, expected) in [
+        (
+            Reply::echoed(401, support::AUTHENTICATION),
+            "authentication",
+        ),
+        (Reply::echoed(500, support::PERMISSION), "permission_denied"),
+        (Reply::new(502, format!("proxy {KEY} {SECRET}")), "upstream"),
+        (
+            Reply::new(200, format!("invalid {KEY} {SECRET}")),
+            "invalid_response",
+        ),
+    ] {
+        let core = MockCore::start(vec![Step::new("GetVersion", reply)]).await?;
+        startup_failure(
+            &[
+                ("KOMODO_ADDRESS", Some(&core.address)),
+                ("KOMODO_API_KEY", Some(KEY)),
+                ("KOMODO_API_SECRET", Some(SECRET)),
+            ],
+            expected,
+        )
+        .await?;
+        core.assert_finished(&["GetVersion"]);
+    }
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let address = format!("http://{}", listener.local_addr()?);
+    drop(listener);
+    startup_failure(
+        &[
+            ("KOMODO_ADDRESS", Some(&address)),
+            ("KOMODO_API_KEY", Some(KEY)),
+            ("KOMODO_API_SECRET", Some(SECRET)),
+        ],
+        "unreachable",
+    )
+    .await
+}
+
+#[tokio::test]
+async fn stalled_startup_obeys_production_deadline() -> Result<()> {
+    let mut reply = Reply::new(200, support::VERSION);
+    reply.body_delay = Duration::from_secs(20);
+    let core = MockCore::start(vec![Step::new("GetVersion", reply)]).await?;
+    startup_failure(
+        &[
+            ("KOMODO_ADDRESS", Some(&core.address)),
+            ("KOMODO_API_KEY", Some(KEY)),
+            ("KOMODO_API_SECRET", Some(SECRET)),
+        ],
+        "timeout",
+    )
+    .await?;
+    core.assert_finished(&["GetVersion"]);
     Ok(())
 }

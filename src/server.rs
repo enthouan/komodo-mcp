@@ -4,7 +4,12 @@ use rmcp::{
     tool_handler, tool_router,
 };
 
-pub struct KomodoServer;
+use crate::client::{CoreClient, CoreVersion};
+
+pub struct KomodoServer {
+    pub client: CoreClient,
+    pub core_version: CoreVersion,
+}
 
 // Register future tools in this impl; the SDK routes both listing and calls.
 #[tool_router(allow_empty)]

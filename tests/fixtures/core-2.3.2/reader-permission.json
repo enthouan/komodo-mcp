@@ -1,0 +1,6 @@
+{
+  "user_target": {"type": "User", "id": "000000000000000000000002"},
+  "resource_target": {"type": "Server", "id": "000000000000000000000001"},
+  "level": "Read",
+  "specific": []
+}
