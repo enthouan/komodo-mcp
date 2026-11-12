@@ -134,3 +134,11 @@ fix pages at 100 records and return continuation for a full page. The update
 detail deliberately includes private TOML, `other_data`, command, and stdout
 markers so projection tests can verify their omission. These are synthetic wire
 records, with read-only fixture checks rather than Core's authorization engine.
+
+The #9 diagnosis tests extend the same wire fixture with inventory, service and
+cached server observations. The shared mock records reads and concurrent waits,
+supports healthy/inconclusive/failing/delayed sources, and preserves the log
+tests' real chunked bodies and positive-tail checks. Single-tool stdio cases
+verify diagnosis outcomes and final redacted JSON bounds. The full stdio flow
+from fleet health to supporting evidence and measured fleet/concurrency matrix
+remain in #10.

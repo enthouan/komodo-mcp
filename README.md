@@ -11,9 +11,9 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.8.0 SDK](https://docs.rs/rmcp/3.8.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Thirteen read-only tools list and inspect
+exactly with optional features disabled. Fourteen read-only tools list and inspect
 Servers, Stacks, and Deployments, summarize fleet health, inspect alerts/update
-history, and read bounded logs.
+history, read bounded logs, and diagnose a stack in one call.
 
 ## Fresh-checkout demo (synthetic Core)
 
@@ -301,6 +301,10 @@ for Swarm stacks. See [log limits, truncation, and redaction](docs/diagnostics.m
 filtered by resource kind and stable ID. `get_update` exposes bounded, redacted
 failed-stage evidence without raw configuration or unrestricted logs. See
 [history paging and outcomes](docs/diagnostics.md#incident-history).
+
+`stack_diagnose` combines inventory, service state, history, alerts and a bounded
+log excerpt. It returns `healthy`, `unhealthy`, or `inconclusive`, with supporting
+IDs and explicit source gaps. See [diagnosis bounds and evidence](docs/diagnostics.md#stack-diagnosis).
 
 ## Client and error foundation
 

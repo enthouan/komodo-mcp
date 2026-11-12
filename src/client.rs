@@ -43,7 +43,7 @@ struct Inner {
 
 /// Clones share the same SDK and reqwest connection pool. No mutable request state.
 #[derive(Clone)]
-pub struct CoreClient(Arc<Inner>);
+pub struct CoreClient(Arc<Inner>, bool);
 
 impl fmt::Debug for CoreClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -88,12 +88,20 @@ impl CoreClient {
             .header("x-api-key", &config.key)
             .header("x-api-secret", &config.secret);
         let sdk = KomodoClient::new(config.address, config.key, config.secret).set_reqwest(http);
-        Ok(Self(Arc::new(Inner {
-            sdk,
-            bounded_request,
-            policy,
-            redactor,
-        })))
+        Ok(Self(
+            Arc::new(Inner {
+                sdk,
+                bounded_request,
+                policy,
+                redactor,
+            }),
+            false,
+        ))
+    }
+
+    /// Keep diagnosis inputs bounded without changing existing inventory calls.
+    pub(crate) fn bounded_evidence(&self) -> Self {
+        Self(Arc::clone(&self.0), true)
     }
 
     /// The only Core entry point exposed to tools: typed reads with safe failures.
@@ -122,15 +130,17 @@ impl CoreClient {
             _ => "read",
         };
         let read = async {
-            if matches!(
-                T::req_type(),
-                "GetContainerLog"
-                    | "GetDeploymentLog"
-                    | "GetStackLog"
-                    | "ListAlerts"
-                    | "ListUpdates"
-                    | "GetUpdate"
-            ) {
+            if self.1
+                || matches!(
+                    T::req_type(),
+                    "GetContainerLog"
+                        | "GetDeploymentLog"
+                        | "GetStackLog"
+                        | "ListAlerts"
+                        | "ListUpdates"
+                        | "GetUpdate"
+                )
+            {
                 self.read_bounded_body(request, operation).await
             } else {
                 self.0

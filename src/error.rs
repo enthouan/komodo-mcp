@@ -112,6 +112,9 @@ impl AppError {
             "ListAlerts" | "ListUpdates" => {
                 Some("Use a resource target filter or inspect another history page.")
             }
+            "ListStacks" | "GetStack" | "ListAllStackServices" => {
+                Some("Inspect this resource separately with fleet_health or get_stack.")
+            }
             _ => None,
         };
         if error.correction.is_some() {
@@ -194,7 +197,7 @@ impl AppError {
         body: &[u8],
     ) -> Self {
         // Match the pinned SDK's {error, trace} chain only after bounded reading.
-        // Preserve narrow HTTP-500 permission/missing-update classifications without
+        // Preserve known HTTP-500 failure classifications without
         // reconstructing, tracing, or returning an arbitrary error chain.
         #[derive(Deserialize)]
         struct CoreFailure {
@@ -217,15 +220,13 @@ impl AppError {
             })
         {
             ErrorKind::PermissionDenied
-        } else if operation == "GetUpdate"
-            && failure.as_ref().is_some_and(|failure| {
-                failure.error == "no update exists with given id"
-                    || failure
-                        .trace
-                        .iter()
-                        .any(|message| message == "no update exists with given id")
-            })
-        {
+        } else if failure.as_ref().is_some_and(|failure| {
+            let missing = |message: &str| {
+                (operation == "GetUpdate" && message == "no update exists with given id")
+                    || core_2_3_2_missing_message(operation, message)
+            };
+            missing(&failure.error) || failure.trace.iter().any(|message| missing(message))
+        }) {
             ErrorKind::NotFound
         } else {
             ErrorKind::Upstream
@@ -237,6 +238,12 @@ impl AppError {
 // Only the tagged resource::get helper on the supported detail operations.
 // Classification happens before discarding the chain; no target text survives.
 fn core_2_3_2_missing_target(operation: &str, error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| core_2_3_2_missing_message(operation, &cause.to_string()))
+}
+
+fn core_2_3_2_missing_message(operation: &str, message: &str) -> bool {
     let resource = match operation {
         "GetServer" => "Server",
         "GetStack" => "Stack",
@@ -244,13 +251,8 @@ fn core_2_3_2_missing_target(operation: &str, error: &anyhow::Error) -> bool {
         _ => return false,
     };
     let prefix = format!("Did not find any {resource} matching ");
-    error.chain().any(|cause| {
-        cause
-            .to_string()
-            .strip_prefix(&prefix)
-            .is_some_and(|target| {
-                target.len() == 24 && target.bytes().all(|byte| byte.is_ascii_hexdigit())
-            })
+    message.strip_prefix(&prefix).is_some_and(|target| {
+        target.len() == 24 && target.bytes().all(|byte| byte.is_ascii_hexdigit())
     })
 }
 
