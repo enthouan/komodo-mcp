@@ -1,0 +1,466 @@
+//! Bounded, explicit projections of Core's fixed-size incident-history pages.
+
+use komodo_client::{
+    api::read::{GetUpdate, ListAlerts, ListUpdates},
+    entities::{
+        MongoDocument, ResourceTarget, ResourceTargetVariant,
+        alert::{Alert, AlertDataVariant},
+        update::{Log, UpdateListItem, UpdateStatus as CoreUpdateStatus},
+    },
+};
+use rmcp::schemars::{self, JsonSchema};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+use crate::{
+    client::CoreClient,
+    error::{AppError, ErrorKind},
+};
+
+/// Core 2.3.2 fixes both history page sizes at 100; no unlimited query is used.
+pub const HISTORY_PAGE_SIZE: usize = 100;
+pub const MAX_UPDATE_STAGES: usize = 20;
+pub const MAX_STAGE_NAME_BYTES: usize = 128;
+pub const MAX_STAGE_STDERR_BYTES: usize = 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceKind {
+    System,
+    Swarm,
+    Server,
+    Stack,
+    Deployment,
+    Build,
+    Repo,
+    Procedure,
+    Action,
+    Builder,
+    Alerter,
+    ResourceSync,
+}
+
+impl ResourceKind {
+    fn core_name(self) -> &'static str {
+        match self {
+            Self::System => "System",
+            Self::Swarm => "Swarm",
+            Self::Server => "Server",
+            Self::Stack => "Stack",
+            Self::Deployment => "Deployment",
+            Self::Build => "Build",
+            Self::Repo => "Repo",
+            Self::Procedure => "Procedure",
+            Self::Action => "Action",
+            Self::Builder => "Builder",
+            Self::Alerter => "Alerter",
+            Self::ResourceSync => "ResourceSync",
+        }
+    }
+}
+
+impl From<ResourceTargetVariant> for ResourceKind {
+    fn from(kind: ResourceTargetVariant) -> Self {
+        match kind {
+            ResourceTargetVariant::System => Self::System,
+            ResourceTargetVariant::Swarm => Self::Swarm,
+            ResourceTargetVariant::Server => Self::Server,
+            ResourceTargetVariant::Stack => Self::Stack,
+            ResourceTargetVariant::Deployment => Self::Deployment,
+            ResourceTargetVariant::Build => Self::Build,
+            ResourceTargetVariant::Repo => Self::Repo,
+            ResourceTargetVariant::Procedure => Self::Procedure,
+            ResourceTargetVariant::Action => Self::Action,
+            ResourceTargetVariant::Builder => Self::Builder,
+            ResourceTargetVariant::Alerter => Self::Alerter,
+            ResourceTargetVariant::ResourceSync => Self::ResourceSync,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HistoryTarget {
+    pub kind: ResourceKind,
+    /// Stable resource ID; System uses its literal system identifier.
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HistoryInput {
+    /// Omit to inspect all visible resources; no arbitrary Mongo queries are accepted.
+    #[serde(default)]
+    pub target: Option<HistoryTarget>,
+    /// Zero-based Core page. Pass next_page unchanged with the same target.
+    #[serde(default)]
+    #[schemars(range(max = 4294967294_u64))]
+    pub page: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateInput {
+    #[schemars(regex(pattern = "^[0-9a-fA-F]{24}$"))]
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HistoryPage<T> {
+    pub items: Vec<T>,
+    pub page: u32,
+    /// Core's fixed maximum records per page.
+    pub page_size: usize,
+    pub next_page: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateStatus {
+    Queued,
+    Running,
+    Complete,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateOutcome {
+    Queued,
+    Running,
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateSummary {
+    pub id: String,
+    pub operation: String,
+    /// Unix milliseconds.
+    pub start_ts: i64,
+    pub target: HistoryTarget,
+    pub status: UpdateStatus,
+    pub outcome: UpdateOutcome,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateStage {
+    /// Original zero-based index, even when failed stages are prioritized.
+    pub index: usize,
+    pub stage: String,
+    pub stage_truncated: bool,
+    pub success: bool,
+    pub start_ts: i64,
+    pub end_ts: i64,
+    /// Bounded redacted stderr only; command and stdout are never returned.
+    pub stderr: String,
+    pub stderr_truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateDetail {
+    #[serde(flatten)]
+    pub summary: UpdateSummary,
+    pub end_ts: Option<i64>,
+    /// At most 20 stages, failures first, preserving original index/order within each group.
+    pub stages: Vec<UpdateStage>,
+    pub stages_truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AlertSummary {
+    pub id: String,
+    /// Unix milliseconds.
+    pub ts: i64,
+    pub resolved: bool,
+    pub resolved_ts: Option<i64>,
+    pub level: String,
+    pub target: HistoryTarget,
+    /// Alert variant only; raw variant payloads, messages and error chains are omitted.
+    pub variant: String,
+}
+
+fn invalid(operation: &'static str) -> AppError {
+    AppError::new(ErrorKind::InvalidResponse, operation, None)
+}
+
+fn object_id(id: &str) -> bool {
+    id.len() == 24 && id.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn valid_target(target: &HistoryTarget) -> bool {
+    if target.kind == ResourceKind::System {
+        target.id.len() <= 64
+            && target
+                .id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    } else {
+        object_id(&target.id)
+    }
+}
+
+impl HistoryInput {
+    fn validate(mut self, operation: &'static str) -> Result<Self, AppError> {
+        // Both Core resolvers compute the next page with +1. Exclude overflow
+        // before making a request, even though ListAlerts accepts a u64.
+        if self.page == u32::MAX
+            || self
+                .target
+                .as_ref()
+                .is_some_and(|target| !valid_target(target))
+        {
+            return Err(AppError::arguments(
+                operation,
+                "Use a page below 4294967295 and a valid stable target ID",
+            ));
+        }
+        if let Some(target) = &mut self.target
+            && target.kind != ResourceKind::System
+        {
+            target.id.make_ascii_lowercase();
+        }
+        Ok(self)
+    }
+
+    fn query(&self) -> Option<MongoDocument> {
+        self.target.as_ref().map(|target| {
+            serde_json::from_value(
+                json!({"target.type": target.kind.core_name(), "target.id": target.id}),
+            )
+            .expect("literal target filter is a Mongo document")
+        })
+    }
+}
+
+fn project_target(
+    target: &ResourceTarget,
+    operation: &'static str,
+) -> Result<HistoryTarget, AppError> {
+    let (kind, id) = target.extract_variant_id();
+    let target = HistoryTarget {
+        kind: kind.into(),
+        id: id.to_ascii_lowercase(),
+    };
+    if !valid_target(&target) {
+        return Err(invalid(operation));
+    }
+    Ok(target)
+}
+
+fn matches_target(
+    actual: &HistoryTarget,
+    expected: &Option<HistoryTarget>,
+    operation: &'static str,
+) -> Result<(), AppError> {
+    if expected.as_ref().is_some_and(|expected| expected != actual) {
+        return Err(invalid(operation));
+    }
+    Ok(())
+}
+
+fn project_status(status: CoreUpdateStatus, success: bool) -> (UpdateStatus, UpdateOutcome) {
+    match status {
+        CoreUpdateStatus::Queued => (UpdateStatus::Queued, UpdateOutcome::Queued),
+        CoreUpdateStatus::InProgress => (UpdateStatus::Running, UpdateOutcome::Running),
+        CoreUpdateStatus::Complete => (
+            UpdateStatus::Complete,
+            if success {
+                UpdateOutcome::Succeeded
+            } else {
+                UpdateOutcome::Failed
+            },
+        ),
+    }
+}
+
+fn project_update(update: &UpdateListItem) -> Result<UpdateSummary, AppError> {
+    if !object_id(&update.id) {
+        return Err(invalid("ListUpdates"));
+    }
+    let (status, outcome) = project_status(update.status, update.success);
+    Ok(UpdateSummary {
+        id: update.id.to_ascii_lowercase(),
+        operation: update.operation.to_string(),
+        start_ts: update.start_ts,
+        target: project_target(&update.target, "ListUpdates")?,
+        status,
+        outcome,
+    })
+}
+
+fn project_alert(alert: &Alert) -> Result<AlertSummary, AppError> {
+    if !object_id(&alert.id) {
+        return Err(invalid("ListAlerts"));
+    }
+    let variant = serde_json::to_value(AlertDataVariant::from(&alert.data))
+        .expect("alert variant is serializable")
+        .as_str()
+        .expect("alert variant is a string")
+        .to_owned();
+    Ok(AlertSummary {
+        id: alert.id.to_ascii_lowercase(),
+        ts: alert.ts,
+        resolved: alert.resolved,
+        resolved_ts: alert.resolved_ts,
+        level: alert.level.to_string(),
+        target: project_target(&alert.target, "ListAlerts")?,
+        variant,
+    })
+}
+
+fn check_page(
+    page: u32,
+    count: usize,
+    next: Option<u32>,
+    operation: &'static str,
+) -> Result<(), AppError> {
+    if count > HISTORY_PAGE_SIZE
+        || (count == HISTORY_PAGE_SIZE) != next.is_some()
+        || next.is_some_and(|next| next != page + 1)
+    {
+        return Err(invalid(operation));
+    }
+    Ok(())
+}
+
+pub async fn list_alerts(
+    client: &CoreClient,
+    input: HistoryInput,
+) -> Result<HistoryPage<AlertSummary>, AppError> {
+    let input = input.validate("ListAlerts")?;
+    let response = client
+        .read(ListAlerts {
+            query: input.query(),
+            page: u64::from(input.page),
+        })
+        .await?;
+    let next = response
+        .next_page
+        .map(u32::try_from)
+        .transpose()
+        .map_err(|_| invalid("ListAlerts"))?;
+    check_page(input.page, response.alerts.len(), next, "ListAlerts")?;
+    let items = response
+        .alerts
+        .iter()
+        .map(|alert| {
+            let projected = project_alert(alert)?;
+            matches_target(&projected.target, &input.target, "ListAlerts")?;
+            Ok(projected)
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
+    Ok(HistoryPage {
+        items,
+        page: input.page,
+        page_size: HISTORY_PAGE_SIZE,
+        next_page: next,
+    })
+}
+
+pub async fn list_updates(
+    client: &CoreClient,
+    input: HistoryInput,
+) -> Result<HistoryPage<UpdateSummary>, AppError> {
+    let input = input.validate("ListUpdates")?;
+    let response = client
+        .read(ListUpdates {
+            query: input.query(),
+            page: input.page,
+        })
+        .await?;
+    check_page(
+        input.page,
+        response.updates.len(),
+        response.next_page,
+        "ListUpdates",
+    )?;
+    let items = response
+        .updates
+        .iter()
+        .map(|update| {
+            let projected = project_update(update)?;
+            matches_target(&projected.target, &input.target, "ListUpdates")?;
+            Ok(projected)
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
+    Ok(HistoryPage {
+        items,
+        page: input.page,
+        page_size: HISTORY_PAGE_SIZE,
+        next_page: response.next_page,
+    })
+}
+
+fn bounded(client: &CoreClient, text: &str, max: usize) -> (String, bool) {
+    let safe = crate::logs::redact_log(client, text);
+    let truncated = safe.len() > max;
+    let mut end = safe.len().min(max);
+    while !safe.is_char_boundary(end) {
+        end -= 1;
+    }
+    (safe[..end].to_owned(), truncated)
+}
+
+fn project_stage(client: &CoreClient, index: usize, log: &Log) -> UpdateStage {
+    let (stage, stage_truncated) = bounded(client, &log.stage, MAX_STAGE_NAME_BYTES);
+    let (stderr, stderr_truncated) = bounded(client, &log.stderr, MAX_STAGE_STDERR_BYTES);
+    UpdateStage {
+        index,
+        stage,
+        stage_truncated,
+        success: log.success,
+        start_ts: log.start_ts,
+        end_ts: log.end_ts,
+        stderr,
+        stderr_truncated,
+    }
+}
+
+pub async fn get_update(client: &CoreClient, input: UpdateInput) -> Result<UpdateDetail, AppError> {
+    if !object_id(&input.id) {
+        return Err(AppError::arguments(
+            "GetUpdate",
+            "Provide one 24-character hexadecimal update id",
+        ));
+    }
+    let id = input.id.to_ascii_lowercase();
+    let update = client.read(GetUpdate { id: id.clone() }).await?;
+    if update.id != id {
+        return Err(invalid("GetUpdate"));
+    }
+    let (status, outcome) = project_status(update.status, update.success);
+    let summary = UpdateSummary {
+        id,
+        operation: update.operation.to_string(),
+        start_ts: update.start_ts,
+        target: project_target(&update.target, "GetUpdate")?,
+        status,
+        outcome,
+    };
+    let stages = update
+        .logs
+        .iter()
+        .enumerate()
+        .filter(|(_, log)| !log.success)
+        .chain(
+            update
+                .logs
+                .iter()
+                .enumerate()
+                .filter(|(_, log)| log.success),
+        )
+        .take(MAX_UPDATE_STAGES)
+        .map(|(index, log)| project_stage(client, index, log))
+        .collect();
+    Ok(UpdateDetail {
+        summary,
+        end_ts: update.end_ts,
+        stages,
+        stages_truncated: update.logs.len() > MAX_UPDATE_STAGES,
+    })
+}

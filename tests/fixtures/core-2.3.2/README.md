@@ -99,3 +99,12 @@ missing-resource shape; `restricted-server` uses `permission.json`. Rejected
 credential headers return the tagged HTTP 401 authentication fixture. No real
 Core or authorization engine is run. The separate sequence-based harness remains
 useful for exact-request, adversarial response, and race tests.
+
+## Shared incident extensions (issues #6–#10)
+
+[INCIDENT.md](INCIDENT.md) defines the seeded failure; `incident.json` is its
+scenario contract and `incident-wire.json` supplies typed SDK wire responses.
+Rust reader/diagnosis/stdio tests and the Python benchmark reuse those IDs.
+Adversarial variants exercise failed sources, incomplete coverage, changing
+update outcomes, oversized UTF-8 content, and redaction. These remain synthetic
+wire fixtures with simulated permissions.

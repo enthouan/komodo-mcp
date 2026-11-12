@@ -96,6 +96,15 @@ impl CoreClient {
             "GetStack" => "GetStack",
             "ListDeployments" => "ListDeployments",
             "GetDeployment" => "GetDeployment",
+            "GetServerState" => "GetServerState",
+            "GetSystemStats" => "GetSystemStats",
+            "ListAllStackServices" => "ListAllStackServices",
+            "ListAlerts" => "ListAlerts",
+            "ListUpdates" => "ListUpdates",
+            "GetUpdate" => "GetUpdate",
+            "GetContainerLog" => "GetContainerLog",
+            "GetDeploymentLog" => "GetDeploymentLog",
+            "GetStackLog" => "GetStackLog",
             _ => "read",
         };
         match tokio::time::timeout(self.0.policy.operation_timeout, self.0.sdk.read(request)).await
@@ -115,5 +124,9 @@ impl CoreClient {
 
     pub(crate) fn redact(&self, value: &str) -> String {
         self.0.redactor.redact(value)
+    }
+
+    pub(crate) fn redaction_marker(&self) -> &str {
+        self.0.redactor.marker()
     }
 }

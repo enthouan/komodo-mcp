@@ -1,15 +1,15 @@
 # komodo-mcp
 
-The [inventory benchmark](benchmarks/README.md) compares the release executable
-with a pinned TypeScript stdio reference using synthetic Core fixtures. See the
+The [benchmark harness](benchmarks/README.md) compares inventory and incident
+workflows against a pinned TypeScript stdio reference using synthetic Core fixtures. See the
 [archived measurements and interpretation](benchmarks/results/README.md) for
 provisional results and repeatable commands.
 
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.8.0 SDK](https://docs.rs/rmcp/3.8.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Six read-only tools list and inspect
-Servers, Stacks, and Deployments.
+exactly with optional features disabled. Fourteen read-only tools inspect inventory, fleet health, incident history,
+workload logs, and stack diagnoses.
 
 ## Fresh-checkout demo (synthetic Core)
 
@@ -34,13 +34,13 @@ of `./target/release/komodo-mcp`.
 
 The last command starts an ephemeral loopback mock, launches the **compiled
 production executable**, initializes an official rmcp stdio client using MCP
-`2025-11-25`, discovers the six tools, resolves `fixture-server` by exact name,
+`2025-11-25`, discovers the read-only tools, resolves `fixture-server` by exact name,
 and follows `list_stacks` continuation with `page_size: 2`. It selects only
 `target.kind == "server"` and `target.id == get_server(...).id` from MCP responses.
 Representative output (Cargo progress and the Core read trace omitted):
 
 ```text
-Initialized MCP 2025-11-25; discovered 6 tools; called get_server and list_stacks over stdio.
+Initialized MCP 2025-11-25; discovered read-only tools; called get_server and list_stacks over stdio.
 Stacks on fixture-server (000000000000000000000001):
   alpha-web (000000000000000000000002) — running
   gamma-jobs (000000000000000000000005) — stopped
@@ -272,6 +272,27 @@ Server, Stack, or Deployment. Lists contain only visible resources and may be
 empty. Details preserve explicit authentication/permission errors, while absent
 or permission-filtered targets return safe `not_found` guidance.
 
+## Read-only incident diagnosis
+
+Start with `fleet_health`, choose an affected stack ID, and call `stack_diagnose`.
+The result links service observations, failed update stages, alerts, and bounded
+logs while retaining independent evidence when a source fails. Outcomes are
+`healthy`, `unhealthy`, or `inconclusive`; old rollout failures do not override
+currently healthy workload evidence.
+
+```json
+{"name":"fleet_health","arguments":{"page_size":30}}
+{"name":"stack_diagnose","arguments":{"id":"000000000000000000000002"}}
+{"name":"get_update","arguments":{"id":"100000000000000000000001"}}
+{"name":"get_stack_logs","arguments":{"id":"000000000000000000000002","services":["web"],"tail":40,"max_bytes":4096}}
+```
+
+These are `tools/call` parameters. Replace the synthetic IDs with visible IDs
+returned by your Core. `list_alerts` and `list_updates` provide resource-filtered
+history; `get_container_logs` and `get_deployment_logs` cover other workloads.
+See [diagnostic tools, bounds, and evidence semantics](docs/diagnostics.md) and
+the [shared incident fixture](tests/fixtures/core-2.3.2/INCIDENT.md).
+
 ## Client and error foundation
 
 `CoreClient` in `src/client.rs` wraps one SDK instance and one configured reqwest
@@ -353,7 +374,7 @@ to check its MCP application version. Release notes live in [CHANGELOG.md](CHANG
 maintainers use [the release skill](.agents/skills/komodo-mcp-release/SKILL.md)
 for validation, publication, and recovery.
 The subprocess smoke test launches Cargo's compiled binary and explicitly uses
-MCP **2025-11-25**: configured startup, initialization, six-tool discovery, list
+MCP **2025-11-25**: configured startup, initialization, fourteen-tool discovery, list
 and ID/name detail calls in every family, inventory continuation to an exactly
 full final page, actionable failures, recovery, and stdin EOF shutdown. It also
 checks the SDK's unknown-tool protocol error. Both output streams are captured

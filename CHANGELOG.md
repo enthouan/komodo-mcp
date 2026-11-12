@@ -9,6 +9,24 @@ New changes go under `Unreleased` until the next release is prepared.
 ## Unreleased
 
 - Clarify the dedicated changelog release cut and exact release commit/PR naming.
+- Add paged fleet health with CPU, memory, disk, and service observations,
+  four concurrent reads per call, deadlines, and resource-specific evidence gaps.
+  ([#6](https://github.com/enthouan/komodo-mcp/issues/6))
+- Add bounded resource-filtered alerts and update history, plus update lookup
+  with distinct queued/running/completed outcomes and selected failed stages.
+  ([#7](https://github.com/enthouan/komodo-mcp/issues/7))
+- Add bounded container, deployment, and service-filtered stack log tails with
+  credential redaction, UTF-8 preservation, and explicit truncation metadata.
+  ([#8](https://github.com/enthouan/komodo-mcp/issues/8))
+- Add `stack_diagnose` to correlate current service health with inventory,
+  history, alerts, and logs in one read-only call, retaining partial evidence
+  and reporting unhealthy, healthy, or inconclusive outcomes.
+  ([#9](https://github.com/enthouan/komodo-mcp/issues/9))
+- Define a shared broken-rollout fixture, verify triage and independent evidence
+  through production stdio, and extend the existing pinned-reference benchmark
+  with concurrent incident callers and larger fleets while retaining inventory.
+  ([#10](https://github.com/enthouan/komodo-mcp/issues/10))
+
 
 ## v0.1.0
 
