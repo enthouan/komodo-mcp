@@ -83,6 +83,10 @@ headers retain following unindented or blank lines. Structured credential values
 retain neighbors only when their ending is unambiguous in a complete JSON context.
 Configured credentials are matched at repeated JSON encoding depths that fit
 the input budget, without decoding escapes into physical output lines.
+Comment-only lines do not end a sensitive value. Compose prefixes and Docker
+timestamps are accounted for when checking continuation indentation. The
+configured-credential matcher is compiled once per configuration and shared by
+the client and diagnostic writer, avoiding repeated long-prefix comparisons.
 It cannot recognize every unlabeled secret or recover a label already omitted
 by Core's upstream tail. Only request and share logs appropriate for the caller.
 

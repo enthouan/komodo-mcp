@@ -1,5 +1,6 @@
 use std::{fmt, io, io::Write, sync::Arc};
 
+use aho_corasick::{AhoCorasick, AhoCorasickKind, MatchKind};
 use tracing_subscriber::fmt::MakeWriter;
 
 use crate::config::Config;
@@ -9,7 +10,7 @@ pub(crate) const MAX_REDACTION_INPUT_BYTES: usize = 1024 * 1024;
 /// Defense in depth for selected upstream strings and verbose SDK diagnostics.
 #[derive(Clone)]
 pub(crate) struct Redactor {
-    values: Arc<[String]>,
+    matcher: Option<Arc<AhoCorasick>>,
     marker: Arc<str>,
 }
 
@@ -43,8 +44,16 @@ impl Redactor {
         // future internal caller cannot create a zero-progress replacement.
         values.retain(|value| !value.is_empty());
         let marker = replacement_marker(&values);
+        // Search all encodings together, retaining earliest/longest semantics.
+        // A contiguous NFA avoids DFA expansion for long escaped prefixes.
+        let matcher = AhoCorasick::builder()
+            .kind(Some(AhoCorasickKind::ContiguousNFA))
+            .match_kind(MatchKind::LeftmostLongest)
+            .build(&values)
+            .ok()
+            .map(Arc::new);
         Self {
-            values: values.into(),
+            matcher,
             marker: marker.into(),
         }
     }
@@ -54,21 +63,22 @@ impl Redactor {
     }
 
     pub(crate) fn redact(&self, value: &str) -> String {
+        if value.is_empty() {
+            return String::new();
+        }
+        let Some(matcher) = &self.matcher else {
+            // An exceptional matcher build failure must never expose input.
+            return self.marker.to_string();
+        };
         let mut safe = String::new();
-        let mut rest = value;
-        while !rest.is_empty() {
-            if let Some(secret) = self
-                .values
-                .iter()
-                .find(|secret| rest.starts_with(secret.as_str()))
-            {
-                safe.push_str(&self.marker);
-                rest = &rest[secret.len()..];
-            } else {
-                let character = rest.chars().next().expect("nonempty string");
-                safe.push(character);
-                rest = &rest[character.len_utf8()..];
-            }
+        if matcher
+            .try_replace_all_with(value, &mut safe, |_, _, dst| {
+                dst.push_str(&self.marker);
+                true
+            })
+            .is_err()
+        {
+            return self.marker.to_string();
         }
         safe
     }

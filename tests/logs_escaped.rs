@@ -634,6 +634,72 @@ const LOG_TOOLS: [(&str, &str); 3] = [
 ];
 
 #[tokio::test]
+async fn authorization_comments_and_log_prefixes_preserve_redaction_context() {
+    for source in [
+        "Authorization:\n# rotation\n  Basic dXNlcjpwYXNz\ncontext-after\n".to_owned(),
+        format!("  Authorization:\n# rotation\n  Basic {PRIVATE}\ncontext-after\n"),
+        format!(
+            "Authorization:\r\n# first\r\n\r\n# second\r\n\tNegotiate {PRIVATE}\r\ncontext-after\r\n"
+        ),
+        format!(
+            "Authorization: Digest username=\"{PRIVATE}\"\n# rotation\n  response=\"{PRIVATE}\"\ncontext-after\n"
+        ),
+        format!(
+            "web | Authorization:\nweb | # rotation\nweb |   Basic {PRIVATE}\nweb | context-after\n"
+        ),
+        format!(
+            "2026-11-12T07:00:00Z Authorization:\n2026-11-12T07:00:01Z # rotation\n2026-11-12T07:00:02Z   Basic {PRIVATE}\ncontext-after\n"
+        ),
+    ] {
+        let core = IncidentCore::start(all_log_options(&source, &source)).await;
+        let mut client = StdioClient::start(&core).await;
+        for (tool, _) in LOG_TOOLS {
+            let result = client.logs_tool(tool, 4096, 500).await;
+            assert!(!result.to_string().contains("dXNlcjpwYXNz"));
+            for stream in ["stdout", "stderr"] {
+                let text = result[stream].as_str().unwrap();
+                assert!(text.contains("[redacted]"));
+                assert!(!text.contains("context-after"));
+                assert_eq!(text.matches('\n').count(), source.matches('\n').count());
+            }
+        }
+        client.close().await;
+        assert_eq!(core.requests().len(), 4);
+    }
+    for source in [
+        "Authorization:\n# an empty header\nkeep-unindented\n",
+        "web | Authorization:\nweb | # an empty header\nweb | keep-unindented\n",
+        "2026-11-12T07:00:00Z Authorization:\n2026-11-12T07:00:01Z # empty\n2026-11-12T07:00:02Z keep-unindented\n",
+    ] {
+        let core = IncidentCore::start(all_log_options(source, source)).await;
+        let mut client = StdioClient::start(&core).await;
+        for (tool, _) in LOG_TOOLS {
+            let result = client.logs_tool(tool, 4096, 500).await;
+            assert_eq!(result["stdout"], source);
+            assert_eq!(result["stderr"], source);
+        }
+        client.close().await;
+    }
+}
+
+#[tokio::test]
+async fn configured_encoding_prefixes_do_not_rescan_long_backslash_runs() {
+    let source = "\\".repeat(768 * 1024);
+    let mut configured = all_log_options(&source, "");
+    configured.api_key = Some("\"suffix".into());
+    let core = IncidentCore::start(configured).await;
+    let mut client = StdioClient::start(&core).await;
+    for (tool, _) in LOG_TOOLS {
+        let result = client.logs_tool(tool, 1, 1).await;
+        assert_eq!(result["stdout"], "\\");
+        assert_eq!(result["returned_bytes"], 1);
+        assert_eq!(result["truncation"]["bytes"], true);
+    }
+    client.close().await;
+    assert_eq!(core.requests().len(), 4);
+}
+
+#[tokio::test]
 async fn yaml_comments_tags_anchors_and_plain_continuations_keep_all_sensitive_values_hidden() {
     for source in [
         format!("password:\n  # rotation\n  {PRIVATE}\ncontext-after\n"),

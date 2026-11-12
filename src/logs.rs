@@ -536,7 +536,8 @@ fn sensitive_value(
     // Quoted JSON keys keep their existing validated structured context.
     let plain_multiline =
         key_quote.is_none() && !header && text[value_space..at].contains(['\r', '\n']);
-    let continuation = key_quote.is_none() && indented_continuation(text, line_end(text, at));
+    let continuation =
+        key_quote.is_none() && indented_continuation(text, line_end(text, at), label);
     let yaml_prefix = key_quote.is_none()
         && !header
         && quote.is_none()
@@ -579,8 +580,13 @@ fn sensitive_value(
     (end > at).then_some((at, end, None))
 }
 
-fn indented_continuation(text: &str, mut at: usize) -> bool {
+fn indented_continuation(text: &str, mut at: usize, label: usize) -> bool {
     let bytes = text.as_bytes();
+    let line_start = text[..label].rfind('\n').map_or(0, |end| end + 1);
+    let prefix = &text[line_start..label];
+    let literal_prefix = !prefix.trim().is_empty();
+    let compose_prefix = prefix.contains('|');
+    let timestamp_prefix = timestamp_payload(prefix).is_some();
     loop {
         if !matches!(bytes.get(at), Some(b'\r' | b'\n')) {
             return false;
@@ -591,16 +597,54 @@ fn indented_continuation(text: &str, mut at: usize) -> bool {
         if bytes.get(at) == Some(&b'\n') {
             at += 1;
         }
-        let start = at;
-        while matches!(bytes.get(at), Some(b' ' | b'\t')) {
-            at += 1;
+        let end = line_end(text, at);
+        let payload = continuation_payload(
+            &text[at..end],
+            prefix,
+            literal_prefix,
+            compose_prefix,
+            timestamp_prefix,
+        );
+        let content = payload.trim_start_matches([' ', '\t']);
+        if content.is_empty() || content.starts_with('#') {
+            at = end;
+            continue;
         }
-        match bytes.get(at) {
-            None => return false,
-            Some(b'\r' | b'\n') => continue,
-            _ => return at > start,
-        }
+        return content.len() < payload.len();
     }
+}
+
+fn continuation_payload<'a>(
+    line: &'a str,
+    prefix: &str,
+    literal_prefix: bool,
+    compose_prefix: bool,
+    timestamp_prefix: bool,
+) -> &'a str {
+    if literal_prefix && let Some(payload) = line.strip_prefix(prefix) {
+        return payload;
+    }
+    // Core Compose prefixes and optional Docker timestamps can otherwise hide
+    // indentation/comment boundaries. Remove their formatting, not payload spaces.
+    if compose_prefix && let Some((_, payload)) = line.split_once('|') {
+        return payload.strip_prefix(' ').unwrap_or(payload);
+    }
+    if timestamp_prefix && let Some(payload) = timestamp_payload(line) {
+        return payload;
+    }
+    line
+}
+
+fn timestamp_payload(line: &str) -> Option<&str> {
+    let (timestamp, payload) = line.split_once(' ')?;
+    let bytes = timestamp.as_bytes();
+    (bytes.len() >= 19
+        && bytes.get(4) == Some(&b'-')
+        && bytes.get(7) == Some(&b'-')
+        && bytes.get(10) == Some(&b'T')
+        && bytes.get(13) == Some(&b':')
+        && bytes.get(16) == Some(&b':'))
+    .then_some(payload)
 }
 
 #[derive(Clone, Copy)]

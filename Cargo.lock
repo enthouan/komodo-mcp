@@ -1259,6 +1259,7 @@ dependencies = [
 name = "komodo-mcp"
 version = "0.1.0"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "axum",
  "komodo_client",
