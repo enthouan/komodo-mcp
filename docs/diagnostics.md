@@ -6,6 +6,8 @@ Core client and safe application errors; resource IDs come from visible inventor
 | Tool | Inputs and bounds |
 | --- | --- |
 | `fleet_health` | `page` and `page_size` per Server, Stack, and Deployment family; default 30, maximum 100. Follow `next_page` with the same size until exhausted. |
+| `list_alerts`, `list_updates` | Optional `{target:{kind,id},page}`; fixed Core pages of at most 100 records. Follow `next_page` unchanged with the same target. |
+| `get_update` | Stable update `id`; at most 20 stages, failures first with original indices. Stage names: 128 UTF-8 bytes; sanitized stderr: 1024 bytes each. |
 | `get_container_logs` | Stable `server_id`, exact `container` name or ID. |
 | `get_deployment_logs` | Stable Deployment `id`. |
 | `get_stack_logs` | Stable Stack `id`, optional `services` (at most 16 distinct exact names). Compose supports empty for all services; Core 2.3.2 Swarm requires exactly one service. |
@@ -35,6 +37,35 @@ The reusable service-state reader and [shared incident contract](../tests/fixtur
 support later diagnosis and integration work. Evidence uses synthetic Core 2.3.2
 wire data and simulated Read access; it does not run a deployed Core, Docker
 rollout, or Core's authorization engine.
+
+## Incident history
+
+For example, read alerts for a stack with these `tools/call` parameters:
+
+```json
+{"name":"list_alerts","arguments":{"target":{"kind":"stack","id":"000000000000000000000002"},"page":0}}
+```
+
+Target kinds use snake_case, such as `server`, `stack`, and `deployment`. Omit
+the target to inspect recent records across visible resources. Core returns
+newest records first. Continue using `next_page` and the same target until null;
+a full final page may require one additional empty page. Arbitrary Mongo queries
+and caller-selected page sizes are not accepted. Pages must be below 4294967295.
+
+Summaries expose stable IDs, target, timestamps, operation/alert variant, and
+outcome. Queued and running updates remain distinct; completed outcomes derive
+from Core's `success` field. Update lookup prioritizes failed stages even when
+they occur after the first 20. Stage names and stderr use the shared log
+sanitizer before UTF-8 clipping, with explicit truncation flags. Raw current and
+previous TOML, `other_data`, command, operator, and unrestricted stdout/stderr
+are omitted.
+
+All three history reads enforce a 2 MiB JSON-body cap before typed decoding,
+including chunked responses, and retain the shared whole-operation deadline.
+Oversized input returns `response_too_large` without a fallback read. A stage
+field exceeding the sanitizer's 1 MiB input cap is hidden and marked truncated.
+Synthetic history records reuse the shared incident IDs; they do not run Core's
+authorization engine or establish real deployment behavior.
 
 ## Workload logs
 

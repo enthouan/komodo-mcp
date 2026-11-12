@@ -103,6 +103,23 @@ pub struct Candidate {
 }
 
 impl AppError {
+    pub(crate) fn response_too_large(operation: &'static str, status: StatusCode) -> Self {
+        let mut error = Self::new(ErrorKind::ResponseTooLarge, operation, Some(status));
+        error.correction = match operation {
+            "GetUpdate" => Some(
+                "Inspect the bounded summary with list_updates; Core's update detail cannot be narrowed.",
+            ),
+            "ListAlerts" | "ListUpdates" => {
+                Some("Use a resource target filter or inspect another history page.")
+            }
+            _ => None,
+        };
+        if error.correction.is_some() {
+            error.message = "Core incident data exceeded its input budget.";
+        }
+        error
+    }
+
     pub(crate) fn new(
         kind: ErrorKind,
         operation: &'static str,

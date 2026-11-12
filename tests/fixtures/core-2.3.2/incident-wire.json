@@ -7,5 +7,78 @@
     "success": true,
     "start_ts": 1735689605000,
     "end_ts": 1735689606000
+  },
+  "alerts": [
+    {
+      "_id": {
+        "$oid": "200000000000000000000001"
+      },
+      "ts": 1735689606000,
+      "resolved": false,
+      "level": "CRITICAL",
+      "target": {
+        "type": "Stack",
+        "id": "000000000000000000000002"
+      },
+      "data": {
+        "type": "StackStateChange",
+        "data": {
+          "id": "000000000000000000000002",
+          "name": "alpha-web",
+          "server_id": "000000000000000000000001",
+          "server_name": "fixture-server",
+          "swarm_id": null,
+          "swarm_name": null,
+          "from": "running",
+          "to": "unhealthy"
+        }
+      },
+      "resolved_ts": null
+    }
+  ],
+  "updates": [
+    {
+      "operation": "DeployStack",
+      "start_ts": 1735689600000,
+      "success": false,
+      "operator": "fixture-reader",
+      "target": {
+        "type": "Stack",
+        "id": "000000000000000000000002"
+      },
+      "status": "Complete",
+      "other_data": "incident-private-other-data-marker",
+      "id": "100000000000000000000001",
+      "username": "fixture-reader"
+    }
+  ],
+  "update": {
+    "_id": {
+      "$oid": "100000000000000000000001"
+    },
+    "operation": "DeployStack",
+    "start_ts": 1735689600000,
+    "success": false,
+    "operator": "fixture-reader",
+    "target": {
+      "type": "Stack",
+      "id": "000000000000000000000002"
+    },
+    "logs": [
+      {
+        "stage": "Deploy Stack",
+        "command": "incident-private-toml-marker",
+        "stdout": "incident-private-toml-marker",
+        "stderr": "web failed its healthcheck after rollout TOKEN=incident-private-credential-marker",
+        "success": false,
+        "start_ts": 1735689600000,
+        "end_ts": 1735689605000
+      }
+    ],
+    "end_ts": 1735689605000,
+    "status": "Complete",
+    "other_data": "incident-private-other-data-marker",
+    "prev_toml": "incident-private-toml-marker",
+    "current_toml": "incident-private-toml-marker"
   }
 }

@@ -19,6 +19,9 @@ New changes go under `Unreleased` until the next release is prepared.
   Core input caps, joint line/UTF-8 byte limits, truncation metadata, and credential
   redaction before tail selection, including camelCase labels and multiline values.
   ([#8](https://github.com/enthouan/komodo-mcp/issues/8))
+- Add bounded alert/update history and update lookup, explicit queued/running/final
+  outcomes, and sanitized failed-stage evidence with capped upstream bodies.
+  ([#7](https://github.com/enthouan/komodo-mcp/issues/7))
 
 ## v0.1.0
 

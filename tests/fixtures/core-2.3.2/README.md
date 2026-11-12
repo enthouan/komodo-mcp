@@ -126,3 +126,11 @@ confirm cached Server state/statistics and bounded service pages. The resolver
 passes stack selectors through the resource query's `names` filter, whose
 ObjectId split accepts stable IDs as well as names. Service reads require Read
 access. These sources were checked against the installed 2.3.2 SDK definitions.
+
+`incident-wire.json` also contains the #7 alert, update summary, and update
+detail for those same IDs. The tagged [alert resolver](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/read/alert.rs)
+and [update resolver](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/read/update.rs)
+fix pages at 100 records and return continuation for a full page. The update
+detail deliberately includes private TOML, `other_data`, command, and stdout
+markers so projection tests can verify their omission. These are synthetic wire
+records, with read-only fixture checks rather than Core's authorization engine.
