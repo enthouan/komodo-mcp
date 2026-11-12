@@ -331,3 +331,33 @@ async fn escaped_large_evidence_obeys_the_serialized_report_byte_limit() -> Resu
     assert!(report.services.unwrap().truncated);
     Ok(())
 }
+
+#[tokio::test]
+async fn unhealthy_replicas_share_one_filter_per_distinct_service() -> Result<()> {
+    let w = wire();
+    let mut services = vec![w["services"][0].clone(); 6];
+    let mut db = w["services"][1].clone();
+    db["state"] = serde_json::json!("Unhealthy");
+    services.push(db);
+    let core = IncidentCore::start(Options {
+        overrides: [("ListAllStackServices".into(), serde_json::json!(services))].into(),
+        ..Default::default()
+    })
+    .await;
+    let report = triage::stack_diagnose(&core.client(Duration::from_secs(1)), input()).await?;
+    assert_eq!(report.outcome, DiagnosisOutcome::Unhealthy);
+    assert_eq!(report.affected_services, vec!["db", "web"]);
+    assert!(
+        report.logs.is_some(),
+        "duplicate replicas must not invalidate service-filtered logs"
+    );
+    assert!(report.gaps.is_empty(), "{:?}", report.gaps);
+    let requests = core.requests();
+    let log = requests
+        .iter()
+        .find(|r| r.operation == "GetStackLog")
+        .unwrap();
+    assert_eq!(log.params["services"], serde_json::json!(["db", "web"]));
+    assert_eq!(requests.len(), 7);
+    Ok(())
+}

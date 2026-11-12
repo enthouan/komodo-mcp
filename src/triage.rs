@@ -221,8 +221,10 @@ pub async fn stack_diagnose(
             s.services
                 .iter()
                 .filter(|s| s.health == HealthStatus::Unhealthy)
-                .take(4)
                 .map(|s| s.service.clone())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .take(4)
                 .collect()
         })
         .unwrap_or_default();

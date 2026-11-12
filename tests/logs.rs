@@ -398,6 +398,80 @@ async fn stdio_redacts_assignment_values_when_a_configured_key_is_the_assignment
 }
 
 #[tokio::test]
+async fn stdio_redacts_complete_authorization_values_for_all_schemes() {
+    use rmcp::{
+        ClientServiceExt,
+        model::{CallToolRequestParams, ClientConfig, Implementation},
+        service::ClientLifecycleMode,
+    };
+    use std::process::Stdio;
+    use tokio::{process::Command, time::timeout};
+
+    timeout(Duration::from_secs(10), async {
+        let quoted = json!({"authorization":r#"Digest username="json-user", response="json-response""#,"z_after":"keep-json-marker"}).to_string();
+        let stdout = format!("Authorization: Basic dXNlcjpwYXNz\r\nAuthorization: Digest username=\"digest-user\", realm=\"digest-realm\", nonce=\"digest-nonce\", response=\"digest-response\"\nAuthorization: Negotiate negotiate-payload more-payload\n{quoted}\nAuthorization: \r\nfollowing-ready\n");
+        let stderr = "Authorization: Digest username=\"stderr-user\", response=\"stderr-response\"\r\n";
+        let core = Core::log(&stdout, stderr).await;
+        let mut child = Command::new(env!("CARGO_BIN_EXE_komodo-mcp"))
+            .env_clear()
+            .env("KOMODO_ADDRESS", &core.address)
+            .env("KOMODO_API_KEY", KEY)
+            .env("KOMODO_API_SECRET", SECRET)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let mut session = ClientConfig::new(
+            Default::default(),
+            Implementation::new("authorization-redaction-regression", "1"),
+        )
+        .serve_with_lifecycle(
+            (child.stdout.take().unwrap(), child.stdin.take().unwrap()),
+            ClientLifecycleMode::Initialize,
+        )
+        .await
+        .unwrap();
+        for max_bytes in [4096, 7] {
+            let result = session
+                .call_tool(
+                    CallToolRequestParams::new("get_stack_logs").with_arguments(
+                        json!({"id":incident()["stack"]["id"],"max_bytes":max_bytes})
+                            .as_object()
+                            .unwrap()
+                            .clone(),
+                    ),
+                )
+                .await
+                .unwrap();
+            assert_eq!(result.is_error, Some(false));
+            let value = serde_json::to_value(result).unwrap();
+            for marker in ["dXNlcjpwYXNz", "digest-user", "digest-realm", "digest-nonce", "digest-response", "negotiate-payload", "more-payload", "json-user", "json-response", "stderr-user", "stderr-response"] {
+                assert!(!value.to_string().contains(marker), "authorization value leaked: {marker}");
+            }
+            let data = &value["structuredContent"];
+            let actual = data["stdout"].as_str().unwrap().len() + data["stderr"].as_str().unwrap().len();
+            assert_eq!(data["returned_bytes"], actual);
+            assert!(actual <= max_bytes);
+            let text: Value = serde_json::from_str(value["content"][0]["text"].as_str().unwrap()).unwrap();
+            assert_eq!(data, &text);
+            if max_bytes == 4096 {
+                let redacted_json = json!({"authorization":"[redacted]","z_after":"keep-json-marker"}).to_string();
+                assert_eq!(data["stdout"], format!("Authorization: [redacted]\r\nAuthorization: [redacted]\nAuthorization: [redacted]\n{redacted_json}\nAuthorization: \r\nfollowing-ready\n"));
+                assert_eq!(data["stderr"], "Authorization: [redacted]\r\n");
+                assert_eq!(data["returned_lines"], 7);
+            } else {
+                assert_eq!(data["truncation"]["bytes"], true);
+            }
+        }
+        session.close().await.unwrap();
+        assert!(child.wait().await.unwrap().success());
+        assert_eq!(core.requests().len(), 3, "one startup read and two bounded tails");
+    }).await.unwrap();
+}
+
+#[tokio::test]
 async fn unavailable_command_http_error_and_timeout_never_retry_or_return_raw_failure_payloads() {
     for (status, body, delay, kind) in [
         (

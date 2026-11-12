@@ -336,8 +336,8 @@ fn project(
 }
 
 /// Configured API credentials, common sensitive assignments (including quoted
-/// JSON values) and Bearer tokens. This deliberately does not promise to detect
-/// arbitrary application secrets without a recognizable label.
+/// JSON values), full Authorization values and standalone Bearer tokens. This
+/// deliberately does not promise to detect arbitrary unlabeled application secrets.
 pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
     // Recognize assignment labels before configured credentials can redact a
     // label itself (for example, an API key equal to `token`). Then sanitize
@@ -396,22 +396,20 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
                 if matches!(configured.as_bytes().get(at), Some(b'\'' | b'"')) {
                     at += 1;
                 }
-                while configured
-                    .as_bytes()
-                    .get(at)
-                    .is_some_and(u8::is_ascii_whitespace)
-                {
+                while configured.as_bytes().get(at).is_some_and(|b| {
+                    b.is_ascii_whitespace()
+                        && (label != &"authorization" || matches!(b, b' ' | b'\t'))
+                }) {
                     at += 1;
                 }
                 if !matches!(configured.as_bytes().get(at), Some(b'=' | b':')) {
                     continue;
                 }
                 at += 1;
-                while configured
-                    .as_bytes()
-                    .get(at)
-                    .is_some_and(u8::is_ascii_whitespace)
-                {
+                while configured.as_bytes().get(at).is_some_and(|b| {
+                    b.is_ascii_whitespace()
+                        && (label != &"authorization" || matches!(b, b' ' | b'\t'))
+                }) {
                     at += 1;
                 }
                 let quote = configured
@@ -422,10 +420,15 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
                 if quote.is_some() {
                     at += 1;
                 }
-                let end = if label == &"authorization"
-                    && configured[at..].to_ascii_lowercase().starts_with("bearer ")
-                {
-                    value_end(configured, at + "bearer ".len(), quote)
+                // An unquoted Authorization header can contain whitespace,
+                // commas and quoted subfields (Basic, Digest, Negotiate, ...).
+                // Mask the entire line value, retaining its line terminator.
+                // A quoted JSON/assignment value instead ends at its matching
+                // unescaped quote, preserving adjacent JSON fields.
+                let end = if label == &"authorization" && quote.is_none() {
+                    configured[at..]
+                        .find(['\r', '\n'])
+                        .map_or(configured.len(), |end| at + end)
                 } else {
                     value_end(configured, at, quote)
                 };

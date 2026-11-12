@@ -8,7 +8,7 @@ On this host, Rust used fewer MCP calls and less sampled memory. The reference w
 
 ## Controls and identity
 
-- Clean build and runner commit: `70f7671cce911306d8f17f171b79d4d85ab20cb4`. The application version was still `0.1.0`; the dedicated v0.2.0 version/changelog cut follows separately. The reporting commit does not relabel the measured source.
+- Clean build and runner commit: `70f7671cce911306d8f17f171b79d4d85ab20cb4`. The application version was still `0.1.0`; the dedicated v0.2.0 version/changelog cut follows separately. The reporting commit does not relabel the measured source. Later review fixes for duplicate replicas and non-Bearer Authorization redaction are covered by regressions and CI; these captures retain their original implementation identity.
 - Release executable SHA-256: `658fbf66aa51e98feff94cf4379ab9cc0099bf50cde5548691fc9d765ff49a24`. Exact compiler, source/lock hashes, executable size, Node/dependency identities, commands, and environment are retained in every archive.
 - Reference: MP-Tool 1.5.0, commit `489f7e04b16019480f84e1d2fff8b872b880e335`, unchanged and built using its committed lockfile.
 - Fleets: 7, 31, and 125 stacks, with two additional Servers and one Deployment; one seeded broken stack in every fixture. Page size 25; zero injected HTTP delay.

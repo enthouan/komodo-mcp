@@ -42,7 +42,8 @@ All log tools accept `tail` (default 100, maximum 500), `max_bytes` (default
 16384, maximum 65536), and `timestamps` (default false). Positive line and byte
 limits apply **jointly across stdout and stderr**. The tools retain the tail in
 stdout-then-stderr order; Core supplies no ordering between streams. Configured
-API credentials, common sensitive assignments, and Bearer tokens are redacted
+API credentials, common sensitive assignments, complete Authorization values,
+and Bearer tokens are redacted
 before UTF-8 clipping. This cannot identify every unlabeled application secret.
 Results include returned line/byte counts and flags for local line/byte clipping
 and possible upstream history beyond a full tail. Core supplies no complete-log
