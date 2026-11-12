@@ -8,6 +8,7 @@ use reqwest::{Client, redirect::Policy};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
+    capabilities::CapabilityPolicy,
     config::Config,
     diagnostics::Redactor,
     error::{AppError, ErrorKind},
@@ -39,6 +40,7 @@ struct Inner {
     bounded_request: reqwest::RequestBuilder,
     policy: RequestPolicy,
     redactor: Redactor,
+    capabilities: CapabilityPolicy,
 }
 
 /// Clones share the same SDK and reqwest connection pool. No mutable request state.
@@ -80,6 +82,7 @@ impl CoreClient {
             .build()
             .map_err(|_| AppError::new(ErrorKind::Unreachable, "configure_transport", None))?;
         let redactor = config.redactor();
+        let capabilities = config.capabilities();
         // The SDK's private transport buffers complete bodies. Evidence reads use
         // its typed request/response contract over the same authenticated pool,
         // with a streaming body cap before deserialization.
@@ -94,9 +97,14 @@ impl CoreClient {
                 bounded_request,
                 policy,
                 redactor,
+                capabilities,
             }),
             false,
         ))
+    }
+
+    pub fn capabilities(&self) -> CapabilityPolicy {
+        self.0.capabilities
     }
 
     /// Keep diagnosis inputs bounded without changing existing inventory calls.

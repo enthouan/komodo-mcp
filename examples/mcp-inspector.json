@@ -7,7 +7,9 @@
       "env": {
         "KOMODO_ADDRESS": "http://127.0.0.1:8089/komodo",
         "KOMODO_API_KEY": "fixture-API-KEY-7d42",
-        "KOMODO_API_SECRET": "fixture-API-SECRET-a913"
+        "KOMODO_API_SECRET": "fixture-API-SECRET-a913",
+        "KOMODO_ALLOW_OPERATE": "false",
+        "KOMODO_ALLOW_CONFIGURATION_EDIT": "false"
       },
       "protocolEra": "legacy",
       "connectionTimeout": 25000,

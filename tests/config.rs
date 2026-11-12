@@ -1,6 +1,53 @@
 use komodo_mcp::{config::Config, error::ErrorKind};
 
 #[test]
+fn capability_configuration_is_independent_strict_and_read_only_by_default() {
+    use komodo_mcp::capabilities::{Capability, CapabilityPolicy};
+
+    assert_eq!(
+        CapabilityPolicy::parse(None, None).unwrap(),
+        CapabilityPolicy::default()
+    );
+    assert_eq!(
+        Config::parse("http://localhost", "key", "secret")
+            .unwrap()
+            .capabilities(),
+        CapabilityPolicy::default()
+    );
+    for operate in [false, true] {
+        for edit in [false, true] {
+            let policy = CapabilityPolicy::parse(
+                Some(if operate { "true" } else { "false" }),
+                Some(if edit { "true" } else { "false" }),
+            )
+            .unwrap();
+            assert!(policy.allows(Capability::Read));
+            assert_eq!(policy.allows(Capability::Operate), operate);
+            assert_eq!(policy.allows(Capability::ConfigurationEdit), edit);
+        }
+    }
+    for value in [
+        "",
+        "TRUE",
+        "1",
+        "yes",
+        " true",
+        "false ",
+        "secret-configuration-marker",
+    ] {
+        for (operate, edit, field) in [
+            (Some(value), None, "KOMODO_ALLOW_OPERATE"),
+            (None, Some(value), "KOMODO_ALLOW_CONFIGURATION_EDIT"),
+        ] {
+            let error = CapabilityPolicy::parse(operate, edit).unwrap_err();
+            assert_eq!(error.kind, ErrorKind::Configuration);
+            assert_eq!(error.field, Some(field));
+            assert!(!format!("{error:?}").contains("secret-configuration-marker"));
+        }
+    }
+}
+
+#[test]
 fn addresses_and_credentials_are_validated_without_values_in_errors() {
     for address in [
         "",

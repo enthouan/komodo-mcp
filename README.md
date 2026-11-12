@@ -112,6 +112,49 @@ Servers, Stacks, and Deployments being inspected, via a resource grant, group,
 global permission, base permission, or transparent mode; admin, write, execute, and create privileges are unnecessary.
 A permission-filtered empty inventory is a successful result.
 
+### Local capabilities and Core permissions
+
+The process reads two independent optional grants at startup:
+
+| Variable | Default | Enables |
+| --- | --- | --- |
+| `KOMODO_ALLOW_OPERATE` | `false` | Workload execution tools as they become available |
+| `KOMODO_ALLOW_CONFIGURATION_EDIT` | `false` | Configuration-edit tools as they become available |
+
+Each value must be exactly `true` or `false`. An unset variable means `false`;
+an empty, misspelled, whitespace-padded, or non-Unicode value fails startup with
+a safe configuration error before contacting Core. Restart the MCP process after
+changing a grant. For example, set `KOMODO_ALLOW_OPERATE=true` in the MCP client's
+server environment to opt into operations while configuration editing stays off.
+Enabling configuration editing alone never enables operations. Neither grant
+changes the caller's Core credentials or Core permissions.
+
+Discovery, tool lookup and direct dispatch use the same restricted router.
+Disabled, unknown and unclassified tools are rejected before argument handling,
+target reads or execution; constructing a call manually cannot bypass discovery.
+All fourteen existing read tools remain locally available in every grant
+combination, including `get_update` and `list_updates` for recovery. Core still
+controls which resources and history that identity can read. These grants do not
+add production mutation tools by themselves; configuration editing belongs to a
+later milestone.
+
+Use an enabled non-admin Core identity with `Read` on the resources being
+inspected. Workload operations require Core `Execute` on the selected Stack or
+Deployment; granting the local operate capability is insufficient. Core's
+`Write` level includes execution upstream, but does not override the independent
+local grants. Admin or create permissions are unnecessary for operating an
+existing definition. Diagnostic reads still need their relevant Core permissions
+(for example, `Logs` when required by the requested log API).
+
+Core can acknowledge an execution update before its background task checks
+execution permissions. An acknowledgement is submission evidence; a subsequent
+failed update may report denial. Inspect that update's bounded sanitized stages,
+and keep submission, final execution outcome and workload health separate.
+There is no credential fallback. Execute tools must advertise mutation and
+non-idempotency: a new explicit call can create a new update or repeat effects.
+Retry observation by update ID after a lost reply; do not automatically repeat
+execution. See [diagnostic history](docs/diagnostics.md#incident-history).
+
 The connection timeout is **5 seconds**, and each complete SDK operation has an
 independent **15-second deadline**, including headers and response-body reading.
 Tests inject shorter durations. Automatic redirects are disabled to keep API

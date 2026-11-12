@@ -8,6 +8,12 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Add independent operate and configuration-edit capability grants, defaulting
+  to read-only, with one policy for discovery, lookup and direct dispatch.
+  Preserve read-only recovery history and Core's permission authority, including
+  denial recorded after execution acknowledgement.
+  ([#11](https://github.com/enthouan/komodo-mcp/issues/11))
+
 ## v0.2.0
 
 Read-only fleet incident diagnosis with bounded, linked supporting evidence.

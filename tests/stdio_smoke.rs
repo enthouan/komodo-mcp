@@ -44,7 +44,13 @@ struct Process {
 impl Process {
     fn spawn(overrides: &[(&str, Option<&str>)]) -> Result<Self> {
         let mut command = Command::new(env!("CARGO_BIN_EXE_komodo-mcp"));
-        for field in ["KOMODO_ADDRESS", "KOMODO_API_KEY", "KOMODO_API_SECRET"] {
+        for field in [
+            "KOMODO_ADDRESS",
+            "KOMODO_API_KEY",
+            "KOMODO_API_SECRET",
+            "KOMODO_ALLOW_OPERATE",
+            "KOMODO_ALLOW_CONFIGURATION_EDIT",
+        ] {
             command.env_remove(field);
         }
         for (field, value) in overrides {
@@ -549,6 +555,8 @@ async fn missing_and_invalid_environment_fail_safely() -> Result<()> {
         ),
         ("KOMODO_API_KEY", format!("{KEY}\n{SECRET}")),
         ("KOMODO_API_SECRET", String::new()),
+        ("KOMODO_ALLOW_OPERATE", format!("true {KEY} {SECRET}")),
+        ("KOMODO_ALLOW_CONFIGURATION_EDIT", "TRUE".into()),
     ] {
         startup_failure(
             &[
