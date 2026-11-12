@@ -4,6 +4,11 @@ Run these commands from the repository root after the README's production and
 example builds. Every credential below is synthetic. The executable reads its
 **process environment**; it does not load an `.env` file.
 
+The examples explicitly disable both optional local capability grants, preserving
+read-only discovery even when the launching shell enables operations. Real-client
+capability configuration and minimum Core permissions are documented in the
+[README](../README.md#local-capabilities-and-core-permissions).
+
 ## Standalone mock
 
 In terminal 1:

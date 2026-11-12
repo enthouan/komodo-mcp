@@ -6,6 +6,7 @@ use rmcp::{
 };
 
 use crate::{
+    capabilities::{Capability, restrict_router},
     client::{CoreClient, CoreVersion},
     inventory::{self, *},
 };
@@ -13,6 +14,32 @@ use crate::{
 pub struct KomodoServer {
     pub client: CoreClient,
     pub core_version: CoreVersion,
+}
+
+impl KomodoServer {
+    fn enabled_tools(&self) -> rmcp::handler::server::tool::ToolRouter<Self> {
+        restrict_router(
+            Self::tool_router(),
+            self.client.capabilities(),
+            |name| match name {
+                "list_servers"
+                | "get_server"
+                | "list_stacks"
+                | "get_stack"
+                | "list_deployments"
+                | "get_deployment"
+                | "fleet_health"
+                | "list_alerts"
+                | "list_updates"
+                | "get_update"
+                | "get_container_logs"
+                | "get_deployment_logs"
+                | "get_stack_logs"
+                | "stack_diagnose" => Some(Capability::Read),
+                _ => None,
+            },
+        )
+    }
 }
 
 #[tool_router]
@@ -144,7 +171,7 @@ impl KomodoServer {
     }
 }
 
-#[tool_handler]
+#[tool_handler(router = self.enabled_tools())]
 impl ServerHandler for KomodoServer {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(

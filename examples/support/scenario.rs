@@ -195,7 +195,13 @@ struct Process {
 impl Process {
     fn spawn(executable: &Path, address: &str, config: Configuration) -> Result<Self> {
         let mut command = Command::new(executable);
-        for field in ["KOMODO_ADDRESS", "KOMODO_API_KEY", "KOMODO_API_SECRET"] {
+        for field in [
+            "KOMODO_ADDRESS",
+            "KOMODO_API_KEY",
+            "KOMODO_API_SECRET",
+            "KOMODO_ALLOW_OPERATE",
+            "KOMODO_ALLOW_CONFIGURATION_EDIT",
+        ] {
             command.env_remove(field);
         }
         command

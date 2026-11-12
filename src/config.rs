@@ -2,7 +2,7 @@ use std::{env, fmt};
 
 use reqwest::{Url, header::HeaderValue};
 
-use crate::{diagnostics::Redactor, error::AppError};
+use crate::{capabilities::CapabilityPolicy, diagnostics::Redactor, error::AppError};
 
 /// Validated once at startup. Values are deliberately absent from Debug.
 #[derive(Clone)]
@@ -11,6 +11,7 @@ pub struct Config {
     pub(crate) key: String,
     pub(crate) secret: String,
     redactor: Redactor,
+    capabilities: CapabilityPolicy,
 }
 
 impl Config {
@@ -26,11 +27,23 @@ impl Config {
                 )
             })
         };
-        Self::parse(
+        let optional = |field| match env::var(field) {
+            Ok(value) => Ok(Some(value)),
+            Err(env::VarError::NotPresent) => Ok(None),
+            Err(env::VarError::NotUnicode(_)) => {
+                Err(AppError::configuration(field, "must contain valid Unicode"))
+            }
+        };
+        let capabilities = CapabilityPolicy::parse(
+            optional("KOMODO_ALLOW_OPERATE")?.as_deref(),
+            optional("KOMODO_ALLOW_CONFIGURATION_EDIT")?.as_deref(),
+        )?;
+        Ok(Self::parse(
             &read("KOMODO_ADDRESS")?,
             &read("KOMODO_API_KEY")?,
             &read("KOMODO_API_SECRET")?,
-        )
+        )?
+        .with_capabilities(capabilities))
     }
 
     /// Takes values directly so tests never mutate the process environment.
@@ -88,7 +101,17 @@ impl Config {
             key: key.to_owned(),
             secret: secret.to_owned(),
             redactor,
+            capabilities: CapabilityPolicy::default(),
         })
+    }
+
+    pub fn with_capabilities(mut self, capabilities: CapabilityPolicy) -> Self {
+        self.capabilities = capabilities;
+        self
+    }
+
+    pub fn capabilities(&self) -> CapabilityPolicy {
+        self.capabilities
     }
 
     pub(crate) fn redactor(&self) -> Redactor {
