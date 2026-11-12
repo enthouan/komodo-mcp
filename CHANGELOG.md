@@ -8,6 +8,12 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Add explicit single-target Stack/Deployment deploy tools, named Compose service
+  scope, stable-ID submissions, bounded sanitized update receipts and immediate
+  observation. Reject unsupported filters without expanding scope; retain unknown
+  submission outcomes and known update IDs without automatic retry.
+  ([#12](https://github.com/enthouan/komodo-mcp/issues/12))
+
 - Add independent operate and configuration-edit capability grants, defaulting
   to read-only, with one policy for discovery, lookup and direct dispatch.
   Preserve read-only recovery history and Core's permission authority, including

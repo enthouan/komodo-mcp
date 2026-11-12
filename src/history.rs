@@ -5,7 +5,7 @@ use komodo_client::{
     entities::{
         MongoDocument, ResourceTarget, ResourceTargetVariant,
         alert::{Alert, AlertDataVariant},
-        update::{Log, UpdateListItem, UpdateStatus as CoreUpdateStatus},
+        update::{Log, Update, UpdateListItem, UpdateStatus as CoreUpdateStatus},
     },
 };
 use rmcp::schemars::{self, JsonSchema};
@@ -438,9 +438,19 @@ pub async fn get_update(client: &CoreClient, input: UpdateInput) -> Result<Updat
     if update.id != id {
         return Err(invalid("GetUpdate"));
     }
+    project_update_detail(client, &update)
+}
+
+pub(crate) fn project_update_detail(
+    client: &CoreClient,
+    update: &Update,
+) -> Result<UpdateDetail, AppError> {
+    if !object_id(&update.id) {
+        return Err(invalid("GetUpdate"));
+    }
     let (status, outcome) = project_status(update.status, update.success);
     let summary = UpdateSummary {
-        id,
+        id: update.id.to_ascii_lowercase(),
         operation: update.operation.to_string(),
         start_ts: update.start_ts,
         target: project_target(&update.target, "GetUpdate")?,

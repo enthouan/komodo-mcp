@@ -9,5 +9,6 @@ pub mod health;
 pub mod history;
 pub mod inventory;
 pub mod logs;
+pub mod operations;
 pub mod server;
 pub mod triage;

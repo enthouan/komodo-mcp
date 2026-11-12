@@ -36,6 +36,7 @@ impl KomodoServer {
                 | "get_deployment_logs"
                 | "get_stack_logs"
                 | "stack_diagnose" => Some(Capability::Read),
+                "deploy_stack" | "deploy_deployment" => Some(Capability::Operate),
                 _ => None,
             },
         )
@@ -44,6 +45,24 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description = "Deploy one existing Stack from its saved definition and image-pull policy. Explicitly choose whole_stack or one exact Compose service; dependencies, saved hooks, flags and wrappers can have broader effects. Swarm supports whole-stack deploy only. Unlike restart, deploy can recreate containers with saved changes. Submit once, return an update receipt and one immediate bounded observation; acknowledgement is not rollout success. Never automatically retry execution after a timeout/lost reply: inspect the saved update ID/history. A new explicit call is a new non-idempotent operation.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn deploy_stack(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "deploy_stack") {
+            Ok(input) => crate::operations::deploy_stack(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Deploy one existing Deployment by stable ID or exact name, using saved configuration/image selection and Core's deploy image-pull behavior. Supports Server containers and Swarm services; no service filter or overrides. Deploy can recreate a container; restart uses existing containers. Submit at most once and return an update receipt with one immediate bounded observation. Acceptance does not establish execution/rollout success or workload health. Never automatically retry a lost/uncertain submission; inspect its update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<DetailInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn deploy_deployment(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "deploy_deployment") {
+            Ok(input) => crate::operations::deploy_deployment(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description = "List Servers in ascending exact-name order with bounded inventory pages. Continue with next_page and the same page_size.", input_schema = schema_for_input::<ListInput>().expect("valid list schema"), output_schema = inventory::output_schema::<Page<ServerSummary>>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
     async fn list_servers(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "ListServers") {

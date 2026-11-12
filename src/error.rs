@@ -21,6 +21,8 @@ pub enum ErrorKind {
     Upstream,
     InvalidResponse,
     ResponseTooLarge,
+    CapabilityDisabled,
+    UnsupportedTarget,
 }
 
 impl ErrorKind {
@@ -38,6 +40,8 @@ impl ErrorKind {
             Self::Upstream => "upstream",
             Self::InvalidResponse => "invalid_response",
             Self::ResponseTooLarge => "response_too_large",
+            Self::CapabilityDisabled => "capability_disabled",
+            Self::UnsupportedTarget => "unsupported_target",
         }
     }
 
@@ -73,6 +77,12 @@ impl ErrorKind {
             Self::ResponseTooLarge => {
                 "Core log data exceeded its input budget; request a smaller tail or narrower service filter."
             }
+            Self::CapabilityDisabled => {
+                "Enable the required local capability before requesting this operation."
+            }
+            Self::UnsupportedTarget => {
+                "This workload or requested scope is unsupported; inspect the supported target matrix. No execution was submitted."
+            }
         }
     }
 }
@@ -106,6 +116,9 @@ impl AppError {
     pub(crate) fn response_too_large(operation: &'static str, status: StatusCode) -> Self {
         let mut error = Self::new(ErrorKind::ResponseTooLarge, operation, Some(status));
         error.correction = match operation {
+            "DeployStack" | "Deploy" => Some(
+                "Submission may have been accepted. Inspect update history; never automatically repeat execution.",
+            ),
             "GetUpdate" => Some(
                 "Inspect the bounded summary with list_updates; Core's update detail cannot be narrowed.",
             ),
@@ -118,7 +131,11 @@ impl AppError {
             _ => None,
         };
         if error.correction.is_some() {
-            error.message = "Core incident data exceeded its input budget.";
+            error.message = if matches!(operation, "DeployStack" | "Deploy") {
+                "Core execution acknowledgement exceeded its input budget."
+            } else {
+                "Core incident data exceeded its input budget."
+            };
         }
         error
     }
@@ -130,7 +147,13 @@ impl AppError {
     ) -> Self {
         Self {
             kind,
-            message: kind.message(),
+            message: if kind == ErrorKind::PermissionDenied
+                && matches!(operation, "DeployStack" | "Deploy")
+            {
+                "Core denied execution; check Execute access on the selected workload for this identity."
+            } else {
+                kind.message()
+            },
             operation,
             status: status.map(|status| status.as_u16()),
             field: None,

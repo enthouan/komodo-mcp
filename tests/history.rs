@@ -69,6 +69,13 @@ impl Mock {
         Self::start_with_chunking(steps, false).await
     }
     async fn start_with_chunking(steps: Vec<(Value, StatusCode, Value)>, chunked: bool) -> Self {
+        Self::start_with_deadline(steps, chunked, Duration::from_millis(500)).await
+    }
+    async fn start_with_deadline(
+        steps: Vec<(Value, StatusCode, Value)>,
+        chunked: bool,
+        deadline: Duration,
+    ) -> Self {
         let state = Arc::new(Mutex::new((steps.into(), 0, chunked)));
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = format!("http://{}/komodo", listener.local_addr().unwrap());
@@ -82,7 +89,7 @@ impl Mock {
             Config::parse(&address, KEY, SECRET).unwrap(),
             RequestPolicy {
                 connect_timeout: Duration::from_millis(100),
-                operation_timeout: Duration::from_millis(500),
+                operation_timeout: deadline,
             },
         )
         .unwrap();
@@ -506,7 +513,9 @@ async fn history_body_limits_apply_before_decode_to_fixed_and_chunked_responses(
         update["other_data"] = json!(large);
         let mut detail = fixture["update"].clone();
         detail["current_toml"] = json!(large);
-        let mock = Mock::start_with_chunking(
+        // This exercises pre-decode size enforcement, not timeout behavior.
+        // Allow bounded headroom for multi-MiB JSON serialization on loaded hosts.
+        let mock = Mock::start_with_deadline(
             vec![
                 step(
                     "ListAlerts",
@@ -525,6 +534,7 @@ async fn history_body_limits_apply_before_decode_to_fixed_and_chunked_responses(
                 ),
             ],
             chunked,
+            Duration::from_secs(5),
         )
         .await;
         let errors = [

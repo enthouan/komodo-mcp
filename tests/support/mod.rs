@@ -2,6 +2,7 @@
 
 pub mod incident;
 pub mod inventory;
+pub mod operations;
 
 use std::{
     collections::VecDeque,
