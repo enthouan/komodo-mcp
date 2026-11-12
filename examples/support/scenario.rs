@@ -409,7 +409,10 @@ async fn solve(
                 "list_stacks",
                 "get_deployment",
                 "list_deployments",
-                "fleet_health"
+                "fleet_health",
+                "get_container_logs",
+                "get_deployment_logs",
+                "get_stack_logs"
             ]),
         "missing expected inventory tools"
     );

@@ -6,7 +6,10 @@ use crate::config::Config;
 
 /// Defense in depth for selected upstream strings and verbose SDK diagnostics.
 #[derive(Clone)]
-pub(crate) struct Redactor(Arc<[String]>);
+pub(crate) struct Redactor {
+    values: Arc<[String]>,
+    marker: Arc<str>,
+}
 
 impl Redactor {
     pub(crate) fn new(key: String, secret: String) -> Self {
@@ -21,7 +24,18 @@ impl Redactor {
         }
         values.sort_by_key(|value| std::cmp::Reverse(value.len()));
         values.dedup();
-        Self(values.into())
+        // Config rejects empty credentials. Ignore empties defensively so a
+        // future internal caller cannot create a zero-progress replacement.
+        values.retain(|value| !value.is_empty());
+        let marker = replacement_marker(&values);
+        Self {
+            values: values.into(),
+            marker: marker.into(),
+        }
+    }
+
+    pub(crate) fn marker(&self) -> &str {
+        &self.marker
     }
 
     pub(crate) fn redact(&self, value: &str) -> String {
@@ -29,11 +43,11 @@ impl Redactor {
         let mut rest = value;
         while !rest.is_empty() {
             if let Some(secret) = self
-                .0
+                .values
                 .iter()
                 .find(|secret| rest.starts_with(secret.as_str()))
             {
-                safe.push_str("[redacted]");
+                safe.push_str(&self.marker);
                 rest = &rest[secret.len()..];
             } else {
                 let character = rest.chars().next().expect("nonempty string");
@@ -43,6 +57,36 @@ impl Redactor {
         }
         safe
     }
+}
+
+fn replacement_marker(values: &[String]) -> String {
+    // Delimiters absent from every raw/escaped credential prevent a new match
+    // crossing either boundary of the replacement. Its interior must not
+    // contain a whole credential either. No special prefix-skipping is needed:
+    // a credential containing a literal marker still gets matched in full.
+    if !values.iter().any(|value| value.contains(['[', ']'])) {
+        for marker in ["[redacted]", "[hidden]"] {
+            if !values.iter().any(|value| marker.contains(value)) {
+                return marker.into();
+            }
+        }
+    }
+    for character in ['*', '#', '~', '^', '|'] {
+        if values.iter().all(|value| !value.contains(character)) {
+            return character.to_string().repeat(3);
+        }
+    }
+    // A repeated absent scalar has the same boundary guarantee. Private-use
+    // Unicode supplies a sentinel in serialized JSON when punctuation is
+    // exhausted. U+001F is a final, guaranteed-absent fallback because Config
+    // validates HTTP credentials and disallows that control byte; escaped
+    // credential forms do not contain the literal control character either.
+    let character = (0xE000..=0xF8FF)
+        .chain(std::iter::once(0x001F))
+        .filter_map(char::from_u32)
+        .find(|character| values.iter().all(|value| !value.contains(*character)))
+        .expect("validated credential headers exclude U+001F");
+    character.to_string().repeat(3)
 }
 
 impl fmt::Debug for Redactor {

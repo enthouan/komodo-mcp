@@ -1,5 +1,6 @@
 #![allow(dead_code)] // Shared by integration binaries exercising different surfaces.
 
+pub mod incident;
 pub mod inventory;
 
 use std::{

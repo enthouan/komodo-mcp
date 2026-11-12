@@ -1,0 +1,749 @@
+//! Read-only workload log tails. Limits apply jointly to stdout and stderr after
+//! credential redaction, in UTF-8 bytes (JSON escaping adds transport overhead).
+
+use std::collections::{BTreeSet, VecDeque};
+
+use komodo_client::{
+    api::read::{GetContainerLog, GetDeploymentLog, GetStackLog},
+    entities::update::Log,
+};
+use rmcp::schemars::{self, JsonSchema};
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    client::CoreClient,
+    error::{AppError, ErrorKind},
+};
+
+pub const MAX_TAIL: u64 = 500;
+pub const MAX_BYTES: usize = 65_536;
+pub const MAX_SERVICES: usize = 16;
+
+fn default_tail() -> u64 {
+    100
+}
+fn default_bytes() -> usize {
+    16_384
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ContainerLogsInput {
+    /// Stable Server ID returned by inventory.
+    #[schemars(regex(pattern = "^[0-9a-fA-F]{24}$"))]
+    pub server_id: String,
+    /// Exact Docker container name or ID; at most 128 ASCII name characters.
+    #[schemars(length(min = 1, max = 128))]
+    pub container: String,
+    /// Positive upstream tail; also the joint stdout/stderr output line limit.
+    #[serde(default = "default_tail")]
+    #[schemars(range(min = 1, max = 500))]
+    pub tail: u64,
+    /// Joint stdout/stderr UTF-8 byte budget after redaction.
+    #[serde(default = "default_bytes")]
+    #[schemars(range(min = 1, max = 65536))]
+    pub max_bytes: usize,
+    #[serde(default)]
+    pub timestamps: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DeploymentLogsInput {
+    /// Stable Deployment ID returned by inventory.
+    #[schemars(regex(pattern = "^[0-9a-fA-F]{24}$"))]
+    pub id: String,
+    #[serde(default = "default_tail")]
+    #[schemars(range(min = 1, max = 500))]
+    pub tail: u64,
+    #[serde(default = "default_bytes")]
+    #[schemars(range(min = 1, max = 65536))]
+    pub max_bytes: usize,
+    #[serde(default)]
+    pub timestamps: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StackLogsInput {
+    /// Stable Stack ID returned by inventory.
+    #[schemars(regex(pattern = "^[0-9a-fA-F]{24}$"))]
+    pub id: String,
+    /// Exact services; at most 16. Compose: empty includes all. Swarm: pass one.
+    #[serde(default)]
+    #[schemars(length(max = 16))]
+    pub services: Vec<String>,
+    #[serde(default = "default_tail")]
+    #[schemars(range(min = 1, max = 500))]
+    pub tail: u64,
+    #[serde(default = "default_bytes")]
+    #[schemars(range(min = 1, max = 65536))]
+    pub max_bytes: usize,
+    #[serde(default)]
+    pub timestamps: bool,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LogTargetKind {
+    Container,
+    Deployment,
+    Stack,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LogTarget {
+    pub kind: LogTargetKind,
+    /// Server ID for a container, otherwise the workload's stable ID.
+    pub id: String,
+    pub container: Option<String>,
+    pub services: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LogTruncation {
+    /// More than the requested joint line limit was returned by Core.
+    pub lines: bool,
+    /// Redacted selected lines exceeded the joint UTF-8 byte budget.
+    pub bytes: bool,
+    /// Core provides no complete-log count. A full tail may omit earlier logs.
+    pub upstream_may_have_more: bool,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkloadLogs {
+    pub target: LogTarget,
+    pub requested_tail: u64,
+    pub max_bytes: usize,
+    pub timestamps: bool,
+    pub stdout: String,
+    pub stderr: String,
+    pub returned_lines: usize,
+    pub returned_bytes: usize,
+    pub truncation: LogTruncation,
+    pub start_ts: i64,
+    pub end_ts: i64,
+}
+
+fn valid_id(value: &str) -> bool {
+    value.len() == 24 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn valid_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.as_bytes()[0] != b'-'
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte))
+}
+
+fn validate(id: &str, tail: u64, bytes: usize, operation: &'static str) -> Result<(), AppError> {
+    if !valid_id(id) || !(1..=MAX_TAIL).contains(&tail) || !(1..=MAX_BYTES).contains(&bytes) {
+        return Err(AppError::arguments(
+            operation,
+            "Use a 24-character hexadecimal resource ID, tail from 1 through 500, and max_bytes from 1 through 65536",
+        ));
+    }
+    Ok(())
+}
+
+pub async fn container_logs(
+    client: &CoreClient,
+    input: ContainerLogsInput,
+) -> Result<WorkloadLogs, AppError> {
+    const OP: &str = "GetContainerLog";
+    validate(&input.server_id, input.tail, input.max_bytes, OP)?;
+    if !valid_name(&input.container) {
+        return Err(AppError::arguments(
+            OP,
+            "Use an exact container name or ID with at most 128 ASCII letters, digits, underscores, dots or hyphens, without a leading hyphen",
+        ));
+    }
+    let log = client
+        .read(GetContainerLog {
+            server: input.server_id.clone(),
+            container: input.container.clone(),
+            tail: input.tail,
+            timestamps: input.timestamps,
+        })
+        .await?;
+    project(
+        client,
+        log,
+        LogTarget {
+            kind: LogTargetKind::Container,
+            id: input.server_id,
+            container: Some(client.redact(&input.container)),
+            services: vec![],
+        },
+        input.tail,
+        input.max_bytes,
+        input.timestamps,
+        OP,
+    )
+}
+
+pub async fn deployment_logs(
+    client: &CoreClient,
+    input: DeploymentLogsInput,
+) -> Result<WorkloadLogs, AppError> {
+    const OP: &str = "GetDeploymentLog";
+    validate(&input.id, input.tail, input.max_bytes, OP)?;
+    let log = client
+        .read(GetDeploymentLog {
+            deployment: input.id.clone(),
+            tail: input.tail,
+            timestamps: input.timestamps,
+        })
+        .await?;
+    project(
+        client,
+        log,
+        LogTarget {
+            kind: LogTargetKind::Deployment,
+            id: input.id,
+            container: None,
+            services: vec![],
+        },
+        input.tail,
+        input.max_bytes,
+        input.timestamps,
+        OP,
+    )
+}
+
+pub async fn stack_logs(
+    client: &CoreClient,
+    input: StackLogsInput,
+) -> Result<WorkloadLogs, AppError> {
+    const OP: &str = "GetStackLog";
+    validate(&input.id, input.tail, input.max_bytes, OP)?;
+    if input.services.len() > MAX_SERVICES
+        || input.services.iter().any(|service| !valid_name(service))
+        || input.services.iter().collect::<BTreeSet<_>>().len() != input.services.len()
+    {
+        return Err(AppError::arguments(
+            OP,
+            "Use at most 16 distinct exact service names, each with at most 128 ASCII letters, digits, underscores, dots or hyphens, without a leading hyphen",
+        ));
+    }
+    let log = client
+        .read(GetStackLog {
+            stack: input.id.clone(),
+            services: input.services.clone(),
+            tail: input.tail,
+            timestamps: input.timestamps,
+        })
+        .await?;
+    project(
+        client,
+        log,
+        LogTarget {
+            kind: LogTargetKind::Stack,
+            id: input.id,
+            container: None,
+            services: input.services.iter().map(|s| client.redact(s)).collect(),
+        },
+        input.tail,
+        input.max_bytes,
+        input.timestamps,
+        OP,
+    )
+}
+
+fn project(
+    client: &CoreClient,
+    log: Log,
+    target: LogTarget,
+    tail: u64,
+    max_bytes: usize,
+    timestamps: bool,
+    operation: &'static str,
+) -> Result<WorkloadLogs, AppError> {
+    // A failed log command is an unavailable source. Never expose its command or
+    // failure payload, and never retry with an unlimited/fallback request.
+    if !log.success {
+        return Err(AppError::new(ErrorKind::Upstream, operation, None));
+    }
+    // Use all context Core supplied before taking the local tail: a quoted
+    // sensitive key can be on an earlier physical line than its value. Sanitize
+    // streams independently without another request or decoding JSON escapes.
+    let safe_stdout = redact_log(client, &log.stdout);
+    let safe_stderr = redact_log(client, &log.stderr);
+    // Core returns separate streams without a cross-stream ordering. Keep their
+    // order and take the joint tail in stdout-then-stderr order, without claiming
+    // timestamp ordering. The queue itself never holds more than `tail` slices.
+    let mut selected = VecDeque::new();
+    let mut count = 0usize;
+    for (is_stderr, text) in [(false, safe_stdout.as_str()), (true, safe_stderr.as_str())] {
+        for line in text.split_inclusive('\n') {
+            count = count.saturating_add(1);
+            if selected.len() == tail as usize {
+                selected.pop_front();
+            }
+            selected.push_back((is_stderr, line));
+        }
+    }
+    let mut remaining = max_bytes;
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut byte_truncated = false;
+    let mut returned_lines = 0usize;
+    for (is_stderr, line) in selected.into_iter().rev() {
+        if remaining == 0 {
+            byte_truncated = true;
+            break;
+        }
+        // Context was redacted before line selection. Clip only at a UTF-8
+        // boundary so neither a local tail nor a byte cut can expose a secret.
+        let mut start = line.len().saturating_sub(remaining);
+        while !line.is_char_boundary(start) {
+            start += 1;
+        }
+        byte_truncated |= start != 0;
+        let kept = &line[start..];
+        if !kept.is_empty() {
+            remaining -= kept.len();
+            returned_lines += 1;
+            if is_stderr {
+                stderr.push(kept.to_owned());
+            } else {
+                stdout.push(kept.to_owned());
+            }
+        }
+    }
+    stdout.reverse();
+    stderr.reverse();
+    let stdout = stdout.concat();
+    let stderr = stderr.concat();
+    Ok(WorkloadLogs {
+        target,
+        requested_tail: tail,
+        max_bytes,
+        timestamps,
+        returned_bytes: stdout.len() + stderr.len(),
+        returned_lines,
+        stdout,
+        stderr,
+        truncation: LogTruncation {
+            lines: count > tail as usize,
+            bytes: byte_truncated,
+            upstream_may_have_more: count >= tail as usize,
+        },
+        start_ts: log.start_ts,
+        end_ts: log.end_ts,
+    })
+}
+
+/// Configured API credentials, common sensitive assignments (including quoted
+/// JSON values), full Authorization values and standalone Bearer tokens. This
+/// deliberately does not promise to detect arbitrary unlabeled application secrets.
+pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
+    // Recognize assignment labels before configured credentials can redact a
+    // label itself (for example, an API key equal to `token`). Then sanitize
+    // configured values in the remaining text and in any adjacent context.
+    let configured = line;
+    let lower = configured.to_ascii_lowercase();
+    const LABELS: &[&str] = &[
+        "password",
+        "passwd",
+        "api_key",
+        "api-key",
+        "apikey",
+        "api_secret",
+        "api-secret",
+        "apisecret",
+        "secret",
+        "token",
+        "access_token",
+        "refresh_token",
+        "client_secret",
+        "database_url",
+        "databaseurl",
+        "connection_string",
+        "connectionstring",
+        "private_key",
+        "privatekey",
+        "authorization",
+    ];
+    let mut result = String::new();
+    let mut offset = 0;
+    // Bound complete-fragment validation across this received stream. Exhausted
+    // ambiguity checks conservatively hide the remaining received stream.
+    let mut json_checks = 128usize;
+    let mut checked_json = None;
+    while offset < configured.len() {
+        let rest = &lower[offset..];
+        let previous = configured[..offset].bytes().next_back();
+        let boundary =
+            previous.is_none_or(|b| !b.is_ascii_alphanumeric() && b != b'_' && b != b'-');
+        if boundary && rest.starts_with("bearer") {
+            let prefix = offset + "bearer".len();
+            let mut start = prefix;
+            while configured
+                .as_bytes()
+                .get(start)
+                .is_some_and(|b| matches!(b, b' ' | b'\t'))
+            {
+                start += 1;
+            }
+            if start > prefix {
+                let end = value_end(configured, start, None);
+                if end > start {
+                    result.push_str(&configured[offset..start]);
+                    result.push_str(client.redaction_marker());
+                    offset = end;
+                    continue;
+                }
+            }
+        }
+        let mut assignment = None;
+        // Environment/config keys often qualify a sensitive suffix, such as
+        // POSTGRES_PASSWORD, service-api-key, or dbPassword. Camel word starts
+        // include acronym boundaries such as DBPassword. Keep the following-key
+        // check so PASSWORD_FILE and dbPasswordFile are not treated as keys.
+        let camel_boundary = configured.as_bytes()[offset].is_ascii_uppercase()
+            && previous.is_some_and(|b| {
+                b.is_ascii_lowercase()
+                    || (b.is_ascii_uppercase()
+                        && configured
+                            .as_bytes()
+                            .get(offset + 1)
+                            .is_some_and(u8::is_ascii_lowercase))
+            });
+        if previous.is_none_or(|b| !b.is_ascii_alphanumeric()) || camel_boundary {
+            for label in LABELS {
+                if !rest.starts_with(label) {
+                    continue;
+                }
+                let mut at = offset + label.len();
+                if configured
+                    .as_bytes()
+                    .get(at)
+                    .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'-')
+                {
+                    continue;
+                }
+                let key_quote = encoded_quote(configured, at).map(|(quote, end)| {
+                    at = end;
+                    quote
+                });
+                at = skip_whitespace(configured, at, key_quote, label == &"authorization");
+                if !matches!(configured.as_bytes().get(at), Some(b'=' | b':')) {
+                    continue;
+                }
+                at += 1;
+                at = skip_whitespace(configured, at, key_quote, label == &"authorization");
+                let quote = encoded_quote(configured, at).map(|(quote, end)| {
+                    at = end;
+                    quote
+                });
+                let malformed_quote = quote.is_none()
+                    && configured[at..]
+                        .trim_start_matches('\\')
+                        .starts_with(['\'', '\"']);
+                let inconsistent_quotes = malformed_quote
+                    || key_quote
+                        .is_some_and(|key| quote.is_none_or(|value| key.escapes != value.escapes));
+                if quote.is_none() && matches!(configured.as_bytes().get(at), Some(b'{' | b'[')) {
+                    let context = Quote {
+                        character: b'"',
+                        escapes: key_quote.map_or(0, |q| q.escapes),
+                    };
+                    let end = container_end(configured, at, context)
+                        .filter(|end| valid_json_fragment(configured, at, *end, context))
+                        .unwrap_or(configured.len());
+                    assignment = Some((at, end, Some(context)));
+                    break;
+                }
+                // An unquoted Authorization header can contain whitespace,
+                // commas and quoted subfields (Basic, Digest, Negotiate, ...).
+                // Mask the entire line value, retaining its line terminator.
+                // Clear quoted values retain delimiters at their original JSON
+                // encoding depth. An unclear quote boundary or YAML block value
+                // can continue across physical lines: hide the entire remaining
+                // received stream, retaining CR/LF. Never recover context by
+                // fetching an uncapped tail or decoding JSON escapes into LF.
+                let multiline_or_unclear = inconsistent_quotes
+                    || quote.is_some_and(|q| quoted_end(configured, at, q).is_none())
+                    || (quote.is_none()
+                        && matches!(configured.as_bytes().get(at), Some(b'|' | b'>')));
+                let mut end = if multiline_or_unclear {
+                    configured.len()
+                } else if label == &"authorization" && quote.is_none() {
+                    line_end(configured, at)
+                } else {
+                    value_end(configured, at, quote)
+                };
+                if !multiline_or_unclear
+                    && let Some(quote) = quote
+                    && !quoted_end_clear(
+                        configured,
+                        offset,
+                        end,
+                        quote,
+                        key_quote,
+                        &mut json_checks,
+                        &mut checked_json,
+                    )
+                {
+                    end = configured.len();
+                }
+                if end > at {
+                    assignment = Some((at, end, None));
+                    break;
+                }
+            }
+        }
+        if let Some((start, end, structured)) = assignment {
+            result.push_str(&configured[offset..start]);
+            if let Some(quote) = structured {
+                let mut marker =
+                    serde_json::to_string(client.redaction_marker()).expect("marker serializes");
+                for _ in 0..quote.escapes.saturating_add(1).trailing_zeros() {
+                    let encoded = serde_json::to_string(&marker).expect("marker serializes");
+                    marker = encoded[1..encoded.len() - 1].to_owned();
+                }
+                result.push_str(&marker);
+            } else {
+                result.push_str(client.redaction_marker());
+            }
+            // Structured values can span physical lines. Retain their line
+            // separators so local tail selection and line counts stay stable.
+            result.extend(
+                configured[start..end]
+                    .chars()
+                    .filter(|c| matches!(c, '\r' | '\n')),
+            );
+            offset = end;
+        } else {
+            let character = configured[offset..]
+                .chars()
+                .next()
+                .expect("nonempty remainder");
+            result.push(character);
+            offset += character.len_utf8();
+        }
+    }
+    client.redact(&result)
+}
+
+#[derive(Clone, Copy)]
+struct Quote {
+    character: u8,
+    /// Delimiter backslashes after zero or more additional JSON encodings:
+    /// 0, 1, 3, 7, ... . Embedded quotes have a different parity at that depth.
+    escapes: usize,
+}
+
+fn encoded_quote(text: &str, start: usize) -> Option<(Quote, usize)> {
+    let bytes = text.as_bytes();
+    let mut at = start;
+    while bytes.get(at) == Some(&b'\\') {
+        at += 1;
+    }
+    let escapes = at - start;
+    let character = bytes.get(at).copied()?;
+    if !matches!(character, b'\'' | b'"') || !escapes.checked_add(1)?.is_power_of_two() {
+        return None;
+    }
+    Some((Quote { character, escapes }, at + 1))
+}
+
+fn skip_whitespace(text: &str, mut at: usize, key_quote: Option<Quote>, header: bool) -> usize {
+    let bytes = text.as_bytes();
+    loop {
+        if bytes.get(at).is_some_and(|b| {
+            b.is_ascii_whitespace() && (!header || key_quote.is_some() || matches!(b, b' ' | b'\t'))
+        }) {
+            at += 1;
+            continue;
+        }
+        // An encoded physical LF/CR/tab has half the quote delimiter's escape
+        // width: 1, 2, 4, ... backslashes at JSON encoding depths 1, 2, 3, ... .
+        // Advance over its original bytes; never turn \n escapes into new lines.
+        let Some(width) = key_quote.and_then(|quote| quote.escapes.checked_add(1)) else {
+            break;
+        };
+        if width < 2 {
+            break;
+        }
+        let end = at + bytes[at..].iter().take_while(|b| **b == b'\\').count();
+        if end - at != width / 2 {
+            break;
+        }
+        let escaped = &bytes[end..];
+        let length = if matches!(escaped.first(), Some(b'n' | b'r' | b't')) {
+            1
+        } else if escaped.get(..5).is_some_and(|value| {
+            [b"u0009", b"u000a", b"u000d", b"u0020"]
+                .iter()
+                .any(|space| value.eq_ignore_ascii_case(*space))
+        }) {
+            5
+        } else {
+            break;
+        };
+        at = end + length;
+    }
+    at
+}
+
+fn line_end(text: &str, start: usize) -> usize {
+    text[start..]
+        .find(['\r', '\n'])
+        .map_or(text.len(), |end| start + end)
+}
+
+fn clear_trailer(text: &str, mut at: usize, mut context: Quote) -> bool {
+    let end = line_end(text, at);
+    loop {
+        at = skip_whitespace(&text[..end], at, Some(context), false);
+        if at == end {
+            return true;
+        }
+        if matches!(text.as_bytes()[at], b'}' | b']') {
+            at += 1;
+            continue;
+        }
+        if let Some((carrier, next)) = encoded_quote(text, at)
+            && carrier.character == b'"'
+            && carrier.escapes < context.escapes
+        {
+            at = next;
+            context = carrier;
+            continue;
+        }
+        return false;
+    }
+}
+
+fn quoted_end_clear(
+    text: &str,
+    label: usize,
+    end: usize,
+    quote: Quote,
+    key: Option<Quote>,
+    checks: &mut usize,
+    checked: &mut Option<(usize, usize, usize)>,
+) -> bool {
+    let Some((closer, after)) = encoded_quote(text, end) else {
+        return false;
+    };
+    if closer.character != quote.character || closer.escapes != quote.escapes {
+        return false;
+    }
+    if clear_trailer(text, after, quote) {
+        return true;
+    }
+    // A comma/field-like trailer can also be unescaped Digest parameters. Trust
+    // adjacent fields only inside a complete, syntactically valid JSON object,
+    // not merely because the next bytes resemble a key and colon.
+    if key.is_none_or(|key| key.character != b'"' || key.escapes != quote.escapes) {
+        return false;
+    }
+    if checked.is_some_and(|(start, close, depth)| {
+        start < label && after <= close && depth == quote.escapes
+    }) {
+        return true;
+    }
+    for (start, _) in text[..label].rmatch_indices('{').take(*checks) {
+        *checks -= 1;
+        if let Some(close) = container_end(text, start, quote)
+            && close >= after
+            && valid_json_fragment(text, start, close, quote)
+            && clear_trailer(text, close, quote)
+        {
+            *checked = Some((start, close, quote.escapes));
+            return true;
+        }
+    }
+    false
+}
+
+fn valid_json_fragment(text: &str, start: usize, end: usize, context: Quote) -> bool {
+    let mut source = text[start..end].to_owned();
+    for _ in 0..context.escapes.saturating_add(1).trailing_zeros() {
+        let Ok(decoded) = serde_json::from_str::<String>(&format!("\"{source}\"")) else {
+            return false;
+        };
+        source = decoded;
+    }
+    serde_json::from_str::<serde_json::Value>(&source).is_ok()
+}
+
+fn container_end(text: &str, start: usize, context: Quote) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut pending = vec![match bytes.get(start)? {
+        b'{' => b'}',
+        b'[' => b']',
+        _ => return None,
+    }];
+    let mut at = start + 1;
+    while at < bytes.len() {
+        if let Some((quote, after)) = encoded_quote(text, at)
+            && quote.character == b'"'
+            && quote.escapes == context.escapes
+        {
+            at = quoted_end(text, after, quote)?.checked_add(quote.escapes + 1)?;
+            continue;
+        }
+        match bytes[at] {
+            b'{' | b'[' => {
+                if pending.len() == 128 {
+                    return None;
+                }
+                pending.push(if bytes[at] == b'{' { b'}' } else { b']' });
+            }
+            b'}' | b']' => {
+                if pending.pop()? != bytes[at] {
+                    return None;
+                }
+                if pending.is_empty() {
+                    return Some(at + 1);
+                }
+            }
+            _ => (),
+        }
+        at += 1;
+    }
+    None
+}
+
+fn quoted_end(text: &str, start: usize, quote: Quote) -> Option<usize> {
+    let end = line_end(text, start);
+    let period = quote.escapes.checked_add(1)?.checked_mul(2)?;
+    let bytes = text.as_bytes();
+    let mut at = start;
+    while at < end {
+        let run_start = at;
+        while at < end && bytes[at] == b'\\' {
+            at += 1;
+        }
+        let run = at - run_start;
+        if at < end && bytes[at] == quote.character && run % period == quote.escapes {
+            return Some(at - quote.escapes);
+        }
+        at += usize::from(at < end);
+    }
+    None
+}
+
+fn value_end(text: &str, start: usize, quote: Option<Quote>) -> usize {
+    let end = line_end(text, start);
+    if let Some(quote) = quote {
+        return quoted_end(text, start, quote).unwrap_or(end);
+    }
+    let mut escaped = false;
+    for (index, character) in text[start..end].char_indices() {
+        if !escaped && (character.is_whitespace() || ",;\"'".contains(character)) {
+            return start + index;
+        }
+        escaped = !escaped && character == '\\';
+    }
+    end
+}
