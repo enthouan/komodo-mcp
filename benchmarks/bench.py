@@ -435,6 +435,9 @@ def number(value, positive=False):
 
 
 def validate(report):
+    if report.get("format") == "komodo-incident-benchmark/v1":
+        import incident
+        return incident.validate(report)
     require(report.get("format") == FORMAT and report.get("status") == "complete", "incomplete/unsupported run")
     for key in ("run_id", "timestamp", "repository", "runner", "artifacts", "host", "fixture", "workload",
                 "controls", "definitions", "execution_order", "core_requests", "invocation"):
@@ -585,6 +588,9 @@ def run(args):
 
 
 def print_summary(report):
+    if report.get("format") == "komodo-incident-benchmark/v1":
+        import incident
+        return incident.print_summary(report)
     validate(report)
     print(f"Run {report['run_id']} — {report['fixture']['visible_stacks']} stacks; provisional synthetic results")
     print("implementation | startup p50/p95 ms | inventory p50/p95 ms | response bytes p50 | Core calls p50 | idle/peak MiB")
@@ -617,12 +623,30 @@ def main():
     runner.add_argument("--fixture-delay-ms", type=float, default=0)
     runner.add_argument("--timeout", type=float, default=20)
     runner.add_argument("--host-note", required=True, help="describe bare metal/VM/container and other host load")
+    incident_runner = subs.add_parser("incident", help="compare bounded broken-stack triage with concurrent callers")
+    incident_runner.add_argument("--artifacts", type=Path, default=ROOT / "target/benchmark/artifacts.json")
+    incident_runner.add_argument("--output", type=Path, default=ROOT / "target/benchmark/incident.json")
+    for field, default in (("fixture-size", 7), ("page-size", 25), ("concurrency", 1), ("warmup", 2),
+                           ("samples", 10), ("repetitions", 2), ("idle-ms", 200), ("rss-interval-ms", 20)):
+        incident_runner.add_argument("--" + field, type=int, default=default)
+    incident_runner.add_argument("--fixture-delay-ms", type=float, default=0)
+    incident_runner.add_argument("--timeout", type=float, default=30)
+    incident_runner.add_argument("--host-note", required=True)
     for name in ("validate", "summarize"):
         sub = subs.add_parser(name)
         sub.add_argument("result", type=Path)
     args = parser.parse_args()
     if args.action == "prepare":
         prepare(args)
+    elif args.action == "incident":
+        import incident
+        if (not 2 <= args.fixture_size <= 1000 or not 1 <= args.page_size <= 100
+                or not 1 <= args.concurrency <= 16 or args.warmup < 0
+                or not number(args.fixture_delay_ms)
+                or any(not number(getattr(args, key), True) for key in
+                       ("samples", "repetitions", "idle_ms", "rss_interval_ms", "timeout"))):
+            parser.error("require fixture size 2..1000, page size 1..100, concurrency 1..16, positive samples/repetitions/timeouts, nonnegative warmup/delay")
+        incident.run(args)
     elif args.action == "run":
         for key in ("samples", "cold_samples", "repetitions", "idle_ms", "rss_interval_ms", "timeout"):
             if not number(getattr(args, key), True):
