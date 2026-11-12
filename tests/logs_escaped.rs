@@ -630,6 +630,88 @@ const LOG_TOOLS: [(&str, &str); 3] = [
 ];
 
 #[tokio::test]
+async fn unquoted_credentials_keep_no_suffix_after_ambiguous_delimiters() {
+    let values = [
+        format!("{PRIVATE}-first,{PRIVATE}-second"),
+        format!("{PRIVATE}-first;{PRIVATE}-second"),
+        format!("{PRIVATE}-first {PRIVATE}-second"),
+        format!("postgres://alice:{PRIVATE}-first,{PRIVATE}-second@db/app"),
+        format!("{PRIVATE}-first\\\"{PRIVATE}-second"),
+        "alpha,beta".into(),
+    ];
+    let mut source = String::new();
+    let mut expected = String::new();
+    for label in [
+        "PASSWORD",
+        "DATABASE_URL",
+        "connectionString",
+        "TOKEN",
+        "clientSecret",
+    ] {
+        for value in &values {
+            source.push_str(&format!("probe {label}={value}\r\n"));
+            expected.push_str(&format!("probe {label}=[redacted]\r\n"));
+        }
+    }
+    let core = IncidentCore::start(all_log_options(&source, &source)).await;
+    let mut client = StdioClient::start(&core).await;
+    for (tool, _) in LOG_TOOLS {
+        let result = client.logs_tool(tool, 65_536, 500).await;
+        assert_eq!(result["stdout"], expected, "{tool}");
+        assert_eq!(result["stderr"], expected, "{tool}");
+    }
+    client.close().await;
+    assert_eq!(core.requests().len(), 4);
+}
+
+#[tokio::test]
+async fn utf8_clipping_keeps_a_contiguous_latest_suffix_across_streams() {
+    for (stdout, stderr, bytes, expected_stdout, expected_stderr) in [
+        ("old\n💥\n", "", 2, "\n", ""),
+        ("old\n💥", "", 2, "", ""),
+        ("old\n", "💥\n", 2, "", "\n"),
+        ("old\n", "💥", 2, "", ""),
+        ("old\n💥\nend\n", "", 6, "\nend\n", ""),
+    ] {
+        let core = IncidentCore::start(all_log_options(stdout, stderr)).await;
+        let mut client = StdioClient::start(&core).await;
+        for (tool, _) in LOG_TOOLS {
+            let result = client.logs_tool(tool, bytes, 500).await;
+            assert_eq!(result["stdout"], expected_stdout, "{tool}");
+            assert_eq!(result["stderr"], expected_stderr, "{tool}");
+            assert_eq!(result["truncation"]["bytes"], true);
+        }
+        client.close().await;
+        assert_eq!(core.requests().len(), 4);
+    }
+}
+
+#[tokio::test]
+async fn long_malformed_and_dense_structured_values_complete_within_stdio_deadline() {
+    for source in [
+        format!("password=[{}{PRIVATE}]\n", "\\".repeat(250_000)),
+        format!("password={}\n", json!(vec![PRIVATE; 12_000])),
+    ] {
+        let core = IncidentCore::start(all_log_options(&source, &source)).await;
+        let mut client = StdioClient::start(&core).await;
+        for (tool, _) in LOG_TOOLS {
+            // The MCP helper enforces a five-second exchange deadline; a tiny
+            // output budget must not hide unbounded work on the received payload.
+            let result = client.logs_tool(tool, 32, 1).await;
+            assert_eq!(result["stdout"], "");
+            assert_eq!(result["stderr"], "password=\"[redacted]\"\n");
+        }
+        client.close().await;
+        let requests = core.requests();
+        assert_eq!(requests.len(), 4);
+        for (request, (_, operation)) in requests[1..].iter().zip(LOG_TOOLS) {
+            assert_eq!(request.operation, operation);
+            assert_eq!(request.params["tail"], 1);
+        }
+    }
+}
+
+#[tokio::test]
 async fn prefixed_credential_keys_and_horizontal_bearer_spacing_are_masked_in_all_log_tools() {
     let stdout = format!(
         "POSTGRES_PASSWORD={PRIVATE}-postgres\r\nAWS_SECRET_ACCESS_TOKEN=\"{PRIVATE}-aws\"\nservice-CuStOm-ApI_KeY: '{PRIVATE}-key'\r\nMY-SECRET={PRIVATE}-hyphen\nrequest Bearer  {PRIVATE}-two-spaces keep-context💥\nrequest bEaReR\t{PRIVATE}-tab\r\nrequest BEARER \t \t{PRIVATE}-mixed\ncompassword=keep-embedded-one\npretoken=keep-embedded-two\nAPI_KEY_SUFFIX=keep-unrelated-suffix\nBearer  \r\nkeep-empty-bearer-next-line💥\r\n"
@@ -741,6 +823,55 @@ async fn camel_case_credentials_are_masked_in_both_streams_of_every_log_tool() {
         assert_eq!(request.operation, operation);
         assert_eq!(request.params["tail"], 500);
     }
+}
+
+#[tokio::test]
+async fn compound_sensitive_keys_are_classified_completely_with_file_and_suffix_exclusions() {
+    let mut source = String::new();
+    let mut expected = String::new();
+    for label in [
+        "AWS_SECRET_ACCESS_KEY",
+        "secretKey",
+        "secret_key",
+        "mySecretKey",
+        "awsSecretAccessKey",
+        "service-secret-key",
+        "AWS_ACCESS_KEY",
+    ] {
+        for depth in 0..=4 {
+            source.push_str(&encode_fragment(json_assignment(label, PRIVATE), depth));
+            source.push_str("\r\n");
+            expected.push_str(&encode_fragment(
+                json_assignment(label, "[redacted]"),
+                depth,
+            ));
+            expected.push_str("\r\n");
+        }
+        source.push_str(&format!("{label}={PRIVATE}\n"));
+        expected.push_str(&format!("{label}=[redacted]\n"));
+    }
+    for label in [
+        "AWS_SECRET_ACCESS_KEY_FILE",
+        "secretKeyFile",
+        "secret_key_suffix",
+        "PASSWORD_FILE",
+        "clientSecretSuffix",
+        "API_KEY_SUFFIX",
+        "compassword",
+    ] {
+        let row = format!("{}\n", json_assignment(label, "keep-harmless"));
+        source.push_str(&row);
+        expected.push_str(&row);
+    }
+    let core = IncidentCore::start(all_log_options(&source, &source)).await;
+    let mut client = StdioClient::start(&core).await;
+    for (tool, _) in LOG_TOOLS {
+        let result = client.logs_tool(tool, 65_536, 500).await;
+        assert_eq!(result["stdout"], expected, "{tool}");
+        assert_eq!(result["stderr"], expected, "{tool}");
+    }
+    client.close().await;
+    assert_eq!(core.requests().len(), 4);
 }
 
 #[tokio::test]

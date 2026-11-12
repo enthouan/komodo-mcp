@@ -315,6 +315,11 @@ fn project(
                 stdout.push(kept.to_owned());
             }
         }
+        // A UTF-8 adjustment can leave unused budget. Older fragments would
+        // fill that gap with discontiguous content instead of a latest suffix.
+        if start != 0 {
+            break;
+        }
     }
     stdout.reverse();
     stderr.reverse();
@@ -348,28 +353,6 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
     // configured values in the remaining text and in any adjacent context.
     let configured = line;
     let lower = configured.to_ascii_lowercase();
-    const LABELS: &[&str] = &[
-        "password",
-        "passwd",
-        "api_key",
-        "api-key",
-        "apikey",
-        "api_secret",
-        "api-secret",
-        "apisecret",
-        "secret",
-        "token",
-        "access_token",
-        "refresh_token",
-        "client_secret",
-        "database_url",
-        "databaseurl",
-        "connection_string",
-        "connectionstring",
-        "private_key",
-        "privatekey",
-        "authorization",
-    ];
     let mut result = String::new();
     let mut offset = 0;
     // Bound complete-fragment validation across this received stream. Exhausted
@@ -401,104 +384,28 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
                 }
             }
         }
-        let mut assignment = None;
-        // Environment/config keys often qualify a sensitive suffix, such as
-        // POSTGRES_PASSWORD, service-api-key, or dbPassword. Camel word starts
-        // include acronym boundaries such as DBPassword. Keep the following-key
-        // check so PASSWORD_FILE and dbPasswordFile are not treated as keys.
-        let camel_boundary = configured.as_bytes()[offset].is_ascii_uppercase()
-            && previous.is_some_and(|b| {
-                b.is_ascii_lowercase()
-                    || (b.is_ascii_uppercase()
-                        && configured
-                            .as_bytes()
-                            .get(offset + 1)
-                            .is_some_and(u8::is_ascii_lowercase))
-            });
-        if previous.is_none_or(|b| !b.is_ascii_alphanumeric()) || camel_boundary {
-            for label in LABELS {
-                if !rest.starts_with(label) {
-                    continue;
-                }
-                let mut at = offset + label.len();
-                if configured
-                    .as_bytes()
-                    .get(at)
-                    .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'-')
-                {
-                    continue;
-                }
-                let key_quote = encoded_quote(configured, at).map(|(quote, end)| {
-                    at = end;
-                    quote
-                });
-                at = skip_whitespace(configured, at, key_quote, label == &"authorization");
-                if !matches!(configured.as_bytes().get(at), Some(b'=' | b':')) {
-                    continue;
-                }
-                at += 1;
-                at = skip_whitespace(configured, at, key_quote, label == &"authorization");
-                let quote = encoded_quote(configured, at).map(|(quote, end)| {
-                    at = end;
-                    quote
-                });
-                let malformed_quote = quote.is_none()
-                    && configured[at..]
-                        .trim_start_matches('\\')
-                        .starts_with(['\'', '\"']);
-                let inconsistent_quotes = malformed_quote
-                    || key_quote
-                        .is_some_and(|key| quote.is_none_or(|value| key.escapes != value.escapes));
-                if quote.is_none() && matches!(configured.as_bytes().get(at), Some(b'{' | b'[')) {
-                    let context = Quote {
-                        character: b'"',
-                        escapes: key_quote.map_or(0, |q| q.escapes),
-                    };
-                    let end = container_end(configured, at, context)
-                        .filter(|end| valid_json_fragment(configured, at, *end, context))
-                        .unwrap_or(configured.len());
-                    assignment = Some((at, end, Some(context)));
-                    break;
-                }
-                // An unquoted Authorization header can contain whitespace,
-                // commas and quoted subfields (Basic, Digest, Negotiate, ...).
-                // Mask the entire line value, retaining its line terminator.
-                // Clear quoted values retain delimiters at their original JSON
-                // encoding depth. An unclear quote boundary or YAML block value
-                // can continue across physical lines: hide the entire remaining
-                // received stream, retaining CR/LF. Never recover context by
-                // fetching an uncapped tail or decoding JSON escapes into LF.
-                let multiline_or_unclear = inconsistent_quotes
-                    || quote.is_some_and(|q| quoted_end(configured, at, q).is_none())
-                    || (quote.is_none()
-                        && matches!(configured.as_bytes().get(at), Some(b'|' | b'>')));
-                let mut end = if multiline_or_unclear {
-                    configured.len()
-                } else if label == &"authorization" && quote.is_none() {
-                    line_end(configured, at)
-                } else {
-                    value_end(configured, at, quote)
-                };
-                if !multiline_or_unclear
-                    && let Some(quote) = quote
-                    && !quoted_end_clear(
-                        configured,
-                        offset,
-                        end,
-                        quote,
-                        key_quote,
-                        &mut json_checks,
-                        &mut checked_json,
-                    )
-                {
-                    end = configured.len();
-                }
-                if end > at {
-                    assignment = Some((at, end, None));
-                    break;
-                }
-            }
-        }
+        // Consume and classify the entire assignment key once. Qualified
+        // snake/hyphen/camel names share a classifier; unrelated right-hand
+        // suffixes such as PASSWORD_FILE and secretKeySuffix do not match.
+        let key_end = offset
+            + configured.as_bytes()[offset..]
+                .iter()
+                .take_while(|b| b.is_ascii_alphanumeric() || b"_-".contains(b))
+                .count();
+        let assignment = if key_end > offset {
+            sensitive_key(&configured[offset..key_end]).and_then(|header| {
+                sensitive_value(
+                    configured,
+                    offset,
+                    key_end,
+                    header,
+                    &mut json_checks,
+                    &mut checked_json,
+                )
+            })
+        } else {
+            None
+        };
         if let Some((start, end, structured)) = assignment {
             result.push_str(&configured[offset..start]);
             if let Some(quote) = structured {
@@ -520,6 +427,9 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
                     .filter(|c| matches!(c, '\r' | '\n')),
             );
             offset = end;
+        } else if key_end > offset {
+            result.push_str(&configured[offset..key_end]);
+            offset = key_end;
         } else {
             let character = configured[offset..]
                 .chars()
@@ -530,6 +440,120 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
         }
     }
     client.redact(&result)
+}
+
+// Return whether the complete key denotes an Authorization header. Other
+// sensitive keys use the same value parser without header whitespace rules.
+fn sensitive_key(key: &str) -> Option<bool> {
+    if !key.as_bytes().last()?.is_ascii_alphanumeric() {
+        return None;
+    }
+    let compact: String = key
+        .bytes()
+        .filter(u8::is_ascii_alphanumeric)
+        .map(|b| char::from(b.to_ascii_lowercase()))
+        .collect();
+    for label in [
+        "password",
+        "passwd",
+        "apikey",
+        "apisecret",
+        "secretaccesskey",
+        "secretkey",
+        "accesskey",
+        "secret",
+        "token",
+        "databaseurl",
+        "connectionstring",
+        "privatekey",
+        "authorization",
+    ] {
+        if !compact.ends_with(label) {
+            continue;
+        }
+        let (start, _) = key
+            .bytes()
+            .enumerate()
+            .rev()
+            .filter(|(_, b)| b.is_ascii_alphanumeric())
+            .nth(label.len() - 1)?;
+        let previous = key[..start].bytes().next_back();
+        let camel_boundary = key.as_bytes()[start].is_ascii_uppercase()
+            && previous.is_some_and(|b| {
+                b.is_ascii_lowercase()
+                    || (b.is_ascii_uppercase()
+                        && key
+                            .as_bytes()
+                            .get(start + 1)
+                            .is_some_and(u8::is_ascii_lowercase))
+            });
+        if previous.is_none_or(|b| !b.is_ascii_alphanumeric()) || camel_boundary {
+            return Some(label == "authorization");
+        }
+    }
+    None
+}
+
+fn sensitive_value(
+    text: &str,
+    label: usize,
+    mut at: usize,
+    header: bool,
+    checks: &mut usize,
+    checked: &mut Option<(usize, usize, usize)>,
+) -> Option<(usize, usize, Option<Quote>)> {
+    let key_quote = encoded_quote(text, at).map(|(quote, end)| {
+        at = end;
+        quote
+    });
+    at = skip_whitespace(text, at, key_quote, header, false);
+    if !matches!(text.as_bytes().get(at), Some(b'=' | b':')) {
+        return None;
+    }
+    at += 1;
+    at = skip_whitespace(text, at, key_quote, header, false);
+    let quote = encoded_quote(text, at).map(|(quote, end)| {
+        at = end;
+        quote
+    });
+    let malformed_quote = quote.is_none()
+        && text[at..]
+            .trim_start_matches('\\')
+            .starts_with(['\'', '\"']);
+    let inconsistent_quotes = malformed_quote
+        || key_quote.is_some_and(|key| quote.is_none_or(|value| key.escapes != value.escapes));
+    if quote.is_none() && matches!(text.as_bytes().get(at), Some(b'{' | b'[')) {
+        let context = Quote {
+            character: b'"',
+            escapes: key_quote.map_or(0, |q| q.escapes),
+        };
+        let end = container_end(text, at, context)
+            .filter(|end| valid_json_fragment(text, at, *end, context))
+            .unwrap_or(text.len());
+        return Some((at, end, Some(context)));
+    }
+    // Unquoted credentials can contain spaces, punctuation, or quoted
+    // subfields (URLs, passwords, Authorization, ...). Mask through the line.
+    // Clear quoted values retain delimiters at their original JSON depth.
+    // Unclear quotes and YAML block values may span physical lines: hide the
+    // remaining received stream, preserving CR/LF without an uncapped fetch.
+    let multiline_or_unclear = inconsistent_quotes
+        || quote.is_some_and(|q| quoted_end(text, at, q).is_none())
+        || (quote.is_none() && matches!(text.as_bytes().get(at), Some(b'|' | b'>')));
+    let mut end = if multiline_or_unclear {
+        text.len()
+    } else if quote.is_none() {
+        line_end(text, at)
+    } else {
+        value_end(text, at, quote)
+    };
+    if !multiline_or_unclear
+        && let Some(quote) = quote
+        && !quoted_end_clear(text, label, end, quote, key_quote, checks, checked)
+    {
+        end = text.len();
+    }
+    (end > at).then_some((at, end, None))
 }
 
 #[derive(Clone, Copy)]
@@ -554,11 +578,19 @@ fn encoded_quote(text: &str, start: usize) -> Option<(Quote, usize)> {
     Some((Quote { character, escapes }, at + 1))
 }
 
-fn skip_whitespace(text: &str, mut at: usize, key_quote: Option<Quote>, header: bool) -> usize {
+fn skip_whitespace(
+    text: &str,
+    mut at: usize,
+    key_quote: Option<Quote>,
+    header: bool,
+    physical_line: bool,
+) -> usize {
     let bytes = text.as_bytes();
     loop {
         if bytes.get(at).is_some_and(|b| {
-            b.is_ascii_whitespace() && (!header || key_quote.is_some() || matches!(b, b' ' | b'\t'))
+            b.is_ascii_whitespace()
+                && (!physical_line || !matches!(b, b'\r' | b'\n'))
+                && (!header || key_quote.is_some() || matches!(b, b' ' | b'\t'))
         }) {
             at += 1;
             continue;
@@ -600,10 +632,11 @@ fn line_end(text: &str, start: usize) -> usize {
 }
 
 fn clear_trailer(text: &str, mut at: usize, mut context: Quote) -> bool {
-    let end = line_end(text, at);
     loop {
-        at = skip_whitespace(&text[..end], at, Some(context), false);
-        if at == end {
+        // Inspect the actual trailer without first rescanning the rest of the
+        // line for every field in a dense object.
+        at = skip_whitespace(text, at, Some(context), false, true);
+        if matches!(text.as_bytes().get(at), None | Some(b'\r' | b'\n')) {
             return true;
         }
         if matches!(text.as_bytes()[at], b'}' | b']') {
@@ -685,14 +718,17 @@ fn container_end(text: &str, start: usize, context: Quote) -> Option<usize> {
     }];
     let mut at = start + 1;
     while at < bytes.len() {
-        if let Some((quote, after)) = encoded_quote(text, at)
-            && quote.character == b'"'
-            && quote.escapes == context.escapes
-        {
-            at = quoted_end(text, after, quote)?.checked_add(quote.escapes + 1)?;
+        // Consume each backslash run once, even if it is malformed. Calling
+        // encoded_quote at each byte of the same run would rescan it O(n²).
+        let run_start = at;
+        while bytes.get(at) == Some(&b'\\') {
+            at += 1;
+        }
+        if bytes.get(at) == Some(&b'"') && at - run_start == context.escapes {
+            at = quoted_end(text, at + 1, context)?.checked_add(context.escapes + 1)?;
             continue;
         }
-        match bytes[at] {
+        match *bytes.get(at)? {
             b'{' | b'[' => {
                 if pending.len() == 128 {
                     return None;
@@ -715,29 +751,31 @@ fn container_end(text: &str, start: usize, context: Quote) -> Option<usize> {
 }
 
 fn quoted_end(text: &str, start: usize, quote: Quote) -> Option<usize> {
-    let end = line_end(text, start);
     let period = quote.escapes.checked_add(1)?.checked_mul(2)?;
     let bytes = text.as_bytes();
     let mut at = start;
-    while at < end {
+    while at < bytes.len() {
         let run_start = at;
-        while at < end && bytes[at] == b'\\' {
+        while bytes.get(at) == Some(&b'\\') {
             at += 1;
         }
+        if matches!(bytes.get(at), None | Some(b'\r' | b'\n')) {
+            return None;
+        }
         let run = at - run_start;
-        if at < end && bytes[at] == quote.character && run % period == quote.escapes {
+        if bytes[at] == quote.character && run % period == quote.escapes {
             return Some(at - quote.escapes);
         }
-        at += usize::from(at < end);
+        at += 1;
     }
     None
 }
 
 fn value_end(text: &str, start: usize, quote: Option<Quote>) -> usize {
-    let end = line_end(text, start);
     if let Some(quote) = quote {
-        return quoted_end(text, start, quote).unwrap_or(end);
+        return quoted_end(text, start, quote).unwrap_or_else(|| line_end(text, start));
     }
+    let end = line_end(text, start);
     let mut escaped = false;
     for (index, character) in text[start..end].char_indices() {
         if !escaped && (character.is_whitespace() || ",;\"'".contains(character)) {

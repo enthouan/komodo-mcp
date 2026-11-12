@@ -60,12 +60,15 @@ a safe unavailable-source error; it never triggers an uncapped fallback read.
 Core's log command and stage fields are excluded.
 
 The sanitizer removes configured Core credentials, common labeled application
-credentials (including qualified snake/hyphen/camelCase keys), Authorization
+credentials (including compound snake/hyphen/camelCase keys such as
+`AWS_SECRET_ACCESS_KEY` and `secretKey`), Authorization
 values, and standalone Bearer tokens. It handles quoted and repeatedly encoded
 JSON without decoding escapes into physical lines. It sanitizes each complete
 received stream before selecting the local tail or clipping bytes. Ambiguous
 quotes and YAML block secret values conservatively hide the remaining received
 stream while preserving CR/LF, so later benign context may also be hidden.
+Unquoted labeled credentials hide the remainder of their physical line because
+spaces and punctuation may belong to a password or connection string.
 It cannot recognize every unlabeled secret or recover a label already omitted
 by Core's upstream tail. Only request and share logs appropriate for the caller.
 
