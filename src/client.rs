@@ -2,19 +2,22 @@ use std::{fmt, sync::Arc, time::Duration};
 
 use komodo_client::{
     KomodoClient,
-    api::read::{GetVersion, KomodoReadRequest},
+    api::{
+        execute::KomodoExecuteRequest,
+        read::{GetVersion, KomodoReadRequest},
+    },
 };
 use reqwest::{Client, redirect::Policy};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
-    capabilities::CapabilityPolicy,
+    capabilities::{Capability, CapabilityPolicy},
     config::Config,
     diagnostics::Redactor,
     error::{AppError, ErrorKind},
 };
 
-/// JSON body budget for log and incident-history reads, before typed decoding.
+/// JSON body budget for evidence reads and execution replies, before typed decoding.
 pub const MAX_EVIDENCE_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 /// Compatibility name for the unchanged workload-log body budget.
 pub const MAX_LOG_RESPONSE_BYTES: usize = MAX_EVIDENCE_RESPONSE_BYTES;
@@ -38,6 +41,7 @@ impl Default for RequestPolicy {
 struct Inner {
     sdk: KomodoClient,
     bounded_request: reqwest::RequestBuilder,
+    execute_request: reqwest::RequestBuilder,
     policy: RequestPolicy,
     redactor: Redactor,
     capabilities: CapabilityPolicy,
@@ -79,6 +83,8 @@ impl CoreClient {
             // The outer operation deadline is authoritative, including SDK body
             // reads which erase reqwest errors. Do not race it with an HTTP timeout.
             .redirect(Policy::none())
+            // Execution cannot be retried even on a connection/protocol failure.
+            .retry(reqwest::retry::never())
             .build()
             .map_err(|_| AppError::new(ErrorKind::Unreachable, "configure_transport", None))?;
         let redactor = config.redactor();
@@ -90,11 +96,16 @@ impl CoreClient {
             .post(format!("{}/read", config.address))
             .header("x-api-key", &config.key)
             .header("x-api-secret", &config.secret);
+        let execute_request = http
+            .post(format!("{}/execute", config.address))
+            .header("x-api-key", &config.key)
+            .header("x-api-secret", &config.secret);
         let sdk = KomodoClient::new(config.address, config.key, config.secret).set_reqwest(http);
         Ok(Self(
             Arc::new(Inner {
                 sdk,
                 bounded_request,
+                execute_request,
                 policy,
                 redactor,
                 capabilities,
@@ -107,12 +118,39 @@ impl CoreClient {
         self.0.capabilities
     }
 
+    /// One explicit typed submission, over the existing authenticated pool.
+    /// Every uncertain failure is returned without retrying or changing credentials.
+    pub(crate) async fn execute<T>(&self, request: T) -> Result<T::Response, AppError>
+    where
+        T: Serialize + KomodoExecuteRequest,
+        T::Response: DeserializeOwned,
+    {
+        let operation = match T::req_type() {
+            "DeployStack" => "DeployStack",
+            "Deploy" => "Deploy",
+            _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "execute", None)),
+        };
+        if !self.capabilities().allows(Capability::Operate) {
+            return Err(AppError::new(
+                ErrorKind::CapabilityDisabled,
+                operation,
+                None,
+            ));
+        }
+        tokio::time::timeout(
+            self.0.policy.operation_timeout,
+            self.request_bounded_body(&self.0.execute_request, request, T::req_type(), operation),
+        )
+        .await
+        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
+    }
+
     /// Keep diagnosis inputs bounded without changing existing inventory calls.
     pub(crate) fn bounded_evidence(&self) -> Self {
         Self(Arc::clone(&self.0), true)
     }
 
-    /// The only Core entry point exposed to tools: typed reads with safe failures.
+    /// Typed read entry point with the existing SDK contract and safe failures.
     pub async fn read<T>(&self, request: T) -> Result<T::Response, AppError>
     where
         T: Serialize + KomodoReadRequest,
@@ -173,15 +211,45 @@ impl CoreClient {
         T: Serialize + KomodoReadRequest,
         T::Response: DeserializeOwned,
     {
+        self.request_bounded_body(&self.0.bounded_request, request, T::req_type(), operation)
+            .await
+    }
+
+    async fn request_bounded_body<T, R>(
+        &self,
+        builder: &reqwest::RequestBuilder,
+        request: T,
+        request_type: &'static str,
+        operation: &'static str,
+    ) -> Result<R, AppError>
+    where
+        T: Serialize,
+        R: DeserializeOwned,
+    {
         let mut response = self
-            .0
-            .bounded_request
-            .try_clone()
-            .ok_or_else(|| AppError::new(ErrorKind::InvalidResponse, operation, None))?
-            .json(&serde_json::json!({"type":T::req_type(),"params":request}))
+            .clone_request(builder, operation)?
+            .json(&serde_json::json!({"type":request_type,"params":request}))
             .send()
             .await
             .map_err(|error| AppError::from_upstream(operation, error.into()))?;
+        self.decode_bounded_body(&mut response, operation).await
+    }
+
+    fn clone_request(
+        &self,
+        builder: &reqwest::RequestBuilder,
+        operation: &'static str,
+    ) -> Result<reqwest::RequestBuilder, AppError> {
+        builder
+            .try_clone()
+            .ok_or_else(|| AppError::new(ErrorKind::InvalidResponse, operation, None))
+    }
+
+    async fn decode_bounded_body<R: DeserializeOwned>(
+        &self,
+        response: &mut reqwest::Response,
+        operation: &'static str,
+    ) -> Result<R, AppError> {
         let status = response.status();
         if matches!(
             status,

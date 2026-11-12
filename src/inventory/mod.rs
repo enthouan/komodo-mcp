@@ -7,10 +7,10 @@ use komodo_client::{
     api::read::{GetDeployment, GetServer, GetStack, ListDeployments, ListServers, ListStacks},
     entities::{
         ResourceTargetVariant,
-        deployment::{DeploymentListItem, DeploymentState as CoreDeploymentState},
+        deployment::{Deployment, DeploymentListItem, DeploymentState as CoreDeploymentState},
         resource::ResourceListItem,
         server::{ServerListItem, ServerState as CoreServerState},
-        stack::{StackListItem, StackState as CoreStackState},
+        stack::{Stack, StackListItem, StackState as CoreStackState},
     },
 };
 use rmcp::model::{CallToolResult, JsonObject};
@@ -495,22 +495,7 @@ pub(crate) async fn get_stack_observation(
     input: DetailInput,
     max_services: usize,
 ) -> Result<(StackDetail, Option<std::collections::BTreeSet<String>>), AppError> {
-    let selector = input.validate("GetStack")?;
-    let summary = resolve(client, &selector, "ListStacks", |search, page, limit| {
-        stacks(client, search, page, limit)
-    })
-    .await?;
-    let full = client
-        .read(GetStack {
-            stack: summary.id.clone(),
-        })
-        .await?;
-    check_identity(&summary, &full.id, &full.name, full.template, "GetStack")?;
-    if active_target(&summary.info.server_id, &summary.info.swarm_id)
-        != active_target(&full.config.server_id, &full.config.swarm_id)
-    {
-        return Err(changed("GetStack"));
-    }
+    let (summary, full) = resolve_stack(client, input).await?;
     let project_name = nonempty(&full.project_name(false));
     let expected_services = (summary.info.services.len() <= max_services
         && summary.info.services.iter().all(|service| {
@@ -532,10 +517,45 @@ pub(crate) async fn get_stack_observation(
         expected_services,
     ))
 }
+
+/// Raw identities/configuration stay internal. Mutations select stable IDs and
+/// exact Core service identifiers, never redacted or clipped display fields.
+pub(crate) async fn resolve_stack(
+    client: &CoreClient,
+    input: DetailInput,
+) -> Result<(StackListItem, Stack), AppError> {
+    let selector = input.validate("GetStack")?;
+    let summary = resolve(client, &selector, "ListStacks", |search, page, limit| {
+        stacks(client, search, page, limit)
+    })
+    .await?;
+    let full = client
+        .read(GetStack {
+            stack: summary.id.clone(),
+        })
+        .await?;
+    check_identity(&summary, &full.id, &full.name, full.template, "GetStack")?;
+    if active_target(&summary.info.server_id, &summary.info.swarm_id)
+        != active_target(&full.config.server_id, &full.config.swarm_id)
+    {
+        return Err(changed("GetStack"));
+    }
+    Ok((summary, full))
+}
 pub async fn get_deployment(
     client: &CoreClient,
     input: DetailInput,
 ) -> Result<DeploymentDetail, AppError> {
+    let (summary, _) = resolve_deployment(client, input).await?;
+    Ok(DeploymentDetail {
+        summary: deployment_summary(summary),
+    })
+}
+
+pub(crate) async fn resolve_deployment(
+    client: &CoreClient,
+    input: DetailInput,
+) -> Result<(DeploymentListItem, Deployment), AppError> {
     let selector = input.validate("GetDeployment")?;
     let summary = resolve(
         client,
@@ -561,7 +581,5 @@ pub async fn get_deployment(
     {
         return Err(changed("GetDeployment"));
     }
-    Ok(DeploymentDetail {
-        summary: deployment_summary(summary),
-    })
+    Ok((summary, full))
 }

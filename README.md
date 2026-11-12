@@ -14,6 +14,8 @@ It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
 exactly with optional features disabled. Fourteen read-only tools list and inspect
 Servers, Stacks, and Deployments, summarize fleet health, inspect alerts/update
 history, read bounded logs, and diagnose a stack in one call.
+Optional operate-enabled tools deploy one existing workload and return its Core
+update receipt. See [workload operations](docs/operations.md).
 
 ## Fresh-checkout demo (synthetic Core)
 
@@ -118,7 +120,7 @@ The process reads two independent optional grants at startup:
 
 | Variable | Default | Enables |
 | --- | --- | --- |
-| `KOMODO_ALLOW_OPERATE` | `false` | Workload execution tools as they become available |
+| `KOMODO_ALLOW_OPERATE` | `false` | Single-workload deployment tools |
 | `KOMODO_ALLOW_CONFIGURATION_EDIT` | `false` | Configuration-edit tools as they become available |
 
 Each value must be exactly `true` or `false`. An unset variable means `false`;
@@ -134,9 +136,8 @@ Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
 All fourteen existing read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
-controls which resources and history that identity can read. These grants do not
-add production mutation tools by themselves; configuration editing belongs to a
-later milestone.
+controls which resources and history that identity can read. Configuration editing
+belongs to a later milestone; its grant currently exposes no production tools.
 
 Use an enabled non-admin Core identity with `Read` on the resources being
 inspected. Workload operations require Core `Execute` on the selected Stack or
@@ -183,8 +184,9 @@ RUST_LOG=komodo_mcp=debug,rmcp=warn ./target/release/komodo-mcp
 | `get_deployment` | Inspect one Deployment by a stable identity |
 
 Each tool advertises a JSON input schema, output schema, and read-only,
-idempotent, non-destructive annotations through MCP `tools/list`. No tool issues
-Core write or execute requests. Discovery pagination is handled by rmcp and is
+idempotent, non-destructive annotations through MCP `tools/list`. Inventory and
+diagnostic tools issue only Core reads. Optional deployment tools carry mutation
+and non-idempotency annotations. Discovery pagination is handled by rmcp and is
 separate from the inventory page fields below.
 
 List input is an object with only these optional integer fields:
@@ -359,9 +361,11 @@ transport in an `Arc`; cloned handles retain the connection pool. Its generic
 and safe error conversion. Log and incident-history reads enforce a body limit
 before typed decoding
 using the SDK's wire contract and the same authenticated connection pool;
-other reads use the SDK transport. `detect_version` validates and retains the observed
+other reads use the SDK transport. Typed executions use this same pool with local
+capability enforcement, a body cap and no transport retries. Operation target reads
+also use the bounded adapter. `detect_version` validates and retains the observed
 SemVer response. The executable shares this client and version through
-`KomodoServer`; every tool uses official typed requests through `read`.
+`KomodoServer`; every tool uses official typed Core requests.
 
 `AppError` contains only application-owned messages, a stable `kind`, the
 operation, optional HTTP status, correction metadata, and up to five visible
@@ -380,10 +384,13 @@ operation, optional HTTP status, correction metadata, and up to five visible
 | `unreachable` | Connection, DNS, or TLS connection failure |
 | `upstream` | Other unexpected HTTP or upstream failure |
 | `invalid_response` | Malformed/incompatible data, invalid resource identity, or a resource changed between reads; retry inspection |
+| `capability_disabled` | A direct operation API call lacks the local operate grant; no Core request |
+| `unsupported_target` | Template, unassigned workload or unsupported scope; no execution |
 
-Tools return `error.into_tool_result()` for argument and execution failures.
+Tools return `error.into_tool_result()` for argument, preflight and read failures.
 This produces rmcp's `isError: true` result with safe text and structured error
-metadata. Dispatch/protocol errors remain SDK protocol errors. Do not report raw
+metadata. Submission uncertainty and later execution/observation outcomes stay in
+the operation receipt. Dispatch/protocol errors remain SDK protocol errors. Do not report raw
 SDK errors or response bodies. Narrow signatures recognize Core 2.3.2's resource
 permission helper and missing-resource helper for supported ID-based detail
 reads before discarding upstream text. Unrelated HTTP 500 responses and proxy

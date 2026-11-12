@@ -447,12 +447,21 @@ async fn production_keeps_all_reads_and_recovery_history_for_every_policy() {
                 .unwrap()
                 .unwrap()
                 .tools;
-            assert_eq!(tools.len(), 14);
+            assert_eq!(tools.len(), 14 + 2 * usize::from(operate));
             for tool in tools {
-                assert_eq!(tool.annotations.unwrap().read_only_hint, Some(true));
+                let mutation = matches!(tool.name.as_ref(), "deploy_stack" | "deploy_deployment");
+                assert_eq!(tool.annotations.unwrap().read_only_hint, Some(!mutation));
             }
             for name in ["deploy_stack", "edit_stack", "unknown_mutation"] {
-                assert!(call(&session, name).await.is_err());
+                let result = call(&session, name).await;
+                if operate && name == "deploy_stack" {
+                    assert_eq!(
+                        result.unwrap().structured_content.unwrap()["kind"],
+                        "invalid_arguments"
+                    );
+                } else {
+                    assert!(result.is_err());
+                }
             }
             assert_eq!(core.requests().len(), 1);
             let result = timeout(
