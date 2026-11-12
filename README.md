@@ -304,7 +304,9 @@ failed-stage evidence without raw configuration or unrestricted logs. See
 
 `stack_diagnose` combines inventory, service state, history, alerts and a bounded
 log excerpt. It returns `healthy`, `unhealthy`, or `inconclusive`, with supporting
-IDs and explicit source gaps. See [diagnosis bounds and evidence](docs/diagnostics.md#stack-diagnosis).
+IDs and explicit source gaps. See [diagnosis bounds and evidence](docs/diagnostics.md#stack-diagnosis). The
+[incident benchmark](benchmarks/README.md#incident-triage-10)
+compares the full workflow against a pinned reference while retaining inventory.
 
 ## Client and error foundation
 

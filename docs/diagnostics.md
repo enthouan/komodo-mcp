@@ -160,4 +160,8 @@ truncated as needed. MCP text content duplicates the same report; framing adds
 bytes. Independent observations are not an atomic snapshot, and correlated
 history/logs are evidence rather than proof of causality. The shared incident
 fixtures simulate Read access without running Core, Docker or its authorization
-engine; the full incident workflow and benchmark acceptance remain in #10.
+engine. The full stdio workflow starts at fleet health and independently follows
+the diagnosis's update, alert and service-log evidence. The
+[benchmark harness](../benchmarks/README.md) retains inventory and compares
+concurrent incident workflows as fleet size grows, with source/executable
+identities and provisional measurements recorded separately from validation.

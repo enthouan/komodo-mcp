@@ -25,6 +25,10 @@ New changes go under `Unreleased` until the next release is prepared.
 - Add one-call stack diagnosis with current health outcomes, affected services,
   linked evidence and source gaps, plus bounded reads, wait and serialized output.
   ([#9](https://github.com/enthouan/komodo-mcp/issues/9))
+- Verify fleet-to-stack diagnosis and independent evidence through production
+  stdio, and extend the retained inventory benchmark with concurrent incident
+  workflows and fleet growth against the pinned reference.
+  ([#10](https://github.com/enthouan/komodo-mcp/issues/10))
 
 ## v0.1.0
 

@@ -31,6 +31,12 @@ jobs:
           --host-note "GitHub-hosted Ubuntu runner; VM/shared host; frequency and background load uncontrolled"
       - name: Validate required evidence
         run: python3 benchmarks/bench.py validate target/benchmark/result.json
+      - name: Compare concurrent incident triage and growing fleets
+        run: |
+          python3 benchmarks/bench.py incident --fixture-size 7 --page-size 3 --concurrency 2 --warmup 1 --samples 2 --repetitions 2 --output target/benchmark/incident-smoke.json --host-note "GitHub-hosted Ubuntu runner; VM/shared host; background load uncontrolled"
+          python3 benchmarks/bench.py incident --fixture-size 31 --page-size 7 --concurrency 2 --warmup 0 --samples 2 --repetitions 1 --output target/benchmark/incident-fleet.json --host-note "GitHub-hosted Ubuntu runner; VM/shared host; background load uncontrolled"
+          python3 benchmarks/bench.py validate target/benchmark/incident-smoke.json
+          python3 benchmarks/bench.py validate target/benchmark/incident-fleet.json
       - uses: actions/upload-artifact@v7
         if: always()
         with:

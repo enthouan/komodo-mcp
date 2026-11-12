@@ -77,6 +77,7 @@ class Core:
                 with core.changed:
                     context = dict(core.context)
                     core.active += 1
+                    concurrency_at_entry = core.active
                     core.changed.notify_all()
                 operation, params, status = self.command + " " + self.path, {}, 400
                 body = encoded({"error": "unsupported fixture request"})
@@ -102,12 +103,9 @@ class Core:
                         if (self.headers.get("x-api-key") != KEY
                                 or self.headers.get("x-api-secret") != SECRET):
                             status, body = 401, encoded({"error": "fixture authentication rejected"})
-                        elif operation == "GetVersion" and params == {}:
-                            status, body = 200, encoded({"version": "2.3.2"})
-                        elif operation == "ListStacks":
-                            status, body = 200, encoded(core.list_stacks(params))
                         else:
-                            status = 403  # Including every write/execute operation.
+                            status, payload = core.read(operation, params)
+                            body = encoded(payload)
                     if core.delay_ms:
                         time.sleep(core.delay_ms / 1000)
                     self.send_response(status)
@@ -127,6 +125,7 @@ class Core:
                         core.events.append({**context, "operation": operation,
                                             "route": self.path, "params": params,
                                             "status": status, "response_body_bytes": len(body),
+                                            "concurrency_at_entry": concurrency_at_entry,
                                             "service_ms": (time.perf_counter_ns() - start) / 1e6,
                                             "activity": "background_health" if operation in
                                             ("GetVersion", "GET /version") and context["phase"]
@@ -140,7 +139,18 @@ class Core:
         self.address = f"http://127.0.0.1:{self.http.server_port}"
         self.thread = threading.Thread(target=self.serve, daemon=True)
 
+    def read(self, operation, params):
+        """Override only to add explicitly allowlisted read-only fixture methods."""
+        if operation == "GetVersion" and params == {}:
+            return 200, {"version": "2.3.2"}
+        if operation == "ListStacks":
+            return 200, self.list_stacks(params)
+        return 403, {"error": "unsupported fixture request"}
+
     def list_stacks(self, params):
+        return self.list_resources(self.items, params)
+
+    def list_resources(self, resources, params):
         if set(params) - {"query", "page", "limit", "sort_by", "sort_desc"}:
             raise ValueError("unsupported ListStacks params")
         query = params.get("query", {})
@@ -154,7 +164,7 @@ class Core:
         if not all(isinstance(v, list) and all(isinstance(x, str) for x in v)
                    for v in (names, terms, tags)):
             raise ValueError("filters must be string arrays")
-        items = [x for x in self.items if
+        items = [x for x in resources if
                  (not names or any((x["id"].lower() == n.lower() if
                                    re.fullmatch(r"[0-9a-fA-F]{24}", n) else x["name"] == n)
                                   for n in names))

@@ -1,4 +1,4 @@
-# Inventory benchmark
+# Inventory and incident benchmarks
 
 This sequential, stdio benchmark compares the Rust release executable with
 [MP-Tool/komodo-mcp-server 1.5.0](https://github.com/MP-Tool/komodo-mcp-server/tree/489f7e04b16019480f84e1d2fff8b872b880e335),
@@ -7,6 +7,106 @@ stack inventory against a loopback Core wire fixture. Neither server is patched.
 Initial measurements and any performance targets are **provisional** until
 repeated runs on controlled hosts establish variance. There are no latency/RSS
 pass/fail thresholds.
+
+The original `run` inventory workload and `komodo-inventory-benchmark/v1` report
+remain available. The additive `incident` workload measures broken-stack triage,
+including concurrent callers and fleet growth, using the same prepared artifacts,
+stdio client, HTTP instrumentation, reference pin and RSS sampler boundaries.
+
+## Incident triage (#10)
+
+Prepare once with the command below under **Reproduce**, then run:
+
+```sh
+python3 benchmarks/bench.py incident --fixture-size 7 --page-size 3 \
+  --concurrency 2 --warmup 2 --samples 10 --repetitions 2 \
+  --output target/benchmark/incident.json \
+  --host-note "Local desktop; shared workload; power policy uncontrolled"
+python3 benchmarks/bench.py validate target/benchmark/incident.json
+python3 benchmarks/bench.py summarize target/benchmark/incident.json
+```
+
+The seed is shared with the Rust reader and stdio integration tests:
+[`incident.json`](../tests/fixtures/core-2.3.2/incident.json) defines the stable
+IDs and expected evidence, and
+[`incident-wire.json`](../tests/fixtures/core-2.3.2/incident-wire.json) contains
+Core 2.3.2 wire responses. `alpha-web` has unhealthy service `web` after failed
+update `100000000000000000000001`, stage `Deploy Stack`; its log contains
+`web | ERROR: database migration missing: relation orders does not exist`.
+The seed also includes healthy workloads, a server returning HTTP 503, and an
+unknown server. The synthetic credential sentinel is labeled `TOKEN=` and is
+excluded from recorded projected evidence. Generated resources are healthy and
+use deterministic distinct IDs; the seeded incident remains unchanged.
+
+Each Rust caller exhausts **all `fleet_health` pages**, selects the unhealthy
+stack, calls `stack_diagnose`, follows the returned update ID with `get_update`,
+and independently requests `get_stack_logs` filtered to the affected service
+with `tail: 40` and `max_bytes: 4096`. It verifies the complete stack count and
+digest of every discovered stack's ID/name/state,
+stable stack ID/name, service, failed update ID/stage and error log excerpt.
+
+The unmodified pinned reference has no fleet health, stack diagnosis, alerts or
+stack service-state tools. Its comparable workflow exhausts `komodo_stack_list`,
+selects the unhealthy stack, reads `komodo_stack_info` to find its server/project,
+lists that server's containers, and inspects each target container to identify
+the unhealthy Compose service from Docker health and labels. It then follows
+`komodo_update_list` → `komodo_update_info` and retrieves that container's bounded
+tail with `komodo_container_logs`. Info/inspect/log calls use `inline_full: true`
+so all evidence travels through the measured stdio responses. Both workflows
+must produce the same independently defined projection. Rust's additional server
+metrics, alerts and diagnosis are **outside the common equivalence claim**;
+reference full configuration/update payloads still count toward its actual wire
+bytes. These are equivalent seeded service/stage/log findings, with different
+tool capabilities and work performed.
+
+`--concurrency` (1..16, default 1) runs independently progressing logical
+workflows through one persistent initialized MCP process. Each measured group
+records wall time, individual caller times, summed **actual matched MCP response
+frame bytes/calls**, all observed Core calls and response-body bytes, operation
+counts, and peak observed simultaneous Core handlers. Core events are attributed
+to the **whole concurrent group**, because neither server propagates a caller ID
+to Core. No per-caller Core count is fabricated. Every caller must pass the
+oracle; one failed workflow cancels/drains its siblings and fails the run.
+
+Latency and RSS use separate process sessions. RSS runs the same concurrent
+workflow, recording idle RSS, raw timestamped observations and the sampled maximum
+from spawn through workload completion before shutdown. Summaries retain group
+and caller warm p50/p95, per-batch group distributions, response bytes, MCP/Core
+counts and RSS. Equality comparison and report writing occur outside the measured
+group/caller intervals. There are no cold-start or direct-Core incident samples;
+those remain part of the retained inventory workload.
+
+`--fixture-size` accepts 2..1000 stacks, with that count plus two Servers;
+`--page-size` accepts 1..100. Larger fleets exercise additional discovery pages
+and bounded per-resource health reads while preserving the seed. For example:
+
+```sh
+for size in 7 31 125; do
+  for callers in 1 4; do
+    python3 benchmarks/bench.py incident --fixture-size "$size" --page-size 25 \
+      --concurrency "$callers" --warmup 2 --samples 10 --repetitions 2 \
+      --output "target/benchmark/incident-${size}-${callers}.json.gz" \
+      --host-note "Describe the same hardware, power policy and load for every run"
+  done
+done
+```
+
+Reports use `komodo-incident-benchmark/v1` and retain artifact/runtime/source
+hashes, host/control definitions, fixture/oracle hashes and full expected
+projection, raw group/caller samples, all HTTP events (including startup,
+shutdown, memory and background health), raw RSS and recomputed summaries.
+`validate` rejects incomplete comparisons, wrong oracle findings, missing callers,
+incorrect aggregate byte/call counts, unexpected fixture failures, mutations,
+invalid RSS and inconsistent summaries. The seeded server's 503 reads are expected
+and retained. Real prepared-artifact tests run both stdio adapters with two
+concurrent callers and 7/31-stack fleets. CI retains the inventory smoke and adds
+7/31-stack incident comparisons, report validation and JSON artifact upload.
+
+These are synthetic loopback wire fixtures with simulated Read permissions;
+they do not run Core's database, authorization engine, Docker or an actual
+rollout. Fleet-growth and concurrent smoke measurements establish repeatability
+and correctness. Small shared-host samples do not establish a stable performance
+ranking or production scaling limits.
 
 ## Reproduce
 
@@ -144,8 +244,8 @@ not merged when this harness was implemented; this driver uses the existing wire
 fixture foundation with Python phase instrumentation and the pinned reference's
 additional HTTP route format. The benchmark's separate CI workflow avoids a
 merge-order dependency on the installation demonstration.
-The versioned workload/result format can support #10/#49 later; incident,
-concurrent-caller and broader reference-matrix workloads are outside this change.
+The additive incident workload above extends this foundation for #10. A broader
+reference/version matrix remains separate work.
 
 ## Measurement boundaries
 
@@ -172,9 +272,11 @@ Komodo credentials, proxies, Node injection options and unrelated configuration.
 Both log at `warn`; stderr is drained concurrently, counted, bounded and redacted.
 
 The reference has its full tool registry, dynamic-resource infrastructure,
-scrubbing and 30-second health monitor enabled. Rust has its six read tools and
-authenticated startup version request. The reference pings public `/version`
-and then authenticated `GetVersion` at startup. Rust probes full Core pages to
+scrubbing and 30-second health monitor enabled. Rust makes an authenticated
+startup version request. The reference pings public `/version`
+and then authenticated `GetVersion` at startup. The original archived Rust
+baseline had six inventory tools; current runs initialize the current registry.
+Rust probes full Core pages to
 find continuation; the reference fetches **all stacks again for every MCP page**
 and paginates locally. Rust returns richer stack summaries and JSON text;
 the reference returns compact summaries and rendered text. Equivalent projected
@@ -229,3 +331,10 @@ Sources for the boundaries and adapters:
   [pagination](https://github.com/MP-Tool/komodo-mcp-server/blob/489f7e04b16019480f84e1d2fff8b872b880e335/src/utils/pagination.ts),
   [startup client](https://github.com/MP-Tool/komodo-mcp-server/blob/489f7e04b16019480f84e1d2fff8b872b880e335/src/client.ts)
   and [dependency lock](https://github.com/MP-Tool/komodo-mcp-server/blob/489f7e04b16019480f84e1d2fff8b872b880e335/package-lock.json).
+
+The [finalized incident/fleet-growth matrix](results/incident-final-README.md)
+records fresh 7/31/125-stack fleets with one and four concurrent callers, complete
+raw reports, and a correctness capture of the retained inventory workload.
+The [historical matrix](results/incident-README.md) preserves its original measured
+source and archives. Both sets record exact source/executable identities and the
+reference's narrower functionality; timings are provisional.
