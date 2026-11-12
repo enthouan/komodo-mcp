@@ -11,8 +11,8 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.8.0 SDK](https://docs.rs/rmcp/3.8.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Six read-only tools list and inspect
-Servers, Stacks, and Deployments.
+exactly with optional features disabled. Seven read-only tools list and inspect
+Servers, Stacks, and Deployments and summarize fleet health.
 
 ## Fresh-checkout demo (synthetic Core)
 
@@ -37,13 +37,13 @@ of `./target/release/komodo-mcp`.
 
 The last command starts an ephemeral loopback mock, launches the **compiled
 production executable**, initializes an official rmcp stdio client using MCP
-`2025-11-25`, discovers the six tools, resolves `fixture-server` by exact name,
+`2025-11-25`, discovers the read-only tools, resolves `fixture-server` by exact name,
 and follows `list_stacks` continuation with `page_size: 2`. It selects only
 `target.kind == "server"` and `target.id == get_server(...).id` from MCP responses.
 Representative output (Cargo progress and the Core read trace omitted):
 
 ```text
-Initialized MCP 2025-11-25; discovered 6 tools; called get_server and list_stacks over stdio.
+Initialized MCP 2025-11-25; discovered read-only tools; called get_server and list_stacks over stdio.
 Stacks on fixture-server (000000000000000000000001):
   alpha-web (000000000000000000000002) — running
   gamma-jobs (000000000000000000000005) — stopped
@@ -275,6 +275,23 @@ Server, Stack, or Deployment. Lists contain only visible resources and may be
 empty. Details preserve explicit authentication/permission errors, while absent
 or permission-filtered targets return safe `not_found` guidance.
 
+## Fleet health
+
+Use `fleet_health` to choose a workload for investigation by stable ID. The
+summary combines server state and CPU/memory/disk utilization with Stack
+service and Deployment observations. Healthy, unhealthy, unavailable, and
+unknown observations stay distinct; a failed source retains other results.
+
+These are `tools/call` parameters:
+
+```json
+{"name":"fleet_health","arguments":{"page":0,"page_size":30}}
+```
+
+Follow `next_page` with the same size. Resource-specific gaps identify checks
+that failed or could not start. See [bounds and observation semantics](docs/diagnostics.md)
+and the [shared incident fixture](tests/fixtures/core-2.3.2/INCIDENT.md).
+
 ## Client and error foundation
 
 `CoreClient` in `src/client.rs` wraps one SDK instance and one configured reqwest
@@ -356,7 +373,7 @@ to check its MCP application version. Release notes live in [CHANGELOG.md](CHANG
 maintainers use [the release skill](.agents/skills/komodo-mcp-release/SKILL.md)
 for validation, publication, and recovery.
 The subprocess smoke test launches Cargo's compiled binary and explicitly uses
-MCP **2025-11-25**: configured startup, initialization, six-tool discovery, list
+MCP **2025-11-25**: configured startup, initialization, seven-tool discovery, list
 and ID/name detail calls in every family, inventory continuation to an exactly
 full final page, actionable failures, recovery, and stdin EOF shutdown. It also
 checks the SDK's unknown-tool protocol error. Both output streams are captured

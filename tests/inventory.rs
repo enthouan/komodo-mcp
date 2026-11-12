@@ -33,7 +33,7 @@ async fn production_discovery_and_all_six_tools_use_allowlisted_projections() ->
     let mut session = McpSession::start(&core, TEST_TIMEOUT).await?;
     let discovery = session.request("tools/list", json!({})).await?;
     let tools = discovery["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 6);
+    assert_eq!(tools.len(), 7);
     assert!(discovery.get("nextCursor").is_none());
     for family in FAMILIES {
         for (tool, detail) in [(family.list_tool(), false), (family.get_tool(), true)] {

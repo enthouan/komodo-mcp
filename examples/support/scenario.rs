@@ -408,7 +408,8 @@ async fn solve(
                 "get_stack",
                 "list_stacks",
                 "get_deployment",
-                "list_deployments"
+                "list_deployments",
+                "fleet_health"
             ]),
         "missing expected inventory tools"
     );
@@ -576,7 +577,7 @@ pub async fn demonstrate(executable: &Path, name: &str) -> Result<Answer> {
     }
     let answer = report.result?;
     println!(
-        "Initialized MCP 2025-11-25; discovered 6 tools; called get_server and list_stacks over stdio."
+        "Initialized MCP 2025-11-25; discovered read-only tools; called get_server and list_stacks over stdio."
     );
     println!(
         "Core reads: {}",
