@@ -219,8 +219,9 @@ async fn list_tools(process: &mut Process, id: &str) -> Result<()> {
                 let expected: std::collections::BTreeSet<_> = FAMILIES
                     .iter()
                     .flat_map(|family| [family.list_tool(), family.get_tool()])
+                    .chain(["fleet_health"])
                     .collect();
-                ensure!(names == expected, "expected all six inventory tools");
+                ensure!(names == expected, "expected all seven read-only tools");
                 for tool in &result.tools {
                     ensure!(tool.output_schema.is_some(), "missing output schema");
                     let metadata = serde_json::to_value(tool)?;

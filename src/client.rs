@@ -96,6 +96,9 @@ impl CoreClient {
             "GetStack" => "GetStack",
             "ListDeployments" => "ListDeployments",
             "GetDeployment" => "GetDeployment",
+            "GetServerState" => "GetServerState",
+            "GetSystemStats" => "GetSystemStats",
+            "ListAllStackServices" => "ListAllStackServices",
             _ => "read",
         };
         match tokio::time::timeout(self.0.policy.operation_timeout, self.0.sdk.read(request)).await

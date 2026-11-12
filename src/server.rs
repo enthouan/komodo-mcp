@@ -70,6 +70,15 @@ impl KomodoServer {
         };
         inventory::tool_result(&self.client, result)
     }
+
+    #[tool(description = "Inspect one bounded page of fleet health, utilization and workload services. Keep partial results and resource-specific gaps when a source fails; continue with next_page.", input_schema = schema_for_input::<crate::health::FleetHealthInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::health::FleetHealth>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn fleet_health(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "fleet_health") {
+            Ok(input) => crate::health::fleet_health(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
 }
 
 #[tool_handler]

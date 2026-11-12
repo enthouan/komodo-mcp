@@ -99,3 +99,20 @@ missing-resource shape; `restricted-server` uses `permission.json`. Rejected
 credential headers return the tagged HTTP 401 authentication fixture. No real
 Core or authorization engine is run. The separate sequence-based harness remains
 useful for exact-request, adversarial response, and race tests.
+
+## Shared incident contract (issues #6 and #10)
+
+[`incident.json`](incident.json) and [its scenario description](INCIDENT.md)
+define stable IDs for a broken stack, affected service, failed rollout stage,
+alert, and expected log excerpt. Fleet-health tests derive their mixed healthy,
+unhealthy, unavailable, and unknown resources from this contract. Later readers
+and the #10 stdio/benchmark flow reuse it; their acceptance work remains separate.
+The contract and generated health observations are synthetic Core 2.3.2 wire
+fixtures and do not exercise Core's authorization engine or a real rollout.
+
+The tagged [server read requests](https://github.com/moghtech/komodo/blob/v2.3.2/client/core/rs/src/api/read/server.rs)
+and [stack service resolver](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/read/stack.rs)
+confirm cached Server state/statistics and bounded service pages. The resolver
+passes stack selectors through the resource query's `names` filter, whose
+ObjectId split accepts stable IDs as well as names. Service reads require Read
+access. These sources were checked against the installed 2.3.2 SDK definitions.
