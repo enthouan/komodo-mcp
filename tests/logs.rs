@@ -495,11 +495,41 @@ async fn stdio_redacts_repeatedly_encoded_json_and_masks_unclosed_values() {
                 rows.push(original);
                 expected.push(redacted);
             }
+            for label in ["password", "token", "authorization"] {
+                let mut original = format!("{{\"{label}\"\r\n\t:\n \"multiline-private-{label}\",\"z_after\":\"visible é💥\"}}");
+                let mut redacted = format!("{{\"{label}\"\r\n\t:\n \"[redacted]\",\"z_after\":\"visible é💥\"}}");
+                for encoding in 0..depth {
+                    original = serde_json::to_string(&original).unwrap();
+                    redacted = serde_json::to_string(&redacted).unwrap();
+                    if encoding == 0 && depth % 2 == 0 {
+                        original = original.replace("\\r", "\\u000d").replace("\\n", "\\u000a").replace("\\t", "\\u0009");
+                        redacted = redacted.replace("\\r", "\\u000d").replace("\\n", "\\u000a").replace("\\t", "\\u0009");
+                    }
+                }
+                rows.push(original);
+                expected.push(redacted);
+            }
         }
         for depth in 0..=3 {
             let quote = format!("{}\"", "\\".repeat((1 << depth) - 1));
             rows.push(format!("{{{quote}authorization{quote}:{quote}Basic unclosed-marker é💥"));
             expected.push(format!("{{{quote}authorization{quote}:{quote}[redacted]"));
+        }
+        for depth in 0..=4 {
+            for (source, first) in [
+                (r#"authorization="Digest username="victim", response="secret"""#, "Digest username="),
+                (r#"password="prefix="private-password"""#, "prefix="),
+                (r#"authorization=""private-empty"""#, ""),
+                (r#"{"authorization":"Digest username=", "response":"private-response""}"#, "Digest username="),
+            ] {
+                let mut original = source.to_owned();
+                for _ in 0..depth { original = serde_json::to_string(&original).unwrap(); }
+                let value_start = if first.is_empty() {
+                    original.find("private-empty").unwrap() - (1 << depth)
+                } else { original.find(first).unwrap() };
+                expected.push(format!("{}[redacted]", &original[..value_start]));
+                rows.push(original);
+            }
         }
         rows.push(r#"{\"password\":"inconsistent-marker" remainder-marker"#.into());
         expected.push(r#"{\"password\":"[redacted]"#.into());
@@ -507,7 +537,9 @@ async fn stdio_redacts_repeatedly_encoded_json_and_masks_unclosed_values() {
         expected.push(r#"{\"token\":[redacted]"#.into());
         let stdout = format!("{}\r\n", rows.join("\r\n"));
         let expected = format!("{}\r\n", expected.join("\r\n"));
-        let core = Core::log(&stdout, "").await;
+        let stderr = "{\"password\":\n\"stderr-private-marker\"}\r\n";
+        let expected_stderr = "{\"password\":\n\"[redacted]\"}\r\n";
+        let core = Core::log(&stdout, stderr).await;
         let mut child = Command::new(env!("CARGO_BIN_EXE_komodo-mcp"))
             .env_clear()
             .env("KOMODO_ADDRESS", &core.address)
@@ -522,15 +554,25 @@ async fn stdio_redacts_repeatedly_encoded_json_and_masks_unclosed_values() {
         let value = serde_json::to_value(result).unwrap();
         let data = &value["structuredContent"];
         assert_eq!(data["stdout"], expected);
-        assert_eq!(data["stderr"], "");
-        assert_eq!(data["returned_bytes"], expected.len());
-        assert_eq!(data["returned_lines"], rows.len());
+        assert_eq!(data["stderr"], expected_stderr);
+        assert_eq!(data["returned_bytes"], expected.len() + expected_stderr.len());
+        assert_eq!(data["returned_lines"], expected.split_inclusive('\n').count() + expected_stderr.split_inclusive('\n').count());
         assert_eq!(data["truncation"]["bytes"], false);
+        let text: Value = serde_json::from_str(value["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(data, &text);
+        let result = session.call_tool(CallToolRequestParams::new("get_stack_logs").with_arguments(json!({"id":incident()["stack"]["id"],"tail":1,"max_bytes":65536}).as_object().unwrap().clone())).await.unwrap();
+        let value = serde_json::to_value(result).unwrap();
+        let data = &value["structuredContent"];
+        assert_eq!(data["stdout"], "");
+        assert_eq!(data["stderr"], "\"[redacted]\"}\r\n");
+        assert_eq!(data["returned_lines"], 1);
+        assert_eq!(data["returned_bytes"], data["stderr"].as_str().unwrap().len());
+        assert_eq!(data["truncation"]["lines"], true);
         let text: Value = serde_json::from_str(value["content"][0]["text"].as_str().unwrap()).unwrap();
         assert_eq!(data, &text);
         session.close().await.unwrap();
         assert!(child.wait().await.unwrap().success());
-        assert_eq!(core.requests().len(), 2);
+        assert_eq!(core.requests().len(), 3, "one startup read and two bounded tails");
     }).await.unwrap();
 }
 

@@ -43,8 +43,13 @@ All log tools accept `tail` (default 100, maximum 500), `max_bytes` (default
 limits apply **jointly across stdout and stderr**. The tools retain the tail in
 stdout-then-stderr order; Core supplies no ordering between streams. Configured
 API credentials, common sensitive assignments, complete Authorization values,
-and Bearer tokens are redacted before UTF-8 clipping. Literal and nested
-JSON assignments retain their escaped delimiters. This cannot identify every unlabeled application secret.
+and Bearer tokens are redacted across each received stream before local tail
+selection and UTF-8 clipping. Literal and nested JSON assignments retain their
+escaped delimiters, including when a sensitive key and its value span lines.
+Sensitive JSON arrays and objects are masked as complete values. Ambiguous
+quoted assignments conservatively mask the remainder of their physical line.
+Only context returned by Core is available; this cannot identify every
+unlabeled application secret.
 Results include returned line/byte counts and flags for local line/byte clipping
 and possible upstream history beyond a full tail. Core supplies no complete-log
 counts. A failed log command produces a safe error without a fallback request.

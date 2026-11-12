@@ -269,12 +269,17 @@ fn project(
     if !log.success {
         return Err(AppError::new(ErrorKind::Upstream, operation, None));
     }
+    // Use all context Core supplied before taking the local tail: a quoted
+    // sensitive key can be on an earlier physical line than its value. Sanitize
+    // streams independently without another request or decoding JSON escapes.
+    let safe_stdout = redact_log(client, &log.stdout);
+    let safe_stderr = redact_log(client, &log.stderr);
     // Core returns separate streams without a cross-stream ordering. Keep their
     // order and take the joint tail in stdout-then-stderr order, without claiming
     // timestamp ordering. The queue itself never holds more than `tail` slices.
     let mut selected = VecDeque::new();
     let mut count = 0usize;
-    for (is_stderr, text) in [(false, log.stdout.as_str()), (true, log.stderr.as_str())] {
+    for (is_stderr, text) in [(false, safe_stdout.as_str()), (true, safe_stderr.as_str())] {
         for line in text.split_inclusive('\n') {
             count = count.saturating_add(1);
             if selected.len() == tail as usize {
@@ -293,15 +298,14 @@ fn project(
             byte_truncated = true;
             break;
         }
-        // Redact whole retained lines before clipping so clipping cannot reveal
-        // a credential prefix that was cut before the full secret was matched.
-        let safe = redact_log(client, line);
-        let mut start = safe.len().saturating_sub(remaining);
-        while !safe.is_char_boundary(start) {
+        // Context was redacted before line selection. Clip only at a UTF-8
+        // boundary so neither a local tail nor a byte cut can expose a secret.
+        let mut start = line.len().saturating_sub(remaining);
+        while !line.is_char_boundary(start) {
             start += 1;
         }
         byte_truncated |= start != 0;
-        let kept = &safe[start..];
+        let kept = &line[start..];
         if !kept.is_empty() {
             remaining -= kept.len();
             returned_lines += 1;
@@ -364,6 +368,10 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
     ];
     let mut result = String::new();
     let mut offset = 0;
+    // Bound complete-fragment validation across this received stream. Exhausted
+    // ambiguity checks use the same conservative physical-line masking.
+    let mut json_checks = 128usize;
+    let mut checked_json = None;
     while offset < configured.len() {
         let rest = &lower[offset..];
         let previous = configured[..offset].bytes().next_back();
@@ -397,22 +405,12 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
                     at = end;
                     quote
                 });
-                while configured.as_bytes().get(at).is_some_and(|b| {
-                    b.is_ascii_whitespace()
-                        && (label != &"authorization" || matches!(b, b' ' | b'\t'))
-                }) {
-                    at += 1;
-                }
+                at = skip_whitespace(configured, at, key_quote, label == &"authorization");
                 if !matches!(configured.as_bytes().get(at), Some(b'=' | b':')) {
                     continue;
                 }
                 at += 1;
-                while configured.as_bytes().get(at).is_some_and(|b| {
-                    b.is_ascii_whitespace()
-                        && (label != &"authorization" || matches!(b, b' ' | b'\t'))
-                }) {
-                    at += 1;
-                }
+                at = skip_whitespace(configured, at, key_quote, label == &"authorization");
                 let quote = encoded_quote(configured, at).map(|(quote, end)| {
                     at = end;
                     quote
@@ -424,26 +422,68 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
                 let inconsistent_quotes = malformed_quote
                     || key_quote
                         .is_some_and(|key| quote.is_none_or(|value| key.escapes != value.escapes));
+                if quote.is_none() && matches!(configured.as_bytes().get(at), Some(b'{' | b'[')) {
+                    let context = Quote {
+                        character: b'"',
+                        escapes: key_quote.map_or(0, |q| q.escapes),
+                    };
+                    let end = container_end(configured, at, context)
+                        .filter(|end| valid_json_fragment(configured, at, *end, context))
+                        .unwrap_or(configured.len());
+                    assignment = Some((at, end, Some(context)));
+                    break;
+                }
                 // An unquoted Authorization header can contain whitespace,
                 // commas and quoted subfields (Basic, Digest, Negotiate, ...).
                 // Mask the entire line value, retaining its line terminator.
                 // Quoted values retain delimiters at their original JSON
                 // encoding depth. Inconsistent or missing closing quotes are
                 // masked through the physical line, never decoded into LF.
-                let end = if inconsistent_quotes || (label == &"authorization" && quote.is_none()) {
-                    line_end(configured, at)
-                } else {
-                    value_end(configured, at, quote)
-                };
+                let mut end =
+                    if inconsistent_quotes || (label == &"authorization" && quote.is_none()) {
+                        line_end(configured, at)
+                    } else {
+                        value_end(configured, at, quote)
+                    };
+                if let Some(quote) = quote
+                    && !quoted_end_clear(
+                        configured,
+                        offset,
+                        end,
+                        quote,
+                        key_quote,
+                        &mut json_checks,
+                        &mut checked_json,
+                    )
+                {
+                    end = line_end(configured, at);
+                }
                 if end > at {
-                    assignment = Some((at, end));
+                    assignment = Some((at, end, None));
                     break;
                 }
             }
         }
-        if let Some((start, end)) = assignment {
+        if let Some((start, end, structured)) = assignment {
             result.push_str(&configured[offset..start]);
-            result.push_str(client.redaction_marker());
+            if let Some(quote) = structured {
+                let mut marker =
+                    serde_json::to_string(client.redaction_marker()).expect("marker serializes");
+                for _ in 0..quote.escapes.saturating_add(1).trailing_zeros() {
+                    let encoded = serde_json::to_string(&marker).expect("marker serializes");
+                    marker = encoded[1..encoded.len() - 1].to_owned();
+                }
+                result.push_str(&marker);
+            } else {
+                result.push_str(client.redaction_marker());
+            }
+            // Structured values can span physical lines. Retain their line
+            // separators so local tail selection and line counts stay stable.
+            result.extend(
+                configured[start..end]
+                    .chars()
+                    .filter(|c| matches!(c, '\r' | '\n')),
+            );
             offset = end;
         } else {
             let character = configured[offset..]
@@ -479,34 +519,189 @@ fn encoded_quote(text: &str, start: usize) -> Option<(Quote, usize)> {
     Some((Quote { character, escapes }, at + 1))
 }
 
+fn skip_whitespace(text: &str, mut at: usize, key_quote: Option<Quote>, header: bool) -> usize {
+    let bytes = text.as_bytes();
+    loop {
+        if bytes.get(at).is_some_and(|b| {
+            b.is_ascii_whitespace() && (!header || key_quote.is_some() || matches!(b, b' ' | b'\t'))
+        }) {
+            at += 1;
+            continue;
+        }
+        // An encoded physical LF/CR/tab has half the quote delimiter's escape
+        // width: 1, 2, 4, ... backslashes at JSON encoding depths 1, 2, 3, ... .
+        // Advance over its original bytes; never turn \n escapes into new lines.
+        let Some(width) = key_quote.and_then(|quote| quote.escapes.checked_add(1)) else {
+            break;
+        };
+        if width < 2 {
+            break;
+        }
+        let end = at + bytes[at..].iter().take_while(|b| **b == b'\\').count();
+        if end - at != width / 2 {
+            break;
+        }
+        let escaped = &bytes[end..];
+        let length = if matches!(escaped.first(), Some(b'n' | b'r' | b't')) {
+            1
+        } else if escaped.get(..5).is_some_and(|value| {
+            [b"u0009", b"u000a", b"u000d", b"u0020"]
+                .iter()
+                .any(|space| value.eq_ignore_ascii_case(*space))
+        }) {
+            5
+        } else {
+            break;
+        };
+        at = end + length;
+    }
+    at
+}
+
 fn line_end(text: &str, start: usize) -> usize {
     text[start..]
         .find(['\r', '\n'])
         .map_or(text.len(), |end| start + end)
 }
 
+fn clear_trailer(text: &str, mut at: usize, mut context: Quote) -> bool {
+    let end = line_end(text, at);
+    loop {
+        at = skip_whitespace(&text[..end], at, Some(context), false);
+        if at == end {
+            return true;
+        }
+        if matches!(text.as_bytes()[at], b'}' | b']') {
+            at += 1;
+            continue;
+        }
+        if let Some((carrier, next)) = encoded_quote(text, at)
+            && carrier.character == b'"'
+            && carrier.escapes < context.escapes
+        {
+            at = next;
+            context = carrier;
+            continue;
+        }
+        return false;
+    }
+}
+
+fn quoted_end_clear(
+    text: &str,
+    label: usize,
+    end: usize,
+    quote: Quote,
+    key: Option<Quote>,
+    checks: &mut usize,
+    checked: &mut Option<(usize, usize, usize)>,
+) -> bool {
+    let Some((closer, after)) = encoded_quote(text, end) else {
+        return false;
+    };
+    if closer.character != quote.character || closer.escapes != quote.escapes {
+        return false;
+    }
+    if clear_trailer(text, after, quote) {
+        return true;
+    }
+    // A comma/field-like trailer can also be unescaped Digest parameters. Trust
+    // adjacent fields only inside a complete, syntactically valid JSON object,
+    // not merely because the next bytes resemble a key and colon.
+    if key.is_none_or(|key| key.character != b'"' || key.escapes != quote.escapes) {
+        return false;
+    }
+    if checked.is_some_and(|(start, close, depth)| {
+        start < label && after <= close && depth == quote.escapes
+    }) {
+        return true;
+    }
+    for (start, _) in text[..label].rmatch_indices('{').take(*checks) {
+        *checks -= 1;
+        if let Some(close) = container_end(text, start, quote)
+            && close >= after
+            && valid_json_fragment(text, start, close, quote)
+            && clear_trailer(text, close, quote)
+        {
+            *checked = Some((start, close, quote.escapes));
+            return true;
+        }
+    }
+    false
+}
+
+fn valid_json_fragment(text: &str, start: usize, end: usize, context: Quote) -> bool {
+    let mut source = text[start..end].to_owned();
+    for _ in 0..context.escapes.saturating_add(1).trailing_zeros() {
+        let Ok(decoded) = serde_json::from_str::<String>(&format!("\"{source}\"")) else {
+            return false;
+        };
+        source = decoded;
+    }
+    serde_json::from_str::<serde_json::Value>(&source).is_ok()
+}
+
+fn container_end(text: &str, start: usize, context: Quote) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut pending = vec![match bytes.get(start)? {
+        b'{' => b'}',
+        b'[' => b']',
+        _ => return None,
+    }];
+    let mut at = start + 1;
+    while at < bytes.len() {
+        if let Some((quote, after)) = encoded_quote(text, at)
+            && quote.character == b'"'
+            && quote.escapes == context.escapes
+        {
+            at = quoted_end(text, after, quote)?.checked_add(quote.escapes + 1)?;
+            continue;
+        }
+        match bytes[at] {
+            b'{' | b'[' => {
+                if pending.len() == 128 {
+                    return None;
+                }
+                pending.push(if bytes[at] == b'{' { b'}' } else { b']' });
+            }
+            b'}' | b']' => {
+                if pending.pop()? != bytes[at] {
+                    return None;
+                }
+                if pending.is_empty() {
+                    return Some(at + 1);
+                }
+            }
+            _ => (),
+        }
+        at += 1;
+    }
+    None
+}
+
+fn quoted_end(text: &str, start: usize, quote: Quote) -> Option<usize> {
+    let end = line_end(text, start);
+    let period = quote.escapes.checked_add(1)?.checked_mul(2)?;
+    let bytes = text.as_bytes();
+    let mut at = start;
+    while at < end {
+        let run_start = at;
+        while at < end && bytes[at] == b'\\' {
+            at += 1;
+        }
+        let run = at - run_start;
+        if at < end && bytes[at] == quote.character && run % period == quote.escapes {
+            return Some(at - quote.escapes);
+        }
+        at += usize::from(at < end);
+    }
+    None
+}
+
 fn value_end(text: &str, start: usize, quote: Option<Quote>) -> usize {
     let end = line_end(text, start);
     if let Some(quote) = quote {
-        let Some(period) = quote.escapes.checked_add(1).and_then(|n| n.checked_mul(2)) else {
-            return end;
-        };
-        let bytes = text.as_bytes();
-        let mut at = start;
-        while at < end {
-            let run_start = at;
-            while at < end && bytes[at] == b'\\' {
-                at += 1;
-            }
-            let run = at - run_start;
-            if at < end && bytes[at] == quote.character && run % period == quote.escapes {
-                // Any preceding complete escape pairs belong to the value;
-                // retain only the original closing delimiter's backslashes.
-                return at - quote.escapes;
-            }
-            at += usize::from(at < end);
-        }
-        return end;
+        return quoted_end(text, start, quote).unwrap_or(end);
     }
     let mut escaped = false;
     for (index, character) in text[start..end].char_indices() {
