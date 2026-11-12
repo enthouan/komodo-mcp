@@ -1,5 +1,6 @@
 #![allow(dead_code)] // Shared by integration binaries exercising different surfaces.
 
+pub mod incident;
 pub mod inventory;
 
 use std::{
@@ -309,6 +310,9 @@ async fn serve(stream: TcpStream, state: &Mutex<State>, changed: &Notify) {
                         | "GetServer"
                         | "GetStack"
                         | "GetDeployment"
+                        | "GetContainerLog"
+                        | "GetDeploymentLog"
+                        | "GetStackLog"
                 ),
                 "fixture rejects unexpected SDK request"
             );

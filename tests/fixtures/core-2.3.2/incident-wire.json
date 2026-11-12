@@ -1,0 +1,11 @@
+{
+  "log": {
+    "stage": "Get Stack Log",
+    "command": "incident-private-toml-marker",
+    "stdout": "web | ERROR: database migration missing: relation orders does not exist\nweb | TOKEN=incident-private-credential-marker\n",
+    "stderr": "",
+    "success": true,
+    "start_ts": 1735689605000,
+    "end_ts": 1735689606000
+  }
+}

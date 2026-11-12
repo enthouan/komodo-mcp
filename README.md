@@ -11,8 +11,8 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.8.0 SDK](https://docs.rs/rmcp/3.8.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Seven read-only tools list and inspect
-Servers, Stacks, and Deployments and summarize fleet health.
+exactly with optional features disabled. Ten read-only tools list and inspect
+Servers, Stacks, and Deployments, summarize fleet health, and read bounded logs.
 
 ## Fresh-checkout demo (synthetic Core)
 
@@ -292,12 +292,18 @@ Follow `next_page` with the same size. Resource-specific gaps identify checks
 that failed or could not start. See [bounds and observation semantics](docs/diagnostics.md)
 and the [shared incident fixture](tests/fixtures/core-2.3.2/INCIDENT.md).
 
+`get_container_logs`, `get_deployment_logs`, and `get_stack_logs` return bounded,
+redacted log tails. Stack logs accept exact service filters; pass one service
+for Swarm stacks. See [log limits, truncation, and redaction](docs/diagnostics.md#workload-logs).
+
 ## Client and error foundation
 
 `CoreClient` in `src/client.rs` wraps one SDK instance and one configured reqwest
 transport in an `Arc`; cloned handles retain the connection pool. Its generic
 `read` method accepts official typed read requests and applies the same deadline
-and safe error conversion. `detect_version` validates and retains the observed
+and safe error conversion. Log reads enforce a body limit before typed decoding
+using the SDK's wire contract and the same authenticated connection pool;
+other reads use the SDK transport. `detect_version` validates and retains the observed
 SemVer response. The executable shares this client and version through
 `KomodoServer`; every tool uses official typed requests through `read`.
 
@@ -373,7 +379,7 @@ to check its MCP application version. Release notes live in [CHANGELOG.md](CHANG
 maintainers use [the release skill](.agents/skills/komodo-mcp-release/SKILL.md)
 for validation, publication, and recovery.
 The subprocess smoke test launches Cargo's compiled binary and explicitly uses
-MCP **2025-11-25**: configured startup, initialization, seven-tool discovery, list
+MCP **2025-11-25**: configured startup, initialization, ten-tool discovery, list
 and ID/name detail calls in every family, inventory continuation to an exactly
 full final page, actionable failures, recovery, and stdin EOF shutdown. It also
 checks the SDK's unknown-tool protocol error. Both output streams are captured

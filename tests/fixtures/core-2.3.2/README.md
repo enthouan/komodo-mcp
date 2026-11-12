@@ -1,5 +1,15 @@
 # Core 2.3.2 fixtures
 
+`incident-wire.json` currently contains the shared incident's synthetic `Log`
+response, used by production-stdio log tests. Its fields follow the tagged
+[Log type](https://github.com/moghtech/komodo/blob/v2.3.2/client/core/rs/src/entities/update.rs),
+[container log read](https://github.com/moghtech/komodo/blob/v2.3.2/client/core/rs/src/api/read/docker.rs),
+[deployment log read](https://github.com/moghtech/komodo/blob/v2.3.2/client/core/rs/src/api/read/deployment.rs),
+and [stack log resolver](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/read/stack.rs).
+That resolver forwards Compose filters, while Swarm selects one supplied service
+and fails for an empty filter. Tests observe positive bounded tails and reject
+unsupported operations; they simulate Read access without executing Core.
+
 These synthetic fixtures describe an enabled, non-admin service user with a
 `Read` grant on server `000000000000000000000001`. The separate
 `restricted-server` has no grant. The mock checks both API credential headers,

@@ -13,6 +13,9 @@ use crate::{
     error::{AppError, ErrorKind},
 };
 
+/// JSON body budget for workload log reads, before typed deserialization.
+pub const MAX_LOG_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+
 /// Production deadlines; injectable without changing the process environment.
 #[derive(Debug, Clone, Copy)]
 pub struct RequestPolicy {
@@ -31,6 +34,7 @@ impl Default for RequestPolicy {
 
 struct Inner {
     sdk: KomodoClient,
+    log_request: reqwest::RequestBuilder,
     policy: RequestPolicy,
     redactor: Redactor,
 }
@@ -74,15 +78,23 @@ impl CoreClient {
             .build()
             .map_err(|_| AppError::new(ErrorKind::Unreachable, "configure_transport", None))?;
         let redactor = config.redactor();
+        // The SDK's private transport buffers complete bodies. Log reads use
+        // its typed request/response contract over the same authenticated pool,
+        // with a streaming body cap before deserialization.
+        let log_request = http
+            .post(format!("{}/read", config.address))
+            .header("x-api-key", &config.key)
+            .header("x-api-secret", &config.secret);
         let sdk = KomodoClient::new(config.address, config.key, config.secret).set_reqwest(http);
         Ok(Self(Arc::new(Inner {
             sdk,
+            log_request,
             policy,
             redactor,
         })))
     }
 
-    /// The only SDK entry point exposed to tools: typed reads with safe failures.
+    /// The only Core entry point exposed to tools: typed reads with safe failures.
     pub async fn read<T>(&self, request: T) -> Result<T::Response, AppError>
     where
         T: Serialize + KomodoReadRequest,
@@ -99,14 +111,85 @@ impl CoreClient {
             "GetServerState" => "GetServerState",
             "GetSystemStats" => "GetSystemStats",
             "ListAllStackServices" => "ListAllStackServices",
+            "GetContainerLog" => "GetContainerLog",
+            "GetDeploymentLog" => "GetDeploymentLog",
+            "GetStackLog" => "GetStackLog",
             _ => "read",
         };
-        match tokio::time::timeout(self.0.policy.operation_timeout, self.0.sdk.read(request)).await
-        {
+        let read = async {
+            if matches!(
+                T::req_type(),
+                "GetContainerLog" | "GetDeploymentLog" | "GetStackLog"
+            ) {
+                self.read_log_body(request, operation).await
+            } else {
+                self.0
+                    .sdk
+                    .read(request)
+                    .await
+                    .map_err(|error| AppError::from_upstream(operation, error))
+            }
+        };
+        match tokio::time::timeout(self.0.policy.operation_timeout, read).await {
             Err(_) => Err(AppError::new(ErrorKind::Timeout, operation, None)),
-            Ok(Err(error)) => Err(AppError::from_upstream(operation, error)),
-            Ok(Ok(response)) => Ok(response),
+            Ok(result) => result,
         }
+    }
+
+    async fn read_log_body<T>(
+        &self,
+        request: T,
+        operation: &'static str,
+    ) -> Result<T::Response, AppError>
+    where
+        T: Serialize + KomodoReadRequest,
+        T::Response: DeserializeOwned,
+    {
+        let mut response = self
+            .0
+            .log_request
+            .try_clone()
+            .ok_or_else(|| AppError::new(ErrorKind::InvalidResponse, operation, None))?
+            .json(&serde_json::json!({"type":T::req_type(),"params":request}))
+            .send()
+            .await
+            .map_err(|error| AppError::from_upstream(operation, error.into()))?;
+        let status = response.status();
+        if matches!(
+            status,
+            reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+        ) {
+            return Err(AppError::from_http_failure(operation, status, &[]));
+        }
+        let too_large = || AppError::new(ErrorKind::ResponseTooLarge, operation, Some(status));
+        if response
+            .content_length()
+            .is_some_and(|size| size > MAX_LOG_RESPONSE_BYTES as u64)
+        {
+            return Err(too_large());
+        }
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|_| {
+            AppError::new(
+                if status.is_success() {
+                    ErrorKind::InvalidResponse
+                } else {
+                    ErrorKind::Upstream
+                },
+                operation,
+                Some(status),
+            )
+        })? {
+            if chunk.len() > MAX_LOG_RESPONSE_BYTES - body.len() {
+                return Err(too_large());
+            }
+            body.extend_from_slice(&chunk);
+        }
+        if !status.is_success() {
+            return Err(AppError::from_http_failure(operation, status, &body));
+        }
+        serde_json::from_slice(&body)
+            .map_err(|_| AppError::new(ErrorKind::InvalidResponse, operation, Some(status)))
     }
 
     pub async fn detect_version(&self) -> Result<CoreVersion, AppError> {
@@ -118,5 +201,9 @@ impl CoreClient {
 
     pub(crate) fn redact(&self, value: &str) -> String {
         self.0.redactor.redact(value)
+    }
+
+    pub(crate) fn redaction_marker(&self) -> &str {
+        self.0.redactor.marker()
     }
 }

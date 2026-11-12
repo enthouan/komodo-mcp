@@ -6,4 +6,5 @@ pub mod diagnostics;
 pub mod error;
 pub mod health;
 pub mod inventory;
+pub mod logs;
 pub mod server;

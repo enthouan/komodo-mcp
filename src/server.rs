@@ -79,6 +79,33 @@ impl KomodoServer {
         };
         inventory::tool_result(&self.client, result)
     }
+
+    #[tool(description = "Read a bounded container log tail by stable Server ID and exact container name. Tail 1..500; combined stdout/stderr max_bytes 1..65536 after redaction, with truncation metadata.", input_schema = schema_for_input::<crate::logs::ContainerLogsInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::logs::WorkloadLogs>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn get_container_logs(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_container_logs") {
+            Ok(input) => crate::logs::container_logs(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Read a bounded Deployment log tail by stable ID. Tail 1..500 and max_bytes 1..65536 apply jointly to redacted stdout/stderr; no unbounded fallback.", input_schema = schema_for_input::<crate::logs::DeploymentLogsInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::logs::WorkloadLogs>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn get_deployment_logs(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_deployment_logs") {
+            Ok(input) => crate::logs::deployment_logs(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Read a bounded Stack log tail by stable ID and exact service filters (Compose: optional; Swarm: pass one). Tail 1..500 and max_bytes 1..65536 apply jointly after redaction; includes truncation metadata.", input_schema = schema_for_input::<crate::logs::StackLogsInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::logs::WorkloadLogs>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn get_stack_logs(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_stack_logs") {
+            Ok(input) => crate::logs::stack_logs(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
 }
 
 #[tool_handler]

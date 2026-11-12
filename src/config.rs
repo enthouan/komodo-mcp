@@ -10,6 +10,7 @@ pub struct Config {
     pub(crate) address: String,
     pub(crate) key: String,
     pub(crate) secret: String,
+    redactor: Redactor,
 }
 
 impl Config {
@@ -80,16 +81,18 @@ impl Config {
                 AppError::configuration(field, "must contain only valid HTTP header characters")
             })?;
         }
+        let redactor = Redactor::new(key.to_owned(), secret.to_owned());
         Ok(Self {
             // The SDK concatenates the address and `/read`; retain the path prefix.
             address: url.as_str().trim_end_matches('/').to_owned(),
             key: key.to_owned(),
             secret: secret.to_owned(),
+            redactor,
         })
     }
 
     pub(crate) fn redactor(&self) -> Redactor {
-        Redactor::new(self.key.clone(), self.secret.clone())
+        self.redactor.clone()
     }
 }
 
