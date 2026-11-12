@@ -77,8 +77,12 @@ quotes and YAML block secret values conservatively hide the remaining received
 stream while preserving CR/LF, so later benign context may also be hidden.
 Unquoted labeled credentials hide the remainder of their physical line because
 spaces and punctuation may belong to a password or connection string.
-Indented Authorization continuations hide the remaining received stream;
-genuinely empty headers retain following unindented or blank lines.
+Plain sensitive keys with multiline values, indented continuations, or YAML
+comments/tags/anchors hide the remaining stream. Genuinely empty Authorization
+headers retain following unindented or blank lines. Structured credential values
+retain neighbors only when their ending is unambiguous in a complete JSON context.
+Configured credentials are matched at repeated JSON encoding depths that fit
+the input budget, without decoding escapes into physical output lines.
 It cannot recognize every unlabeled secret or recover a label already omitted
 by Core's upstream tail. Only request and share logs appropriate for the caller.
 

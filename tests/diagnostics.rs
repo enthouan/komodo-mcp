@@ -140,3 +140,19 @@ fn exhausted_ascii_markers_use_a_nonempty_stable_unicode_sentinel() {
     assert!(!once.contains(secret));
     assert_eq!(once, redact_fragments(&config, &once));
 }
+
+#[test]
+fn repeatedly_encoded_configured_credentials_are_redacted_without_losing_context() {
+    let key = "diagnostic-\"key\\suffix";
+    let secret = "diagnostic-\\\"secret\\\\finish";
+    let config = Config::parse("http://localhost:9120", key, secret).unwrap();
+    let mut source = format!("before {key} {secret} after");
+    for _ in 0..=12 {
+        let output = redact_fragments(&config, &source);
+        assert!(!output.contains("diagnostic-"));
+        assert!(output.contains("before") && output.contains("after"));
+        assert_eq!(output, redact_fragments(&config, &output));
+        let encoded = serde_json::to_string(&source).unwrap();
+        source = encoded[1..encoded.len() - 1].to_owned();
+    }
+}

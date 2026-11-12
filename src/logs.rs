@@ -19,7 +19,7 @@ pub const MAX_TAIL: u64 = 500;
 pub const MAX_BYTES: usize = 65_536;
 pub const MAX_SERVICES: usize = 16;
 /// Joint decoded stdout/stderr input budget, before sanitizer allocations.
-pub const MAX_INPUT_BYTES: usize = 1024 * 1024;
+pub const MAX_INPUT_BYTES: usize = crate::diagnostics::MAX_REDACTION_INPUT_BYTES;
 
 fn default_tail() -> u64 {
     100
@@ -519,6 +519,7 @@ fn sensitive_value(
         return None;
     }
     at += 1;
+    let value_space = at;
     at = skip_whitespace(text, at, key_quote, header, false);
     let quote = encoded_quote(text, at).map(|(quote, end)| {
         at = end;
@@ -530,6 +531,19 @@ fn sensitive_value(
             .starts_with(['\'', '\"']);
     let inconsistent_quotes = malformed_quote
         || key_quote.is_some_and(|key| quote.is_none_or(|value| key.escapes != value.escapes));
+    // Plain YAML/config values can start after comments, tags, anchors, or blank
+    // lines, and any sensitive assignment may continue on indented lines.
+    // Quoted JSON keys keep their existing validated structured context.
+    let plain_multiline =
+        key_quote.is_none() && !header && text[value_space..at].contains(['\r', '\n']);
+    let continuation = key_quote.is_none() && indented_continuation(text, line_end(text, at));
+    let yaml_prefix = key_quote.is_none()
+        && !header
+        && quote.is_none()
+        && matches!(text.as_bytes().get(at), Some(b'#' | b'!' | b'&'));
+    if plain_multiline || continuation || yaml_prefix {
+        return (text.len() > at).then_some((at, text.len(), None));
+    }
     if quote.is_none() && matches!(text.as_bytes().get(at), Some(b'{' | b'[')) {
         let context = Quote {
             character: b'"',
@@ -537,6 +551,7 @@ fn sensitive_value(
         };
         let end = container_end(text, at, context)
             .filter(|end| valid_json_fragment(text, at, *end, context))
+            .filter(|end| context_end_clear(text, label, *end, context, key_quote, checks, checked))
             .unwrap_or(text.len());
         return Some((at, end, Some(context)));
     }
@@ -547,11 +562,7 @@ fn sensitive_value(
     // remaining received stream, preserving CR/LF without an uncapped fetch.
     let multiline_or_unclear = inconsistent_quotes
         || quote.is_some_and(|q| quoted_end(text, at, q).is_none())
-        || (quote.is_none() && matches!(text.as_bytes().get(at), Some(b'|' | b'>')))
-        || (header
-            && key_quote.is_none()
-            && quote.is_none()
-            && indented_continuation(text, line_end(text, at)));
+        || (quote.is_none() && matches!(text.as_bytes().get(at), Some(b'|' | b'>')));
     let mut end = if multiline_or_unclear {
         text.len()
     } else if quote.is_none() {
@@ -570,17 +581,26 @@ fn sensitive_value(
 
 fn indented_continuation(text: &str, mut at: usize) -> bool {
     let bytes = text.as_bytes();
-    if bytes.get(at) == Some(&b'\r') {
-        at += 1;
+    loop {
+        if !matches!(bytes.get(at), Some(b'\r' | b'\n')) {
+            return false;
+        }
+        if bytes.get(at) == Some(&b'\r') {
+            at += 1;
+        }
+        if bytes.get(at) == Some(&b'\n') {
+            at += 1;
+        }
+        let start = at;
+        while matches!(bytes.get(at), Some(b' ' | b'\t')) {
+            at += 1;
+        }
+        match bytes.get(at) {
+            None => return false,
+            Some(b'\r' | b'\n') => continue,
+            _ => return at > start,
+        }
     }
-    if bytes.get(at) == Some(&b'\n') {
-        at += 1;
-    }
-    let start = at;
-    while matches!(bytes.get(at), Some(b' ' | b'\t')) {
-        at += 1;
-    }
-    at > start && !matches!(bytes.get(at), None | Some(b'\r' | b'\n'))
 }
 
 #[derive(Clone, Copy)]
@@ -697,11 +717,23 @@ fn quoted_end_clear(
     if closer.character != quote.character || closer.escapes != quote.escapes {
         return false;
     }
+    context_end_clear(text, label, after, quote, key, checks, checked)
+}
+
+fn context_end_clear(
+    text: &str,
+    label: usize,
+    after: usize,
+    quote: Quote,
+    key: Option<Quote>,
+    checks: &mut usize,
+    checked: &mut Option<(usize, usize, usize)>,
+) -> bool {
     if clear_trailer(text, after, quote) {
         return true;
     }
     // A comma/field-like trailer can also be unescaped Digest parameters. Trust
-    // adjacent fields only inside a complete, syntactically valid JSON object,
+    // adjacent fields or container trailers only inside a complete valid JSON object,
     // not merely because the next bytes resemble a key and colon.
     if key.is_none_or(|key| key.character != b'"' || key.escapes != quote.escapes) {
         return false;
@@ -802,13 +834,16 @@ fn value_end(text: &str, start: usize, quote: Option<Quote>) -> usize {
     if let Some(quote) = quote {
         return quoted_end(text, start, quote).unwrap_or_else(|| line_end(text, start));
     }
-    let end = line_end(text, start);
     let mut escaped = false;
-    for (index, character) in text[start..end].char_indices() {
-        if !escaped && (character.is_whitespace() || ",;\"'".contains(character)) {
+    for (index, character) in text[start..].char_indices() {
+        // Do not scan for the physical line ending before finding a nearby
+        // delimiter: many short Bearer tokens would repeatedly scan the suffix.
+        if matches!(character, '\r' | '\n')
+            || (!escaped && (character.is_whitespace() || ",;\"'".contains(character)))
+        {
             return start + index;
         }
         escaped = !escaped && character == '\\';
     }
-    end
+    text.len()
 }

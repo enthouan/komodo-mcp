@@ -634,6 +634,96 @@ const LOG_TOOLS: [(&str, &str); 3] = [
 ];
 
 #[tokio::test]
+async fn yaml_comments_tags_anchors_and_plain_continuations_keep_all_sensitive_values_hidden() {
+    for source in [
+        format!("password:\n  # rotation\n  {PRIVATE}\ncontext-after\n"),
+        format!("apiKey: # rotation\n\n  {PRIVATE}\ncontext-after\n"),
+        format!("clientSecret: !!str\n  {PRIVATE}\ncontext-after\n"),
+        format!("private_key: &anchor\n  {PRIVATE}\ncontext-after\n"),
+        format!("databaseUrl:\n  {PRIVATE}-first\n\n  {PRIVATE}-second\ncontext-after\n"),
+        format!("TOKEN={PRIVATE}-first\\\n  {PRIVATE}-second\ncontext-after\n"),
+    ] {
+        let core = IncidentCore::start(all_log_options(&source, &source)).await;
+        let mut client = StdioClient::start(&core).await;
+        for (tool, _) in LOG_TOOLS {
+            let result = client.logs_tool(tool, 65_536, 500).await;
+            for stream in ["stdout", "stderr"] {
+                let text = result[stream].as_str().unwrap();
+                assert!(text.contains("[redacted]"));
+                assert!(!text.contains("context-after"));
+                assert_eq!(text.matches('\n').count(), source.matches('\n').count());
+            }
+        }
+        client.close().await;
+        assert_eq!(core.requests().len(), 4);
+    }
+}
+
+#[tokio::test]
+async fn structured_prefixes_do_not_prove_where_an_unquoted_credential_ends() {
+    for source in [
+        format!("PASSWORD={{}}{PRIVATE}\n"),
+        format!("token=[1,2]{PRIVATE}\n"),
+        format!("privateKey={{\"nested\":\"{PRIVATE}\"}} trailer-{PRIVATE}\n"),
+        format!("{{\"password\":{{}}\"{PRIVATE}\"}}\n"),
+        format!("password={{}},\"response\":\"{PRIVATE}\"\n"),
+    ] {
+        let core = IncidentCore::start(all_log_options(&source, &source)).await;
+        let mut client = StdioClient::start(&core).await;
+        for (tool, _) in LOG_TOOLS {
+            let result = client.logs_tool(tool, 4096, 500).await;
+            for stream in ["stdout", "stderr"] {
+                assert!(result[stream].as_str().unwrap().contains("[redacted]"));
+                assert!(!result[stream].as_str().unwrap().contains("trailer-"));
+            }
+        }
+        client.close().await;
+        assert_eq!(core.requests().len(), 4);
+    }
+}
+
+#[tokio::test]
+async fn configured_credentials_are_masked_at_nested_json_depths_in_nonsensitive_fields() {
+    let key = format!("{PRIVATE}-configured-\"key\\suffix");
+    let mut source = String::new();
+    let mut expected = String::new();
+    for depth in 0..=8 {
+        source.push_str(&encode_fragment(json_assignment("message", &key), depth));
+        source.push('\n');
+        expected.push_str(&encode_fragment(
+            json_assignment("message", "[redacted]"),
+            depth,
+        ));
+        expected.push('\n');
+    }
+    let mut configured = all_log_options(&source, &source);
+    configured.api_key = Some(key);
+    let core = IncidentCore::start(configured).await;
+    let mut client = StdioClient::start(&core).await;
+    for (tool, _) in LOG_TOOLS {
+        let result = client.logs_tool(tool, 65_536, 500).await;
+        assert_eq!(result["stdout"], expected);
+        assert_eq!(result["stderr"], expected);
+    }
+    client.close().await;
+    assert_eq!(core.requests().len(), 4);
+}
+
+#[tokio::test]
+async fn dense_standalone_bearer_tokens_finish_within_the_stdio_deadline() {
+    let source = "Bearer x ".repeat(64_000);
+    let core = IncidentCore::start(all_log_options(&source, "")).await;
+    let mut client = StdioClient::start(&core).await;
+    for (tool, _) in LOG_TOOLS {
+        let result = client.logs_tool(tool, 1, 1).await;
+        assert_eq!(result["stdout"], " ");
+        assert_eq!(result["truncation"]["bytes"], true);
+    }
+    client.close().await;
+    assert_eq!(core.requests().len(), 4);
+}
+
+#[tokio::test]
 async fn folded_authorization_values_are_masked_without_consuming_empty_headers() {
     for source in [
         format!("Authorization:\n  Basic {PRIVATE}\ncontext-after\n"),

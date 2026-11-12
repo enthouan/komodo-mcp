@@ -4,6 +4,8 @@ use tracing_subscriber::fmt::MakeWriter;
 
 use crate::config::Config;
 
+pub(crate) const MAX_REDACTION_INPUT_BYTES: usize = 1024 * 1024;
+
 /// Defense in depth for selected upstream strings and verbose SDK diagnostics.
 #[derive(Clone)]
 pub(crate) struct Redactor {
@@ -15,14 +17,27 @@ impl Redactor {
     pub(crate) fn new(key: String, secret: String) -> Self {
         let mut values = Vec::new();
         for credential in [key, secret] {
-            // Debug and JSON traces can escape quotes, backslashes, and tabs.
+            // Include every repeated JSON encoding that can fit in a bounded
+            // log input, plus the Rust Debug form used by dependency traces.
+            // Stop at the input budget instead of growing variants without a cap.
             let debug = format!("{credential:?}");
-            values.push(debug[1..debug.len() - 1].to_owned());
-            let json = serde_json::to_string(&credential).expect("string is JSON serializable");
-            values.push(json[1..json.len() - 1].to_owned());
-            values.push(credential);
+            for mut current in [credential, debug[1..debug.len() - 1].to_owned()] {
+                loop {
+                    values.push(current.clone());
+                    if current.len() >= MAX_REDACTION_INPUT_BYTES {
+                        break;
+                    }
+                    let json =
+                        serde_json::to_string(&current).expect("string is JSON serializable");
+                    let next = &json[1..json.len() - 1];
+                    if next == current || next.len() > MAX_REDACTION_INPUT_BYTES {
+                        break;
+                    }
+                    current = next.to_owned();
+                }
+            }
         }
-        values.sort_by_key(|value| std::cmp::Reverse(value.len()));
+        values.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
         values.dedup();
         // Config rejects empty credentials. Ignore empties defensively so a
         // future internal caller cannot create a zero-progress replacement.
