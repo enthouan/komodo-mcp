@@ -636,6 +636,9 @@ const LOG_TOOLS: [(&str, &str); 3] = [
 #[tokio::test]
 async fn authorization_comments_and_log_prefixes_preserve_redaction_context() {
     for source in [
+        "web | 2026-11-12T07:00:00Z Authorization:\nweb | 2026-11-12T07:00:01Z   Basic dXNlcjpwYXNz\ncontext-after\n".to_owned(),
+        format!("web | 2026-11-12T07:00:00Z Authorization:\nweb | 2026-11-12T07:00:01Z # rotation\nweb | 2026-11-12T07:00:02Z   Basic {PRIVATE}\ncontext-after\n"),
+        format!("2026-11-12T07:00:00Z web | Authorization:\n2026-11-12T07:00:01Z web | # rotation\n2026-11-12T07:00:02Z web |   Basic {PRIVATE}\ncontext-after\n"),
         "Authorization:\n# rotation\n  Basic dXNlcjpwYXNz\ncontext-after\n".to_owned(),
         format!("  Authorization:\n# rotation\n  Basic {PRIVATE}\ncontext-after\n"),
         format!(
@@ -667,6 +670,7 @@ async fn authorization_comments_and_log_prefixes_preserve_redaction_context() {
         assert_eq!(core.requests().len(), 4);
     }
     for source in [
+        "web | 2026-11-12T07:00:00Z Authorization:\nweb | 2026-11-12T07:00:01Z # empty\nweb | 2026-11-12T07:00:02Z keep-unindented\n",
         "Authorization:\n# an empty header\nkeep-unindented\n",
         "web | Authorization:\nweb | # an empty header\nweb | keep-unindented\n",
         "2026-11-12T07:00:00Z Authorization:\n2026-11-12T07:00:01Z # empty\n2026-11-12T07:00:02Z keep-unindented\n",
@@ -1258,4 +1262,19 @@ async fn unclosed_inconsistent_and_ambiguous_values_are_each_exercised_through_s
         client.close().await;
         assert_eq!(core.requests().len(), 2);
     }
+}
+
+#[tokio::test]
+async fn carriage_return_headers_do_not_rescan_growing_prefixes() {
+    let source = "Authorization:\r".repeat(69_000);
+    assert!(source.len() < komodo_mcp::logs::MAX_INPUT_BYTES);
+    let core = IncidentCore::start(all_log_options(&source, "")).await;
+    let mut client = StdioClient::start(&core).await;
+    for (tool, _) in LOG_TOOLS {
+        let result = client.logs_tool(tool, 1, 1).await;
+        assert_eq!(result["stdout"], "\r");
+        assert_eq!(result["truncation"]["bytes"], true);
+    }
+    client.close().await;
+    assert_eq!(core.requests().len(), 4);
 }

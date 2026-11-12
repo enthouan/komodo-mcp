@@ -582,11 +582,16 @@ fn sensitive_value(
 
 fn indented_continuation(text: &str, mut at: usize, label: usize) -> bool {
     let bytes = text.as_bytes();
-    let line_start = text[..label].rfind('\n').map_or(0, |end| end + 1);
+    let line_start = text[..label].rfind(['\r', '\n']).map_or(0, |end| end + 1);
     let prefix = &text[line_start..label];
     let literal_prefix = !prefix.trim().is_empty();
     let compose_prefix = prefix.contains('|');
-    let timestamp_prefix = timestamp_payload(prefix).is_some();
+    let formatted_prefix = if compose_prefix {
+        compose_payload(prefix).unwrap_or(prefix)
+    } else {
+        prefix
+    };
+    let timestamp_prefix = timestamp_payload(formatted_prefix).is_some();
     loop {
         if !matches!(bytes.get(at), Some(b'\r' | b'\n')) {
             return false;
@@ -626,13 +631,21 @@ fn continuation_payload<'a>(
     }
     // Core Compose prefixes and optional Docker timestamps can otherwise hide
     // indentation/comment boundaries. Remove their formatting, not payload spaces.
-    if compose_prefix && let Some((_, payload)) = line.split_once('|') {
-        return payload.strip_prefix(' ').unwrap_or(payload);
+    let payload = if compose_prefix {
+        compose_payload(line).unwrap_or(line)
+    } else {
+        line
+    };
+    if timestamp_prefix {
+        timestamp_payload(payload).unwrap_or(payload)
+    } else {
+        payload
     }
-    if timestamp_prefix && let Some(payload) = timestamp_payload(line) {
-        return payload;
-    }
-    line
+}
+
+fn compose_payload(line: &str) -> Option<&str> {
+    let (_, payload) = line.split_once('|')?;
+    Some(payload.strip_prefix(' ').unwrap_or(payload))
 }
 
 fn timestamp_payload(line: &str) -> Option<&str> {
