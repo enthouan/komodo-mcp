@@ -1,0 +1,29 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 5
+    groups:
+      cargo-compatible:
+        patterns: ["*"]
+        exclude-patterns: [komodo_client, rmcp]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:30"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 3
+    groups:
+      actions-compatible:
+        patterns: ["*"]
+        exclude-patterns: [dtolnay/rust-toolchain]
+        update-types: [minor, patch]
