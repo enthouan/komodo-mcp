@@ -22,6 +22,9 @@ New changes go under `Unreleased` until the next release is prepared.
 - Add bounded alert/update history and update lookup, explicit queued/running/final
   outcomes, and sanitized failed-stage evidence with capped upstream bodies.
   ([#7](https://github.com/enthouan/komodo-mcp/issues/7))
+- Add one-call stack diagnosis with current health outcomes, affected services,
+  linked evidence and source gaps, plus bounded reads, wait and serialized output.
+  ([#9](https://github.com/enthouan/komodo-mcp/issues/9))
 
 ## v0.1.0
 

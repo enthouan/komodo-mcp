@@ -133,6 +133,15 @@ impl KomodoServer {
         };
         inventory::tool_result(&self.client, result)
     }
+
+    #[tool(description = "Diagnose a stack by stable ID in one read-only call. Correlate service health, updates, alerts and bounded filtered logs; report healthy, unhealthy or inconclusive and retain evidence with source gaps.", input_schema = schema_for_input::<crate::triage::StackDiagnoseInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::triage::StackDiagnosis>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn stack_diagnose(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "stack_diagnose") {
+            Ok(input) => crate::triage::stack_diagnose(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
 }
 
 #[tool_handler]

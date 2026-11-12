@@ -11,6 +11,7 @@ Core client and safe application errors; resource IDs come from visible inventor
 | `get_container_logs` | Stable `server_id`, exact `container` name or ID. |
 | `get_deployment_logs` | Stable Deployment `id`. |
 | `get_stack_logs` | Stable Stack `id`, optional `services` (at most 16 distinct exact names). Compose supports empty for all services; Core 2.3.2 Swarm requires exactly one service. |
+| `stack_diagnose` | Stable Stack `id`; at most seven Core reads, four concurrent, in two 2-second waves, with 2 MiB source-body caps. |
 
 For example, use these `tools/call` parameters:
 
@@ -124,9 +125,39 @@ the client and diagnostic writer, avoiding repeated long-prefix comparisons.
 It cannot recognize every unlabeled secret or recover a label already omitted
 by Core's upstream tail. Only request and share logs appropriate for the caller.
 
-Tests cover service forwarding, failures, oversized UTF-8 lines, and empty output.
-Production-stdio cases exercise all three tools and check configured credentials,
-Authorization schemes, nested/escaped JSON, camelCase labels, and multiline values.
-The log-only shared
-wire fixture extends the incident contract; full diagnosis and end-to-end
-benchmark acceptance remain separate work.
+## Stack diagnosis
+
+```json
+{"name":"stack_diagnose","arguments":{"id":"000000000000000000000002"}}
+```
+
+The report combines the existing inventory, service-state, alert/update, and
+log readers. It identifies affected services and retains resource, update and
+alert IDs so clients can inspect supporting evidence independently. Every source
+failure becomes a gap while successful evidence remains available. Current
+outcomes are `healthy`, `unhealthy`, or `inconclusive`; historical rollout failures
+do not override confirmed current health. Complete service-name coverage is
+required for health, including names preserved through redaction and clipping.
+
+Each call makes at most seven Core reads and awaits at most four concurrently.
+The first wave includes both inventory reads inside one 2-second deadline; the
+second reads at most one failed update and one log tail. The two-wave wait budget
+is 4 seconds, excluding local projection/serialization and scheduler overhead.
+Diagnosis enforces a 2 MiB response-body cap before typed decoding for every
+source, including chunked responses. Existing standalone inventory callers keep
+their transport behavior. Oversized sources become gaps rather than discarding
+other evidence. There are no retry or fallback reads.
+
+Evidence retains at most 20 services, five recent records per history source,
+five update stages, and one 40-line/4096-byte log tail. Unhealthy replicas are
+deduplicated before selecting up to four affected services. Compose logs use
+those filters; Swarm selects one known service, or reports a gap when no name is
+available. Further service observations remain in the report up to its limit.
+
+Serialized structured-report JSON is capped at 65536 bytes **after** final
+credential redaction and JSON escaping. Optional evidence is reduced and marked
+truncated as needed. MCP text content duplicates the same report; framing adds
+bytes. Independent observations are not an atomic snapshot, and correlated
+history/logs are evidence rather than proof of causality. The shared incident
+fixtures simulate Read access without running Core, Docker or its authorization
+engine; the full incident workflow and benchmark acceptance remain in #10.

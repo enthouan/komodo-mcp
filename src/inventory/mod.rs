@@ -67,14 +67,20 @@ pub(crate) fn tool_result<T: Serialize>(
 ) -> CallToolResult {
     match result {
         Ok(projected) => {
-            let mut value =
-                serde_json::to_value(projected).expect("inventory projection is JSON serializable");
-            redact_strings(client, &mut value);
+            let value = projected_value(client, &projected);
             // rmcp generates text from this same value, preserving compatibility.
             CallToolResult::structured(value)
         }
         Err(error) => error.into_tool_result(),
     }
+}
+
+/// The exact structured success projection, including final string redaction.
+/// Composed readers use this when enforcing serialized output byte limits.
+pub(crate) fn projected_value<T: Serialize>(client: &CoreClient, projected: &T) -> Value {
+    let mut value = serde_json::to_value(projected).expect("projection is JSON serializable");
+    redact_strings(client, &mut value);
+    value
 }
 
 fn redact_strings(client: &CoreClient, value: &mut Value) {
@@ -477,6 +483,18 @@ pub async fn get_server(client: &CoreClient, input: DetailInput) -> Result<Serve
     })
 }
 pub async fn get_stack(client: &CoreClient, input: DetailInput) -> Result<StackDetail, AppError> {
+    get_stack_observation(client, input, 0)
+        .await
+        .map(|(detail, _)| detail)
+}
+
+/// Internal correlation metadata from the same two reads as get_stack. Keep
+/// expected service names out of the public inventory projection.
+pub(crate) async fn get_stack_observation(
+    client: &CoreClient,
+    input: DetailInput,
+    max_services: usize,
+) -> Result<(StackDetail, Option<std::collections::BTreeSet<String>>), AppError> {
     let selector = input.validate("GetStack")?;
     let summary = resolve(client, &selector, "ListStacks", |search, page, limit| {
         stacks(client, search, page, limit)
@@ -494,10 +512,25 @@ pub async fn get_stack(client: &CoreClient, input: DetailInput) -> Result<StackD
         return Err(changed("GetStack"));
     }
     let project_name = nonempty(&full.project_name(false));
-    Ok(StackDetail {
-        summary: stack_summary(summary),
-        project_name,
-    })
+    let expected_services = (summary.info.services.len() <= max_services
+        && summary.info.services.iter().all(|service| {
+            service.service.len() <= 128 && client.redact(&service.service) == service.service
+        }))
+    .then(|| {
+        summary
+            .info
+            .services
+            .iter()
+            .map(|service| service.service.clone())
+            .collect()
+    });
+    Ok((
+        StackDetail {
+            summary: stack_summary(summary),
+            project_name,
+        },
+        expected_services,
+    ))
 }
 pub async fn get_deployment(
     client: &CoreClient,

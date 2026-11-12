@@ -415,7 +415,8 @@ async fn solve(
                 "get_update",
                 "get_container_logs",
                 "get_deployment_logs",
-                "get_stack_logs"
+                "get_stack_logs",
+                "stack_diagnose"
             ]),
         "missing expected inventory tools"
     );

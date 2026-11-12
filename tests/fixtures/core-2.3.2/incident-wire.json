@@ -80,5 +80,333 @@
     "other_data": "incident-private-other-data-marker",
     "prev_toml": "incident-private-toml-marker",
     "current_toml": "incident-private-toml-marker"
+  },
+  "servers": [
+    {
+      "id": "000000000000000000000001",
+      "type": "Server",
+      "name": "fixture-server",
+      "template": false,
+      "tags": [],
+      "info": {
+        "state": "Ok",
+        "err": null,
+        "stats": null,
+        "alerting_thresholds": {
+          "cpu_warning": 90.0,
+          "cpu_critical": 99.0,
+          "mem_warning": 90.0,
+          "mem_critical": 99.0,
+          "disk_warning": 90.0,
+          "disk_critical": 99.0
+        },
+        "core_count": null,
+        "logical_core_count": null,
+        "region": "fixture",
+        "address": null,
+        "external_address": null,
+        "public_ip": null,
+        "send_unreachable_alerts": false,
+        "send_cpu_alerts": false,
+        "send_mem_alerts": false,
+        "send_disk_alerts": false,
+        "send_version_mismatch_alerts": false,
+        "version": null,
+        "public_key": null,
+        "attempted_public_key": null,
+        "terminals_disabled": true,
+        "container_terminals_disabled": true
+      }
+    },
+    {
+      "id": "000000000000000000000009",
+      "type": "Server",
+      "name": "other-server",
+      "template": false,
+      "tags": [],
+      "info": {
+        "state": "Ok",
+        "err": null,
+        "stats": null,
+        "alerting_thresholds": {
+          "cpu_warning": 90.0,
+          "cpu_critical": 99.0,
+          "mem_warning": 90.0,
+          "mem_critical": 99.0,
+          "disk_warning": 90.0,
+          "disk_critical": 99.0
+        },
+        "core_count": null,
+        "logical_core_count": null,
+        "region": "fixture",
+        "address": null,
+        "external_address": null,
+        "public_ip": null,
+        "send_unreachable_alerts": false,
+        "send_cpu_alerts": false,
+        "send_mem_alerts": false,
+        "send_disk_alerts": false,
+        "send_version_mismatch_alerts": false,
+        "version": null,
+        "public_key": null,
+        "attempted_public_key": null,
+        "terminals_disabled": true,
+        "container_terminals_disabled": true
+      }
+    },
+    {
+      "id": "00000000000000000000000a",
+      "type": "Server",
+      "name": "unavailable-server",
+      "template": false,
+      "tags": [],
+      "info": {
+        "state": "Ok",
+        "err": null,
+        "stats": null,
+        "alerting_thresholds": {
+          "cpu_warning": 90.0,
+          "cpu_critical": 99.0,
+          "mem_warning": 90.0,
+          "mem_critical": 99.0,
+          "disk_warning": 90.0,
+          "disk_critical": 99.0
+        },
+        "core_count": null,
+        "logical_core_count": null,
+        "region": "fixture",
+        "address": null,
+        "external_address": null,
+        "public_ip": null,
+        "send_unreachable_alerts": false,
+        "send_cpu_alerts": false,
+        "send_mem_alerts": false,
+        "send_disk_alerts": false,
+        "send_version_mismatch_alerts": false,
+        "version": null,
+        "public_key": null,
+        "attempted_public_key": null,
+        "terminals_disabled": true,
+        "container_terminals_disabled": true
+      }
+    },
+    {
+      "id": "00000000000000000000000b",
+      "type": "Server",
+      "name": "unknown-server",
+      "template": false,
+      "tags": [],
+      "info": {
+        "state": "Ok",
+        "err": null,
+        "stats": null,
+        "alerting_thresholds": {
+          "cpu_warning": 90.0,
+          "cpu_critical": 99.0,
+          "mem_warning": 90.0,
+          "mem_critical": 99.0,
+          "disk_warning": 90.0,
+          "disk_critical": 99.0
+        },
+        "core_count": null,
+        "logical_core_count": null,
+        "region": "fixture",
+        "address": null,
+        "external_address": null,
+        "public_ip": null,
+        "send_unreachable_alerts": false,
+        "send_cpu_alerts": false,
+        "send_mem_alerts": false,
+        "send_disk_alerts": false,
+        "send_version_mismatch_alerts": false,
+        "version": null,
+        "public_key": null,
+        "attempted_public_key": null,
+        "terminals_disabled": true,
+        "container_terminals_disabled": true
+      }
+    }
+  ],
+  "stacks": [
+    {
+      "id": "000000000000000000000002",
+      "type": "Stack",
+      "name": "alpha-web",
+      "template": false,
+      "tags": [],
+      "info": {
+        "swarm_id": "",
+        "swarm_name": "",
+        "server_id": "000000000000000000000001",
+        "server_name": "fixture-server",
+        "files_on_host": false,
+        "file_contents": true,
+        "linked_repo": "",
+        "linked_repo_name": "",
+        "git_provider": "github.com",
+        "repo": "fixtures/compose",
+        "branch": "main",
+        "repo_link": "https://example.test/fixtures",
+        "state": "unhealthy",
+        "status": "running(2)",
+        "services": [
+          {
+            "service": "web",
+            "image": "nginx:stable",
+            "latest_image": null,
+            "update_available": false
+          },
+          {
+            "service": "db",
+            "image": "postgres:17",
+            "latest_image": null,
+            "update_available": false
+          }
+        ],
+        "auto_update_all_services": false,
+        "project_missing": false,
+        "missing_files": [],
+        "deployed_hash": null,
+        "latest_hash": null
+      }
+    },
+    {
+      "id": "000000000000000000000004",
+      "type": "Stack",
+      "name": "beta-other",
+      "template": false,
+      "tags": [],
+      "info": {
+        "swarm_id": "",
+        "swarm_name": "",
+        "server_id": "000000000000000000000009",
+        "server_name": "other-server",
+        "files_on_host": false,
+        "file_contents": true,
+        "linked_repo": "",
+        "linked_repo_name": "",
+        "git_provider": "github.com",
+        "repo": "fixtures/compose",
+        "branch": "main",
+        "repo_link": "https://example.test/fixtures",
+        "state": "running",
+        "status": "running(2)",
+        "services": [
+          {
+            "service": "web",
+            "image": "nginx:stable",
+            "latest_image": null,
+            "update_available": false
+          },
+          {
+            "service": "db",
+            "image": "postgres:17",
+            "latest_image": null,
+            "update_available": false
+          }
+        ],
+        "auto_update_all_services": false,
+        "project_missing": false,
+        "missing_files": [],
+        "deployed_hash": null,
+        "latest_hash": null
+      }
+    }
+  ],
+  "deployments": [
+    {
+      "id": "000000000000000000000003",
+      "type": "Deployment",
+      "name": "fixture-deployment",
+      "template": false,
+      "tags": [],
+      "info": {
+        "state": "running",
+        "status": "Up 2 hours",
+        "custom_name": "fixture-web",
+        "image": "nginx:stable",
+        "update_available": true,
+        "swarm_id": "",
+        "swarm_name": "",
+        "server_id": "000000000000000000000001",
+        "server_name": "fixture-server",
+        "build_id": null
+      }
+    }
+  ],
+  "stack_detail": {
+    "_id": {
+      "$oid": "000000000000000000000002"
+    },
+    "name": "alpha-web",
+    "template": false,
+    "config": {
+      "server_id": "000000000000000000000001",
+      "swarm_id": "",
+      "project_name": "fixture-next-project",
+      "environment": "DATABASE_PASSWORD=sensitive-environment-marker",
+      "file_contents": "services:\n  web:\n    environment:\n      SECRET: sensitive-compose-marker",
+      "git_account": "sensitive-config-credential-marker"
+    },
+    "info": {
+      "deployed_project_name": "fixture-project",
+      "deployed_contents": [
+        {
+          "path": "compose.yaml",
+          "contents": "sensitive-stored-file-marker"
+        }
+      ],
+      "deployed_config": "sensitive-compose-marker",
+      "remote_errors": [
+        {
+          "path": "compose.yaml",
+          "contents": "sensitive-raw-trace-marker"
+        }
+      ]
+    },
+    "description": "sensitive-description-marker"
+  },
+  "services": [
+    {
+      "stack_id": "000000000000000000000002",
+      "stack_name": "alpha-web",
+      "service": "web",
+      "image": "fixture:latest",
+      "container": null,
+      "swarm_service": null,
+      "state": "Unhealthy",
+      "image_digests": null
+    },
+    {
+      "stack_id": "000000000000000000000002",
+      "stack_name": "alpha-web",
+      "service": "db",
+      "image": "fixture:latest",
+      "container": null,
+      "swarm_service": null,
+      "state": "Running",
+      "image_digests": null
+    }
+  ],
+  "server_state": {
+    "status": "Ok"
+  },
+  "stats": {
+    "cpu_perc": 12.5,
+    "mem_used_gb": 2.0,
+    "mem_total_gb": 8.0,
+    "disks": [
+      {
+        "mount": "/",
+        "file_system": "ext4",
+        "used_gb": 10.0,
+        "total_gb": 100.0
+      }
+    ],
+    "network_ingress_bytes": 0.0,
+    "network_egress_bytes": 0.0,
+    "refresh_ts": 1735689606000,
+    "refresh_list_ts": 1735689606000,
+    "polling_rate": "5-sec"
   }
 }
