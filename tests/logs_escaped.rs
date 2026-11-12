@@ -728,6 +728,8 @@ async fn yaml_comments_tags_anchors_and_plain_continuations_keep_all_sensitive_v
 #[tokio::test]
 async fn structured_prefixes_do_not_prove_where_an_unquoted_credential_ends() {
     for source in [
+        "PASSWORD={}]}\n".to_owned(),
+        "password=\"value\"}]\n".to_owned(),
         format!("PASSWORD={{}}{PRIVATE}\n"),
         format!("token=[1,2]{PRIVATE}\n"),
         format!("privateKey={{\"nested\":\"{PRIVATE}\"}} trailer-{PRIVATE}\n"),
@@ -741,6 +743,8 @@ async fn structured_prefixes_do_not_prove_where_an_unquoted_credential_ends() {
             for stream in ["stdout", "stderr"] {
                 assert!(result[stream].as_str().unwrap().contains("[redacted]"));
                 assert!(!result[stream].as_str().unwrap().contains("trailer-"));
+                assert!(!result[stream].as_str().unwrap().contains("]}"));
+                assert!(!result[stream].as_str().unwrap().contains("}]"));
             }
         }
         client.close().await;

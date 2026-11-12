@@ -722,7 +722,7 @@ fn line_end(text: &str, start: usize) -> usize {
         .map_or(text.len(), |end| start + end)
 }
 
-fn clear_trailer(text: &str, mut at: usize, mut context: Quote) -> bool {
+fn clear_trailer(text: &str, mut at: usize, mut context: Quote, containers: bool) -> bool {
     loop {
         // Inspect the actual trailer without first rescanning the rest of the
         // line for every field in a dense object.
@@ -730,7 +730,7 @@ fn clear_trailer(text: &str, mut at: usize, mut context: Quote) -> bool {
         if matches!(text.as_bytes().get(at), None | Some(b'\r' | b'\n')) {
             return true;
         }
-        if matches!(text.as_bytes()[at], b'}' | b']') {
+        if containers && matches!(text.as_bytes()[at], b'}' | b']') {
             at += 1;
             continue;
         }
@@ -773,7 +773,7 @@ fn context_end_clear(
     checks: &mut usize,
     checked: &mut Option<(usize, usize, usize)>,
 ) -> bool {
-    if clear_trailer(text, after, quote) {
+    if clear_trailer(text, after, quote, false) {
         return true;
     }
     // A comma/field-like trailer can also be unescaped Digest parameters. Trust
@@ -792,7 +792,7 @@ fn context_end_clear(
         if let Some(close) = container_end(text, start, quote)
             && close >= after
             && valid_json_fragment(text, start, close, quote)
-            && clear_trailer(text, close, quote)
+            && clear_trailer(text, close, quote, true)
         {
             *checked = Some((start, close, quote.escapes));
             return true;
