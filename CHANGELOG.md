@@ -8,6 +8,10 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+## v0.2.0
+
+Read-only fleet incident diagnosis with bounded, linked supporting evidence.
+
 - Configure weekly Cargo/Actions dependency updates and document the required
   checks, solo-maintainer main protection, and release compatibility.
   ([#64](https://github.com/enthouan/komodo-mcp/issues/64))
@@ -29,6 +33,27 @@ New changes go under `Unreleased` until the next release is prepared.
   stdio, and extend the retained inventory benchmark with concurrent incident
   workflows and fleet growth against the pinned reference.
   ([#10](https://github.com/enthouan/komodo-mcp/issues/10))
+
+### Evidence and distribution limits
+
+Verification uses synthetic **Core 2.3.2 wire fixtures** and simulated Read
+permissions. No deployed Core, Docker or authorization engine was exercised.
+The application version `0.2.0`, MCP protocol, SDK version and fixture Core
+version are independent identities.
+
+The [incident measurements and raw reports](https://github.com/enthouan/komodo-mcp/blob/49389893b80c39744213c21970b56b1c94cfe554/benchmarks/results/incident-final-README.md)
+cover 7/31/125 stacks with one/four callers and retain the inventory workload.
+Results are provisional shared-host observations. Both implementations return
+the same common incident evidence, while Rust also reads broader fleet metrics,
+services, alerts and diagnosis; these different workloads establish no general
+performance ranking. Archives preserve their actual pre-release source,
+executable and application-version identities. This version/changelog cut does
+not claim new performance measurements.
+
+Release artifacts are an annotated source tag and GitHub Release notes. Build
+the stdio executable from source using the
+[installation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/README.md#fresh-checkout-demo-synthetic-core).
+No container images or native binary packages are distributed in this release.
 
 ## v0.1.0
 
