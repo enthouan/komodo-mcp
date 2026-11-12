@@ -8,6 +8,9 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Configure weekly Cargo/Actions dependency updates and document the required
+  checks, solo-maintainer main protection, and release compatibility.
+  ([#64](https://github.com/enthouan/komodo-mcp/issues/64))
 - Clarify the dedicated changelog release cut and exact release commit/PR naming.
 
 ## v0.1.0

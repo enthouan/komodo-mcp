@@ -1,5 +1,8 @@
 # komodo-mcp
 
+[Repository maintenance](docs/maintenance.md) documents dependency updates,
+required checks, main protection, and release compatibility.
+
 The [inventory benchmark](benchmarks/README.md) compares the release executable
 with a pinned TypeScript stdio reference using synthetic Core fixtures. See the
 [archived measurements and interpretation](benchmarks/results/README.md) for

@@ -15,6 +15,9 @@ one authorized publication sequence at a time.
 
 Honor the user's existing authorization for the exact release:
 
+- Readiness only or an earlier user-defined checkpoint: complete only the
+  authorized implementation/readiness work. When approval is required before
+  creating the release PR, stop and wait at that point.
 - Preparation only: stop at an open, non-draft, reviewed, merge-ready PR.
 - Merge only: complete the authorized merge and validation, then stop before
   tag push or Release publication.
@@ -67,6 +70,19 @@ creating overlapping work. An explicit `Branch not protected` 404, combined
 with the branch response and rulesets, differs from inaccessible repository or
 authentication state. Never copy another repository's protections, labels,
 publishing identities, or approval policy. Recheck rules before merge.
+
+The reviewed main policy is documented in `docs/maintenance.md` and
+`.github/main-protection.json`; verify hosted read-back rather than assuming the
+file is active. It requires PRs, up-to-date branches, resolved conversations,
+and GitHub Actions app `15368` checks named `check` and `benchmark-smoke`.
+These are the jobs in **CI** and **Inventory benchmark**, whose workflow titles
+remain the publisher's main-run identities. The policy includes administrators
+and provides no bypass; never use `--admin` to land a release.
+Zero required approving reviews supports the solo maintainer's own PRs;
+requested code/security reviews still must complete and findings be resolved.
+The branch rule applies to `main`; recheck tag rules before authorized tag
+publication. Normal reviewed squash merges and the existing manual tag
+publisher remain the release path.
 
 For v0.1.0, #1–#5 must be complete. Release tracking issue #58 stays open until
 publication is verified and is intentionally exempt from the prerequisite
