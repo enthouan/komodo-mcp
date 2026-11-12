@@ -44,6 +44,7 @@ fn options(stdout: &str, stderr: &str, api_key: Option<&str>) -> Options {
     Options {
         overrides: BTreeMap::from([("GetStackLog".into(), log)]),
         api_key: api_key.map(str::to_owned),
+        ..Default::default()
     }
 }
 
@@ -156,7 +157,7 @@ impl StdioClient {
         self.logs_tool("get_stack_logs", max_bytes, tail).await
     }
 
-    async fn logs_tool(&mut self, tool: &str, max_bytes: usize, tail: u64) -> Value {
+    async fn call_logs_tool(&mut self, tool: &str, max_bytes: usize, tail: u64) -> Value {
         let f = fixture();
         let mut arguments = match tool {
             "get_stack_logs" => json!({"id":f["stack"]["id"],"services":["web"]}),
@@ -168,9 +169,12 @@ impl StdioClient {
         };
         arguments["tail"] = json!(tail);
         arguments["max_bytes"] = json!(max_bytes);
-        let result = self
-            .request("tools/call", json!({"name":tool,"arguments":arguments}))
-            .await;
+        self.request("tools/call", json!({"name":tool,"arguments":arguments}))
+            .await
+    }
+
+    async fn logs_tool(&mut self, tool: &str, max_bytes: usize, tail: u64) -> Value {
+        let result = self.call_logs_tool(tool, max_bytes, tail).await;
         assert_eq!(result["isError"], false, "{result}");
         let projected = result["structuredContent"].clone();
         let texts = result["content"].as_array().unwrap();
@@ -628,6 +632,114 @@ const LOG_TOOLS: [(&str, &str); 3] = [
     ("get_container_logs", "GetContainerLog"),
     ("get_deployment_logs", "GetDeploymentLog"),
 ];
+
+#[tokio::test]
+async fn folded_authorization_values_are_masked_without_consuming_empty_headers() {
+    for source in [
+        format!("Authorization:\n  Basic {PRIVATE}\ncontext-after\n"),
+        format!(
+            "Authorization:\r\n\tDigest username=\"{PRIVATE}\", response=\"{PRIVATE}\"\r\ncontext-after\r\n"
+        ),
+        format!("Authorization:\n \tNegotiate {PRIVATE}\ncontext-after\n"),
+        format!(
+            "Authorization: Digest username=\"{PRIVATE}\"\n  response=\"{PRIVATE}\"\ncontext-after\n"
+        ),
+    ] {
+        let core = IncidentCore::start(all_log_options(&source, &source)).await;
+        let mut client = StdioClient::start(&core).await;
+        for (tool, _) in LOG_TOOLS {
+            let result = client.logs_tool(tool, 65_536, 500).await;
+            for stream in ["stdout", "stderr"] {
+                let text = result[stream].as_str().unwrap();
+                assert!(text.contains("[redacted]"));
+                assert!(!text.contains("context-after"));
+                assert_eq!(text.matches('\n').count(), source.matches('\n').count());
+            }
+            for bytes in 1..=8 {
+                client.logs_tool(tool, bytes, 1).await;
+            }
+        }
+        client.close().await;
+        assert_eq!(core.requests().len(), 28);
+    }
+    let empty = "Authorization:\r\n \t\r\nkeep-after-empty💥\nAuthorization:\nkeep-unindented\n";
+    let core = IncidentCore::start(all_log_options(empty, empty)).await;
+    let mut client = StdioClient::start(&core).await;
+    for (tool, _) in LOG_TOOLS {
+        let result = client.logs_tool(tool, 4096, 500).await;
+        assert_eq!(result["stdout"], empty);
+        assert_eq!(result["stderr"], empty);
+    }
+    client.close().await;
+}
+
+#[tokio::test]
+async fn oversized_bodies_and_decoded_streams_fail_safely_before_redaction_without_fallback() {
+    for chunked in [false, true] {
+        for decoded_limit in [false, true] {
+            let mut configured = all_log_options("", "");
+            configured.chunked = chunked;
+            let payload = if decoded_limit {
+                let text = format!("password={}\n", PRIVATE.repeat(26_000));
+                let mut log = wire()["log"].clone();
+                log["stdout"] = json!(text);
+                log["stderr"] = log["stdout"].clone();
+                assert!(log["stdout"].as_str().unwrap().len() * 2 > 1024 * 1024);
+                assert!(serde_json::to_vec(&log).unwrap().len() < 2 * 1024 * 1024);
+                log
+            } else {
+                // An oversized non-Log shape must hit the body limit before
+                // typed decoding, not merely fail the Log projection afterward.
+                json!({"unstructured":PRIVATE.repeat(100_000)})
+            };
+            for (_, operation) in LOG_TOOLS {
+                configured
+                    .overrides
+                    .insert(operation.into(), payload.clone());
+            }
+            let core = IncidentCore::start(configured).await;
+            let mut client = StdioClient::start(&core).await;
+            for (tool, _) in LOG_TOOLS {
+                let result = client.call_logs_tool(tool, 1, 1).await;
+                assert_eq!(
+                    result["isError"], true,
+                    "{tool}, chunked={chunked}, decoded={decoded_limit}"
+                );
+                assert_eq!(
+                    result["structuredContent"]["kind"],
+                    "response_too_large",
+                    "{tool}, chunked={chunked}, decoded={decoded_limit}, payload_bytes={}: {result}",
+                    serde_json::to_vec(&payload).unwrap().len()
+                );
+                assert!(!result.to_string().contains(PRIVATE));
+            }
+            client.close().await;
+            let requests = core.requests();
+            assert_eq!(requests.len(), 4);
+            for (request, (_, operation)) in requests[1..].iter().zip(LOG_TOOLS) {
+                assert_eq!(request.operation, operation);
+                assert_eq!(request.params["tail"], 1);
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn decoded_input_budget_accepts_its_exact_boundary_with_bounded_output() {
+    let source = format!(
+        "password={}",
+        "x".repeat(komodo_mcp::logs::MAX_INPUT_BYTES - "password=".len())
+    );
+    let core = IncidentCore::start(all_log_options(&source, "")).await;
+    let mut client = StdioClient::start(&core).await;
+    for (tool, _) in LOG_TOOLS {
+        let result = client.logs_tool(tool, 1, 1).await;
+        assert_eq!(result["stdout"], "]");
+        assert_eq!(result["truncation"]["bytes"], true);
+    }
+    client.close().await;
+    assert_eq!(core.requests().len(), 4);
+}
 
 #[tokio::test]
 async fn unquoted_credentials_keep_no_suffix_after_ambiguous_delimiters() {

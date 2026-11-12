@@ -3,7 +3,7 @@ use std::fmt;
 use reqwest::StatusCode;
 use rmcp::model::{CallToolResult, ContentBlock};
 use rmcp::schemars::{self, JsonSchema};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Stable public categories. No variant contains a raw upstream error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
@@ -20,6 +20,7 @@ pub enum ErrorKind {
     Unreachable,
     Upstream,
     InvalidResponse,
+    ResponseTooLarge,
 }
 
 impl ErrorKind {
@@ -36,6 +37,7 @@ impl ErrorKind {
             Self::Unreachable => "unreachable",
             Self::Upstream => "upstream",
             Self::InvalidResponse => "invalid_response",
+            Self::ResponseTooLarge => "response_too_large",
         }
     }
 
@@ -67,6 +69,9 @@ impl ErrorKind {
             Self::Upstream => "Core returned an unexpected failure; check Core or proxy health.",
             Self::InvalidResponse => {
                 "Core returned invalid or incompatible data; check the Core release and proxy configuration."
+            }
+            Self::ResponseTooLarge => {
+                "Core log data exceeded its input budget; request a smaller tail or narrower service filter."
             }
         }
     }
@@ -165,6 +170,39 @@ impl AppError {
         };
         Self::new(kind, operation, status)
     }
+
+    pub(crate) fn from_http_failure(
+        operation: &'static str,
+        status: StatusCode,
+        body: &[u8],
+    ) -> Self {
+        // Match the pinned SDK's {error, trace} chain only after bounded reading.
+        // Preserve its narrow HTTP-500 permission classification without
+        // reconstructing, tracing, or returning an arbitrary error chain.
+        #[derive(Deserialize)]
+        struct CoreFailure {
+            error: String,
+            #[serde(default)]
+            trace: Vec<String>,
+        }
+        let kind = if status == StatusCode::UNAUTHORIZED {
+            ErrorKind::Authentication
+        } else if status == StatusCode::FORBIDDEN
+            || (status == StatusCode::INTERNAL_SERVER_ERROR
+                && serde_json::from_slice::<CoreFailure>(body).is_ok_and(|failure| {
+                    core_2_3_2_permission_message(&failure.error)
+                        || failure
+                            .trace
+                            .iter()
+                            .any(|message| core_2_3_2_permission_message(message))
+                }))
+        {
+            ErrorKind::PermissionDenied
+        } else {
+            ErrorKind::Upstream
+        };
+        Self::new(kind, operation, Some(status))
+    }
 }
 
 // Only the tagged resource::get helper on the supported detail operations.
@@ -191,6 +229,12 @@ fn core_2_3_2_missing_target(operation: &str, error: &anyhow::Error) -> bool {
 // with the default HTTP 500. Match a complete known helper message, never a
 // generic substring such as "permission" in an unrelated upstream failure.
 fn core_2_3_2_permission_denial(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| core_2_3_2_permission_message(&cause.to_string()))
+}
+
+fn core_2_3_2_permission_message(message: &str) -> bool {
     const RESOURCE_TYPES: &[&str] = &[
         "Server",
         "Swarm",
@@ -204,12 +248,9 @@ fn core_2_3_2_permission_denial(error: &anyhow::Error) -> bool {
         "Builder",
         "Alerter",
     ];
-    error.chain().any(|cause| {
-        let message = cause.to_string();
-        RESOURCE_TYPES.iter().any(|resource| {
+    RESOURCE_TYPES.iter().any(|resource| {
             message == format!("User does not have required permissions on this {resource}. Must have at least Read permissions")
         })
-    })
 }
 
 impl fmt::Display for AppError {

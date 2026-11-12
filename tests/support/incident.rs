@@ -9,6 +9,7 @@ use axum::{
     Json, Router,
     extract::State,
     http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::post,
 };
 use serde_json::{Value, json};
@@ -28,6 +29,7 @@ pub fn wire() -> Value {
 pub struct Options {
     pub overrides: BTreeMap<String, Value>,
     pub api_key: Option<String>,
+    pub chunked: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -87,7 +89,7 @@ async fn read(
     State(inner): State<Arc<Inner>>,
     headers: HeaderMap,
     Json(envelope): Json<Value>,
-) -> (StatusCode, Json<Value>) {
+) -> Response {
     if headers.get("x-api-key").and_then(|s| s.to_str().ok())
         != Some(inner.options.api_key.as_deref().unwrap_or(KEY))
         || headers.get("x-api-secret").and_then(|s| s.to_str().ok()) != Some(SECRET)
@@ -95,7 +97,8 @@ async fn read(
         return (
             StatusCode::UNAUTHORIZED,
             Json(json!({"error":"synthetic authentication rejected"})),
-        );
+        )
+            .into_response();
     }
     let operation = envelope["type"].as_str().unwrap_or("");
     let params = &envelope["params"];
@@ -108,7 +111,7 @@ async fn read(
         "GetStackLog" | "GetContainerLog" | "GetDeploymentLog"
     );
     if operation == "GetVersion" {
-        return (StatusCode::OK, Json(json!({"version":"2.3.2"})));
+        return (StatusCode::OK, Json(json!({"version":"2.3.2"}))).into_response();
     }
     if !supported
         || !params["tail"]
@@ -118,7 +121,8 @@ async fn read(
         return (
             StatusCode::FORBIDDEN,
             Json(json!({"error":"fixture rejects unsupported or unbounded read"})),
-        );
+        )
+            .into_response();
     }
     let log = inner
         .options
@@ -126,5 +130,17 @@ async fn read(
         .get(operation)
         .cloned()
         .unwrap_or_else(|| wire()["log"].clone());
-    (StatusCode::OK, Json(log))
+    let mut response = (StatusCode::OK, Json(log)).into_response();
+    if inner.options.chunked {
+        // An unknown-size body makes HTTP/1.1 select real chunked framing.
+        // Merely setting Transfer-Encoding on a known-size body can produce
+        // conflicting Content-Length headers instead of exercising chunk reads.
+        let (mut parts, body) = response.into_parts();
+        parts.headers.remove("content-length");
+        response = Response::from_parts(
+            parts,
+            axum::body::Body::from_stream(body.into_data_stream()),
+        );
+    }
+    response
 }

@@ -59,6 +59,14 @@ log count. Empty output succeeds. An upstream error or failed log command return
 a safe unavailable-source error; it never triggers an uncapped fallback read.
 Core's log command and stage fields are excluded.
 
+Input is bounded separately from the requested output: log JSON bodies are
+limited to **2 MiB before typed deserialization**, including chunked responses
+without Content-Length. Decoded stdout and stderr share a **1 MiB input limit**
+before redaction. Exceeding either returns `response_too_large` with guidance to
+reduce the tail or service filter; the reader drops the body without a fallback.
+It never cuts an input stream before sanitizing it. The operation deadline still
+includes headers and every body chunk.
+
 The sanitizer removes configured Core credentials, common labeled application
 credentials (including compound snake/hyphen/camelCase keys such as
 `AWS_SECRET_ACCESS_KEY` and `secretKey`), Authorization
@@ -69,6 +77,8 @@ quotes and YAML block secret values conservatively hide the remaining received
 stream while preserving CR/LF, so later benign context may also be hidden.
 Unquoted labeled credentials hide the remainder of their physical line because
 spaces and punctuation may belong to a password or connection string.
+Indented Authorization continuations hide the remaining received stream;
+genuinely empty headers retain following unindented or blank lines.
 It cannot recognize every unlabeled secret or recover a label already omitted
 by Core's upstream tail. Only request and share logs appropriate for the caller.
 

@@ -1,3 +1,5 @@
+mod support;
+
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
@@ -567,6 +569,24 @@ async fn unavailable_command_http_error_and_timeout_never_retry_or_return_raw_fa
             ErrorKind::PermissionDenied,
         ),
         (
+            StatusCode::UNAUTHORIZED,
+            json!({"error":format!("private {KEY} {SECRET}"),"trace":[]}),
+            Duration::ZERO,
+            ErrorKind::Authentication,
+        ),
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"error":"User does not have required permissions on this Stack. Must have at least Read permissions","trace":[format!("private {KEY} {SECRET}")]}),
+            Duration::ZERO,
+            ErrorKind::PermissionDenied,
+        ),
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"error":format!("unrelated permission backend failure {KEY}"),"trace":[SECRET]}),
+            Duration::ZERO,
+            ErrorKind::Upstream,
+        ),
+        (
             StatusCode::OK,
             serde_json::to_value(Log {
                 success: true,
@@ -586,6 +606,37 @@ async fn unavailable_command_http_error_and_timeout_never_retry_or_return_raw_fa
         assert!(!text.contains("private") && !text.contains(KEY) && !text.contains(SECRET));
         assert_eq!(core.requests().len(), 1);
     }
+}
+
+#[tokio::test]
+async fn bounded_log_transport_deadline_includes_the_response_body_without_retrying() {
+    use komodo_client::api::read::GetStackLog;
+    use support::{MockCore, Reply, Step};
+
+    let request = GetStackLog {
+        stack: incident()["stack"]["id"].as_str().unwrap().into(),
+        services: vec!["web".into()],
+        tail: 1,
+        timestamps: false,
+    };
+    let mut reply = Reply::new(
+        200,
+        serde_json::to_string(&Log {
+            success: true,
+            ..Default::default()
+        })
+        .unwrap(),
+    );
+    reply.body_delay = Duration::from_millis(500);
+    let core = MockCore::start(vec![Step::read(request, reply)])
+        .await
+        .unwrap();
+    let client = core.client(Duration::from_millis(100));
+    let mut input = stack_input();
+    input.tail = 1;
+    let error = logs::stack_logs(&client, input).await.unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Timeout);
+    core.assert_finished(&["GetStackLog"]);
 }
 
 #[tokio::test]

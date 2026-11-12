@@ -301,7 +301,9 @@ for Swarm stacks. See [log limits, truncation, and redaction](docs/diagnostics.m
 `CoreClient` in `src/client.rs` wraps one SDK instance and one configured reqwest
 transport in an `Arc`; cloned handles retain the connection pool. Its generic
 `read` method accepts official typed read requests and applies the same deadline
-and safe error conversion. `detect_version` validates and retains the observed
+and safe error conversion. Log reads enforce a body limit before typed decoding
+using the SDK's wire contract and the same authenticated connection pool;
+other reads use the SDK transport. `detect_version` validates and retains the observed
 SemVer response. The executable shares this client and version through
 `KomodoServer`; every tool uses official typed requests through `read`.
 

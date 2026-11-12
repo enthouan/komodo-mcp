@@ -16,8 +16,8 @@ New changes go under `Unreleased` until the next release is prepared.
   ([#6](https://github.com/enthouan/komodo-mcp/issues/6))
 - Clarify the dedicated changelog release cut and exact release commit/PR naming.
 - Add bounded container, deployment, and service-filtered stack log readers with
-  joint line/UTF-8 byte limits, truncation metadata, and credential redaction
-  before tail selection, including camelCase labels and multiline values.
+  Core input caps, joint line/UTF-8 byte limits, truncation metadata, and credential
+  redaction before tail selection, including camelCase labels and multiline values.
   ([#8](https://github.com/enthouan/komodo-mcp/issues/8))
 
 ## v0.1.0

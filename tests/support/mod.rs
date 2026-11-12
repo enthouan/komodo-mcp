@@ -310,6 +310,9 @@ async fn serve(stream: TcpStream, state: &Mutex<State>, changed: &Notify) {
                         | "GetServer"
                         | "GetStack"
                         | "GetDeployment"
+                        | "GetContainerLog"
+                        | "GetDeploymentLog"
+                        | "GetStackLog"
                 ),
                 "fixture rejects unexpected SDK request"
             );

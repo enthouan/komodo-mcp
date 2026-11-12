@@ -18,6 +18,8 @@ use crate::{
 pub const MAX_TAIL: u64 = 500;
 pub const MAX_BYTES: usize = 65_536;
 pub const MAX_SERVICES: usize = 16;
+/// Joint decoded stdout/stderr input budget, before sanitizer allocations.
+pub const MAX_INPUT_BYTES: usize = 1024 * 1024;
 
 fn default_tail() -> u64 {
     100
@@ -269,6 +271,9 @@ fn project(
     if !log.success {
         return Err(AppError::new(ErrorKind::Upstream, operation, None));
     }
+    if log.stdout.len().saturating_add(log.stderr.len()) > MAX_INPUT_BYTES {
+        return Err(AppError::new(ErrorKind::ResponseTooLarge, operation, None));
+    }
     // Use all context Core supplied before taking the local tail: a quoted
     // sensitive key can be on an earlier physical line than its value. Sanitize
     // streams independently without another request or decoding JSON escapes.
@@ -348,6 +353,9 @@ fn project(
 /// JSON values), full Authorization values and standalone Bearer tokens. This
 /// deliberately does not promise to detect arbitrary unlabeled application secrets.
 pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
+    if line.len() > MAX_INPUT_BYTES {
+        return client.redaction_marker().to_owned();
+    }
     // Recognize assignment labels before configured credentials can redact a
     // label itself (for example, an API key equal to `token`). Then sanitize
     // configured values in the remaining text and in any adjacent context.
@@ -539,7 +547,11 @@ fn sensitive_value(
     // remaining received stream, preserving CR/LF without an uncapped fetch.
     let multiline_or_unclear = inconsistent_quotes
         || quote.is_some_and(|q| quoted_end(text, at, q).is_none())
-        || (quote.is_none() && matches!(text.as_bytes().get(at), Some(b'|' | b'>')));
+        || (quote.is_none() && matches!(text.as_bytes().get(at), Some(b'|' | b'>')))
+        || (header
+            && key_quote.is_none()
+            && quote.is_none()
+            && indented_continuation(text, line_end(text, at)));
     let mut end = if multiline_or_unclear {
         text.len()
     } else if quote.is_none() {
@@ -554,6 +566,21 @@ fn sensitive_value(
         end = text.len();
     }
     (end > at).then_some((at, end, None))
+}
+
+fn indented_continuation(text: &str, mut at: usize) -> bool {
+    let bytes = text.as_bytes();
+    if bytes.get(at) == Some(&b'\r') {
+        at += 1;
+    }
+    if bytes.get(at) == Some(&b'\n') {
+        at += 1;
+    }
+    let start = at;
+    while matches!(bytes.get(at), Some(b' ' | b'\t')) {
+        at += 1;
+    }
+    at > start && !matches!(bytes.get(at), None | Some(b'\r' | b'\n'))
 }
 
 #[derive(Clone, Copy)]
