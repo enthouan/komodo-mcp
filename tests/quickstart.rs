@@ -19,8 +19,13 @@ use serde_json::{Value, json};
 use std::path::Path;
 use tokio::{
     net::TcpStream,
+    sync::Mutex,
     time::{Duration, timeout},
 };
+
+// Keep the shutdown probe inside the same test's listener lifetime. Otherwise a
+// parallel scenario can reuse the released ephemeral port before it is probed.
+static MOCK_LIFECYCLE: Mutex<()> = Mutex::const_new(());
 
 fn executable() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_komodo-mcp"))
@@ -40,6 +45,7 @@ async fn stopped(address: &str) -> Result<()> {
 
 #[tokio::test]
 async fn release_verification_checks_the_selected_executables_mcp_version() -> Result<()> {
+    let _lifecycle = MOCK_LIFECYCLE.lock().await;
     let evidence = scenario::verify_release(executable(), env!("CARGO_PKG_VERSION")).await?;
     assert_eq!(evidence["observed_version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(evidence["child_exit_success"], true);
@@ -58,6 +64,7 @@ async fn release_verification_checks_the_selected_executables_mcp_version() -> R
 
 #[tokio::test]
 async fn quickstart_answers_from_initialized_stdio_and_all_inventory_pages() -> Result<()> {
+    let _lifecycle = MOCK_LIFECYCLE.lock().await;
     let report =
         scenario::run(executable(), DEFAULT_SERVER, Configuration::Synthetic, None).await?;
     stopped(&report.address).await?;
@@ -140,6 +147,7 @@ async fn quickstart_answers_from_initialized_stdio_and_all_inventory_pages() -> 
 
 #[tokio::test]
 async fn empty_answer_names_the_server_and_visible_inventory() -> Result<()> {
+    let _lifecycle = MOCK_LIFECYCLE.lock().await;
     let report =
         scenario::run(executable(), "empty-server", Configuration::Synthetic, None).await?;
     stopped(&report.address).await?;
@@ -160,6 +168,7 @@ async fn empty_answer_names_the_server_and_visible_inventory() -> Result<()> {
 
 #[tokio::test]
 async fn startup_and_scenario_failures_capture_safe_diagnostics_and_reap_resources() -> Result<()> {
+    let _lifecycle = MOCK_LIFECYCLE.lock().await;
     for (config, name, fail, expected, success, rejections) in [
         (
             Configuration::MissingSecret,
@@ -222,6 +231,7 @@ async fn startup_and_scenario_failures_capture_safe_diagnostics_and_reap_resourc
 #[tokio::test]
 async fn standalone_mock_repeats_typed_reads_filters_and_details_across_connections() -> Result<()>
 {
+    let _lifecycle = MOCK_LIFECYCLE.lock().await;
     let core = MockCore::start("127.0.0.1:0".parse()?).await?;
     for _ in 0..2 {
         let client = CoreClient::new(
@@ -321,6 +331,7 @@ async fn standalone_mock_repeats_typed_reads_filters_and_details_across_connecti
 #[tokio::test]
 async fn mock_rejects_writes_and_unexpected_reads_observably_without_echoing_credentials()
 -> Result<()> {
+    let _lifecycle = MOCK_LIFECYCLE.lock().await;
     let core = MockCore::start("127.0.0.1:0".parse()?).await?;
     for (endpoint, body) in [
         ("write", json!({"type":"UpdateServer","params":{}})),
@@ -345,6 +356,7 @@ async fn mock_rejects_writes_and_unexpected_reads_observably_without_echoing_cre
 
 #[tokio::test]
 async fn deadline_and_interruption_paths_also_close_pipes_and_stop_the_mock() -> Result<()> {
+    let _lifecycle = MOCK_LIFECYCLE.lock().await;
     let report = scenario::run_with_control(
         executable(),
         DEFAULT_SERVER,
