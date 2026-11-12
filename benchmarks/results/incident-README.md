@@ -2,7 +2,8 @@
 
 These archives retain the initial implementation measured at `70f7671` with
 their original source, executable, run and fixture identities. Subsequent reader
-and redaction changes are validated and measured separately.
+and redaction changes are validated and measured separately. See the
+[finalized measurements](incident-final-README.md) for the current implementation.
 
 These complete `komodo-incident-benchmark/v1` archives compare full stack discovery and the same affected service, failed update stage, and runtime log excerpt. Every workflow matched the independent shared incident oracle, including the complete discovered ID/name/state digest. The original inventory workload and its older baseline remain intact.
 

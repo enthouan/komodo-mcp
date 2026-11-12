@@ -332,7 +332,9 @@ Sources for the boundaries and adapters:
   [startup client](https://github.com/MP-Tool/komodo-mcp-server/blob/489f7e04b16019480f84e1d2fff8b872b880e335/src/client.ts)
   and [dependency lock](https://github.com/MP-Tool/komodo-mcp-server/blob/489f7e04b16019480f84e1d2fff8b872b880e335/package-lock.json).
 
-The [archived incident/fleet-growth matrix](results/incident-README.md) records
-7/31/125-stack fleets with one and four concurrent callers, complete raw reports,
-and a fresh correctness capture of the retained inventory workload. Its source
-identity and narrower reference evidence are explicit; timings are provisional.
+The [finalized incident/fleet-growth matrix](results/incident-final-README.md)
+records fresh 7/31/125-stack fleets with one and four concurrent callers, complete
+raw reports, and a correctness capture of the retained inventory workload.
+The [historical matrix](results/incident-README.md) preserves its original measured
+source and archives. Both sets record exact source/executable identities and the
+reference's narrower functionality; timings are provisional.
