@@ -367,6 +367,9 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
     // ambiguity checks conservatively hide the remaining received stream.
     let mut json_checks = 128usize;
     let mut checked_json = None;
+    // Continuation lookahead shares a linear budget across every assignment,
+    // including overlapping comment/blank-line runs. Exhaustion fails closed.
+    let mut continuation_bytes = configured.len().saturating_mul(4);
     while offset < configured.len() {
         let rest = &lower[offset..];
         let previous = configured[..offset].bytes().next_back();
@@ -395,13 +398,14 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
         // Consume and classify the entire assignment key once. Qualified
         // snake/hyphen/camel names share a classifier; unrelated right-hand
         // suffixes such as PASSWORD_FILE and secretKeySuffix do not match.
-        let key_end = offset
-            + configured.as_bytes()[offset..]
-                .iter()
-                .take_while(|b| b.is_ascii_alphanumeric() || b"_-".contains(b))
-                .count();
+        let (key_end, decoded_key) = assignment_key(configured, offset);
         let assignment = if key_end > offset {
-            sensitive_key(&configured[offset..key_end]).and_then(|header| {
+            sensitive_key(
+                decoded_key
+                    .as_deref()
+                    .unwrap_or(&configured[offset..key_end]),
+            )
+            .and_then(|header| {
                 sensitive_value(
                     configured,
                     offset,
@@ -409,6 +413,7 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
                     header,
                     &mut json_checks,
                     &mut checked_json,
+                    &mut continuation_bytes,
                 )
             })
         } else {
@@ -448,6 +453,47 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
         }
     }
     client.redact(&result)
+}
+
+// Classify Unicode-escaped JSON keys without changing the received offsets.
+// Additional JSON encodings double the Unicode escape's backslash count.
+fn assignment_key(text: &str, start: usize) -> (usize, Option<String>) {
+    let bytes = text.as_bytes();
+    let mut at = start;
+    let mut decoded: Option<String> = None;
+    while let Some(byte) = bytes.get(at) {
+        if byte.is_ascii_alphanumeric() || b"_-".contains(byte) {
+            if let Some(key) = &mut decoded {
+                key.push(char::from(*byte));
+            }
+            at += 1;
+        } else if *byte == b'\\' {
+            let slashes = bytes[at..].iter().take_while(|b| **b == b'\\').count();
+            let escape = at + slashes;
+            let character = (slashes.is_power_of_two() && bytes.get(escape) == Some(&b'u'))
+                .then(|| bytes.get(escape + 1..escape + 5))
+                .flatten()
+                .and_then(|hex| std::str::from_utf8(hex).ok())
+                .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                .and_then(char::from_u32);
+            if let Some(character) = character {
+                decoded
+                    .get_or_insert_with(|| text[start..at].to_owned())
+                    .push(character);
+                at = escape + 5;
+            } else {
+                // A closing encoded quote belongs to the value parser. At the
+                // outer cursor, consume other backslash runs once as raw text.
+                if at == start {
+                    at += slashes;
+                }
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+    (at, decoded)
 }
 
 // Return whether the complete key denotes an Authorization header. Other
@@ -509,6 +555,7 @@ fn sensitive_value(
     header: bool,
     checks: &mut usize,
     checked: &mut Option<(usize, usize, usize)>,
+    continuation_bytes: &mut usize,
 ) -> Option<(usize, usize, Option<Quote>)> {
     let key_quote = encoded_quote(text, at).map(|(quote, end)| {
         at = end;
@@ -537,7 +584,7 @@ fn sensitive_value(
     let plain_multiline =
         key_quote.is_none() && !header && text[value_space..at].contains(['\r', '\n']);
     let continuation =
-        key_quote.is_none() && indented_continuation(text, line_end(text, at), label);
+        key_quote.is_none() && indented_continuation(text, at, label, continuation_bytes);
     let yaml_prefix = key_quote.is_none()
         && !header
         && quote.is_none()
@@ -580,10 +627,21 @@ fn sensitive_value(
     (end > at).then_some((at, end, None))
 }
 
-fn indented_continuation(text: &str, mut at: usize, label: usize) -> bool {
+fn indented_continuation(text: &str, at: usize, label: usize, budget: &mut usize) -> bool {
+    if *budget == 0 {
+        return true;
+    }
     let bytes = text.as_bytes();
     let line_start = text[..label].rfind(['\r', '\n']).map_or(0, |end| end + 1);
     let prefix = &text[line_start..label];
+    let mut end = line_end(text, at);
+    let cost = prefix.len().saturating_add(end - at).saturating_add(1);
+    if cost > *budget {
+        *budget = 0;
+        return true;
+    }
+    *budget -= cost;
+    let mut at = end;
     let literal_prefix = !prefix.trim().is_empty();
     let compose_prefix = prefix.contains('|');
     let formatted_prefix = if compose_prefix {
@@ -602,7 +660,13 @@ fn indented_continuation(text: &str, mut at: usize, label: usize) -> bool {
         if bytes.get(at) == Some(&b'\n') {
             at += 1;
         }
-        let end = line_end(text, at);
+        end = line_end(text, at);
+        let cost = (end - at).saturating_add(2);
+        if cost > *budget {
+            *budget = 0;
+            return true;
+        }
+        *budget -= cost;
         let payload = continuation_payload(
             &text[at..end],
             prefix,

@@ -71,7 +71,8 @@ The sanitizer removes configured Core credentials, common labeled application
 credentials (including compound snake/hyphen/camelCase keys such as
 `AWS_SECRET_ACCESS_KEY` and `secretKey`), Authorization
 values, and standalone Bearer tokens. It handles quoted and repeatedly encoded
-JSON without decoding escapes into physical lines. It sanitizes each complete
+JSON, including Unicode-escaped credential keys, without decoding escapes into
+physical lines. It sanitizes each complete
 received stream before selecting the local tail or clipping bytes. Ambiguous
 quotes and YAML block secret values conservatively hide the remaining received
 stream while preserving CR/LF, so later benign context may also be hidden.
@@ -85,6 +86,8 @@ Configured credentials are matched at repeated JSON encoding depths that fit
 the input budget, without decoding escapes into physical output lines.
 Comment-only lines do not end a sensitive value. Compose prefixes and Docker
 timestamps are accounted for when checking continuation indentation. The
+continuation scans share an aggregate byte budget proportional to the received
+stream; exhaustion conservatively hides the remaining stream. The
 configured-credential matcher is compiled once per configuration and shared by
 the client and diagnostic writer, avoiding repeated long-prefix comparisons.
 It cannot recognize every unlabeled secret or recover a label already omitted

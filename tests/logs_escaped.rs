@@ -1278,3 +1278,75 @@ async fn carriage_return_headers_do_not_rescan_growing_prefixes() {
     client.close().await;
     assert_eq!(core.requests().len(), 4);
 }
+
+#[tokio::test]
+async fn comment_only_continuations_have_a_joint_linear_scan_budget() {
+    let mut source: String = (0..20_000)
+        .map(|index| format!("# {index} Authorization:\r"))
+        .collect();
+    source.push_str(&format!("context-end {PRIVATE}\r"));
+    assert!(source.len() * 2 < komodo_mcp::logs::MAX_INPUT_BYTES);
+    let core = IncidentCore::start(all_log_options(&source, &source)).await;
+    let mut client = StdioClient::start(&core).await;
+    for (tool, _) in LOG_TOOLS {
+        let result = client.logs_tool(tool, 65_536, 500).await;
+        assert!(!result["stderr"].as_str().unwrap().contains("context-end"));
+        let result = client.logs_tool(tool, 1, 1).await;
+        assert_eq!(result["stderr"], "\r");
+        assert_eq!(result["truncation"]["bytes"], true);
+    }
+    client.close().await;
+    assert_eq!(core.requests().len(), 7);
+}
+
+#[tokio::test]
+async fn unicode_escaped_json_keys_are_classified_at_each_encoding_depth() {
+    let mut source = String::new();
+    let mut expected = String::new();
+    for (label, escaped) in [
+        ("password", r"pass\u0077ord"),
+        (
+            "password",
+            r"\u0070\u0061\u0073\u0073\u0077\u006f\u0072\u0064",
+        ),
+        ("dbPassword", r"db\u0050assword"),
+        ("clientSecret", r"client\u0053ecret"),
+        ("API_KEY", r"API\u005fKEY"),
+        ("Authorization", r"\u0041uthorization"),
+    ] {
+        for depth in 0..=4 {
+            let key = format!("\"{label}\"");
+            let escaped_key = format!("\"{escaped}\"");
+            let row = json_assignment(label, PRIVATE).replace(&key, &escaped_key);
+            assert_eq!(serde_json::from_str::<Value>(&row).unwrap()[label], PRIVATE);
+            let safe = json_assignment(label, "[redacted]").replace(&key, &escaped_key);
+            source.push_str(&encode_fragment(row, depth));
+            source.push('\n');
+            expected.push_str(&encode_fragment(safe, depth));
+            expected.push('\n');
+        }
+    }
+    for (label, escaped) in [
+        ("secretKeyFile", r"secret\u004beyFile"),
+        ("PASSWORD_SUFFIX", r"PASS\u0057ORD_SUFFIX"),
+    ] {
+        for depth in 0..=4 {
+            let row = json_assignment(label, "keep-harmless")
+                .replace(&format!("\"{label}\""), &format!("\"{escaped}\""));
+            let encoded = encode_fragment(row, depth);
+            source.push_str(&encoded);
+            source.push('\n');
+            expected.push_str(&encoded);
+            expected.push('\n');
+        }
+    }
+    let core = IncidentCore::start(all_log_options(&source, &source)).await;
+    let mut client = StdioClient::start(&core).await;
+    for (tool, _) in LOG_TOOLS {
+        let result = client.logs_tool(tool, 65_536, 500).await;
+        assert_eq!(result["stdout"], expected, "{tool}");
+        assert_eq!(result["stderr"], expected, "{tool}");
+    }
+    client.close().await;
+    assert_eq!(core.requests().len(), 4);
+}
