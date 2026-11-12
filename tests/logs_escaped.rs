@@ -154,9 +154,24 @@ impl StdioClient {
     }
 
     async fn logs_with_tail(&mut self, max_bytes: usize, tail: u64) -> Value {
-        let result = self.request("tools/call", json!({"name":"get_stack_logs","arguments":{
-            "id":fixture()["stack"]["id"], "services":["web"], "tail":tail, "max_bytes":max_bytes
-        }})).await;
+        self.logs_tool("get_stack_logs", max_bytes, tail).await
+    }
+
+    async fn logs_tool(&mut self, tool: &str, max_bytes: usize, tail: u64) -> Value {
+        let f = fixture();
+        let mut arguments = match tool {
+            "get_stack_logs" => json!({"id":f["stack"]["id"],"services":["web"]}),
+            "get_container_logs" => {
+                json!({"server_id":f["server"]["id"],"container":f["container"]})
+            }
+            "get_deployment_logs" => json!({"id":f["deployment"]["id"]}),
+            _ => panic!("unsupported test tool"),
+        };
+        arguments["tail"] = json!(tail);
+        arguments["max_bytes"] = json!(max_bytes);
+        let result = self
+            .request("tools/call", json!({"name":tool,"arguments":arguments}))
+            .await;
         assert_eq!(result["isError"], false, "{result}");
         let projected = result["structuredContent"].clone();
         let texts = result["content"].as_array().unwrap();
@@ -616,4 +631,81 @@ async fn structured_credential_values_hide_nested_secrets_and_preserve_outer_jso
     assert_eq!(result["truncation"]["bytes"], false);
     client.close().await;
     assert_eq!(core.requests().len(), 2);
+}
+
+fn all_log_options(stdout: &str, stderr: &str) -> Options {
+    let mut configured = options(stdout, stderr, None);
+    let log = configured.overrides["GetStackLog"].clone();
+    configured
+        .overrides
+        .insert("GetContainerLog".into(), log.clone());
+    configured.overrides.insert("GetDeploymentLog".into(), log);
+    configured
+}
+
+const LOG_TOOLS: [(&str, &str); 3] = [
+    ("get_stack_logs", "GetStackLog"),
+    ("get_container_logs", "GetContainerLog"),
+    ("get_deployment_logs", "GetDeploymentLog"),
+];
+
+#[tokio::test]
+async fn prefixed_credential_keys_and_horizontal_bearer_spacing_are_masked_in_all_log_tools() {
+    let stdout = format!(
+        "POSTGRES_PASSWORD={PRIVATE}-postgres\r\nAWS_SECRET_ACCESS_TOKEN=\"{PRIVATE}-aws\"\nservice-CuStOm-ApI_KeY: '{PRIVATE}-key'\r\nMY-SECRET={PRIVATE}-hyphen\nrequest Bearer  {PRIVATE}-two-spaces keep-context💥\nrequest bEaReR\t{PRIVATE}-tab\r\nrequest BEARER \t \t{PRIVATE}-mixed\ncompassword=keep-embedded-one\npretoken=keep-embedded-two\nAPI_KEY_SUFFIX=keep-unrelated-suffix\nBearer  \r\nkeep-empty-bearer-next-line💥\r\n"
+    );
+    let expected_stdout = "POSTGRES_PASSWORD=[redacted]\r\nAWS_SECRET_ACCESS_TOKEN=\"[redacted]\"\nservice-CuStOm-ApI_KeY: '[redacted]'\r\nMY-SECRET=[redacted]\nrequest Bearer  [redacted] keep-context💥\nrequest bEaReR\t[redacted]\r\nrequest BEARER \t \t[redacted]\ncompassword=keep-embedded-one\npretoken=keep-embedded-two\nAPI_KEY_SUFFIX=keep-unrelated-suffix\nBearer  \r\nkeep-empty-bearer-next-line💥\r\n";
+    let stderr = format!(
+        "database-PASSWORD=\"{PRIVATE}-stderr-password\"\r\nworker_api_key={PRIVATE}-stderr-key\naws_secret_access_token='{PRIVATE}-stderr-token'\ntrace Bearer\t\t{PRIVATE}-stderr-tabs keep-contexté\nBearer\t\r\nkeep-empty-tab-next-lineé\r\nnotapikey=keep-embedded-three\nPASSWORD_SUFFIX=keep-unrelated-right-boundary\n"
+    );
+    let expected_stderr = "database-PASSWORD=\"[redacted]\"\r\nworker_api_key=[redacted]\naws_secret_access_token='[redacted]'\ntrace Bearer\t\t[redacted] keep-contexté\nBearer\t\r\nkeep-empty-tab-next-lineé\r\nnotapikey=keep-embedded-three\nPASSWORD_SUFFIX=keep-unrelated-right-boundary\n";
+    let core = IncidentCore::start(all_log_options(&stdout, &stderr)).await;
+    let mut client = StdioClient::start(&core).await;
+    for (tool, _) in LOG_TOOLS {
+        let result = client.logs_tool(tool, 4096, 100).await;
+        assert_eq!(result["stdout"], expected_stdout, "{tool} stdout");
+        assert_eq!(result["stderr"], expected_stderr, "{tool} stderr");
+        assert_eq!(result["truncation"]["lines"], false);
+        assert_eq!(result["truncation"]["bytes"], false);
+    }
+    client.close().await;
+    let requests = core.requests();
+    assert_eq!(requests.len(), 4, "no fallback reads are allowed");
+    assert_eq!(requests[0].operation, "GetVersion");
+    for (request, (_, operation)) in requests[1..].iter().zip(LOG_TOOLS) {
+        assert_eq!(request.operation, operation);
+        assert_eq!(request.params["tail"], 100);
+    }
+}
+
+#[tokio::test]
+async fn prefixed_keys_and_spaced_bearer_are_redacted_before_all_tools_apply_tiny_utf8_tails() {
+    let stdout = format!("POSTGRES_PASSWORD=\"{PRIVATE}-password\"; keep-context💥é");
+    let stderr = format!("trace Bearer \t {PRIVATE}-bearer keep-context💥é");
+    let core = IncidentCore::start(all_log_options(&stdout, &stderr)).await;
+    let mut client = StdioClient::start(&core).await;
+    for (tool, _) in LOG_TOOLS {
+        for bytes in 1..=24 {
+            let result = client.logs_tool(tool, bytes, 1).await;
+            assert_eq!(result["stdout"], "", "joint tail=1 selects the stderr line");
+            assert_eq!(result["truncation"]["lines"], true);
+            assert!(!result["stderr"].as_str().unwrap().contains("private"));
+        }
+    }
+    client.close().await;
+    let requests = core.requests();
+    assert_eq!(
+        requests.len(),
+        73,
+        "one upstream read per MCP call, plus startup"
+    );
+    for (index, (tool, operation)) in LOG_TOOLS.into_iter().enumerate() {
+        let reads = &requests[1 + index * 24..1 + (index + 1) * 24];
+        assert!(
+            reads
+                .iter()
+                .all(|r| r.operation == operation && r.params["tail"] == 1),
+            "{tool} changed upstream bounds or retried"
+        );
+    }
 }

@@ -377,18 +377,31 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
         let previous = configured[..offset].bytes().next_back();
         let boundary =
             previous.is_none_or(|b| !b.is_ascii_alphanumeric() && b != b'_' && b != b'-');
-        if boundary && rest.starts_with("bearer ") {
-            let start = offset + "bearer ".len();
-            let end = value_end(configured, start, None);
-            if end > start {
-                result.push_str(&configured[offset..start]);
-                result.push_str(client.redaction_marker());
-                offset = end;
-                continue;
+        if boundary && rest.starts_with("bearer") {
+            let prefix = offset + "bearer".len();
+            let mut start = prefix;
+            while configured
+                .as_bytes()
+                .get(start)
+                .is_some_and(|b| matches!(b, b' ' | b'\t'))
+            {
+                start += 1;
+            }
+            if start > prefix {
+                let end = value_end(configured, start, None);
+                if end > start {
+                    result.push_str(&configured[offset..start]);
+                    result.push_str(client.redaction_marker());
+                    offset = end;
+                    continue;
+                }
             }
         }
         let mut assignment = None;
-        if boundary {
+        // Environment/config keys often qualify a sensitive suffix, such as
+        // POSTGRES_PASSWORD or service-api-key. Keep the following-key check so
+        // an unrelated suffix such as PASSWORD_FILE is not treated as the key.
+        if previous.is_none_or(|b| !b.is_ascii_alphanumeric()) {
             for label in LABELS {
                 if !rest.starts_with(label) {
                     continue;
