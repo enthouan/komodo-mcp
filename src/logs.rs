@@ -393,9 +393,10 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
                 {
                     continue;
                 }
-                if matches!(configured.as_bytes().get(at), Some(b'\'' | b'"')) {
-                    at += 1;
-                }
+                let key_quote = encoded_quote(configured, at).map(|(quote, end)| {
+                    at = end;
+                    quote
+                });
                 while configured.as_bytes().get(at).is_some_and(|b| {
                     b.is_ascii_whitespace()
                         && (label != &"authorization" || matches!(b, b' ' | b'\t'))
@@ -412,23 +413,25 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
                 }) {
                     at += 1;
                 }
-                let quote = configured
-                    .as_bytes()
-                    .get(at)
-                    .copied()
-                    .filter(|b| matches!(b, b'\'' | b'"'));
-                if quote.is_some() {
-                    at += 1;
-                }
+                let quote = encoded_quote(configured, at).map(|(quote, end)| {
+                    at = end;
+                    quote
+                });
+                let malformed_quote = quote.is_none()
+                    && configured[at..]
+                        .trim_start_matches('\\')
+                        .starts_with(['\'', '\"']);
+                let inconsistent_quotes = malformed_quote
+                    || key_quote
+                        .is_some_and(|key| quote.is_none_or(|value| key.escapes != value.escapes));
                 // An unquoted Authorization header can contain whitespace,
                 // commas and quoted subfields (Basic, Digest, Negotiate, ...).
                 // Mask the entire line value, retaining its line terminator.
-                // A quoted JSON/assignment value instead ends at its matching
-                // unescaped quote, preserving adjacent JSON fields.
-                let end = if label == &"authorization" && quote.is_none() {
-                    configured[at..]
-                        .find(['\r', '\n'])
-                        .map_or(configured.len(), |end| at + end)
+                // Quoted values retain delimiters at their original JSON
+                // encoding depth. Inconsistent or missing closing quotes are
+                // masked through the physical line, never decoded into LF.
+                let end = if inconsistent_quotes || (label == &"authorization" && quote.is_none()) {
+                    line_end(configured, at)
                 } else {
                     value_end(configured, at, quote)
                 };
@@ -454,16 +457,63 @@ pub(crate) fn redact_log(client: &CoreClient, line: &str) -> String {
     client.redact(&result)
 }
 
-fn value_end(text: &str, start: usize, quote: Option<u8>) -> usize {
+#[derive(Clone, Copy)]
+struct Quote {
+    character: u8,
+    /// Delimiter backslashes after zero or more additional JSON encodings:
+    /// 0, 1, 3, 7, ... . Embedded quotes have a different parity at that depth.
+    escapes: usize,
+}
+
+fn encoded_quote(text: &str, start: usize) -> Option<(Quote, usize)> {
+    let bytes = text.as_bytes();
+    let mut at = start;
+    while bytes.get(at) == Some(&b'\\') {
+        at += 1;
+    }
+    let escapes = at - start;
+    let character = bytes.get(at).copied()?;
+    if !matches!(character, b'\'' | b'"') || !escapes.checked_add(1)?.is_power_of_two() {
+        return None;
+    }
+    Some((Quote { character, escapes }, at + 1))
+}
+
+fn line_end(text: &str, start: usize) -> usize {
+    text[start..]
+        .find(['\r', '\n'])
+        .map_or(text.len(), |end| start + end)
+}
+
+fn value_end(text: &str, start: usize, quote: Option<Quote>) -> usize {
+    let end = line_end(text, start);
+    if let Some(quote) = quote {
+        let Some(period) = quote.escapes.checked_add(1).and_then(|n| n.checked_mul(2)) else {
+            return end;
+        };
+        let bytes = text.as_bytes();
+        let mut at = start;
+        while at < end {
+            let run_start = at;
+            while at < end && bytes[at] == b'\\' {
+                at += 1;
+            }
+            let run = at - run_start;
+            if at < end && bytes[at] == quote.character && run % period == quote.escapes {
+                // Any preceding complete escape pairs belong to the value;
+                // retain only the original closing delimiter's backslashes.
+                return at - quote.escapes;
+            }
+            at += usize::from(at < end);
+        }
+        return end;
+    }
     let mut escaped = false;
-    for (index, character) in text[start..].char_indices() {
-        if !escaped
-            && (quote == Some(character as u8) && character.is_ascii()
-                || quote.is_none() && (character.is_whitespace() || ",;\"'".contains(character)))
-        {
+    for (index, character) in text[start..end].char_indices() {
+        if !escaped && (character.is_whitespace() || ",;\"'".contains(character)) {
             return start + index;
         }
         escaped = !escaped && character == '\\';
     }
-    text.len()
+    end
 }

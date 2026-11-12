@@ -472,6 +472,69 @@ async fn stdio_redacts_complete_authorization_values_for_all_schemes() {
 }
 
 #[tokio::test]
+async fn stdio_redacts_repeatedly_encoded_json_and_masks_unclosed_values() {
+    use rmcp::{
+        ClientServiceExt,
+        model::{CallToolRequestParams, ClientConfig, Implementation},
+        service::ClientLifecycleMode,
+    };
+    use std::process::Stdio;
+    use tokio::{process::Command, time::timeout};
+
+    timeout(Duration::from_secs(10), async {
+        let mut rows = Vec::new();
+        let mut expected = Vec::new();
+        for depth in 0..=4 {
+            for authorization in ["Basic nested-basic-marker", r#"Digest username="nested-user", response="nested-response"\"#] {
+                let mut original = json!({"authorization":authorization,"token":"nested-token \"embedded\" \\","password":"nested-password\nnext-line","api_key":"nested-api-key","z_after":"visible é💥"}).to_string();
+                let mut redacted = json!({"authorization":"[redacted]","token":"[redacted]","password":"[redacted]","api_key":"[redacted]","z_after":"visible é💥"}).to_string();
+                for _ in 0..depth {
+                    original = serde_json::to_string(&original).unwrap();
+                    redacted = serde_json::to_string(&redacted).unwrap();
+                }
+                rows.push(original);
+                expected.push(redacted);
+            }
+        }
+        for depth in 0..=3 {
+            let quote = format!("{}\"", "\\".repeat((1 << depth) - 1));
+            rows.push(format!("{{{quote}authorization{quote}:{quote}Basic unclosed-marker é💥"));
+            expected.push(format!("{{{quote}authorization{quote}:{quote}[redacted]"));
+        }
+        rows.push(r#"{\"password\":"inconsistent-marker" remainder-marker"#.into());
+        expected.push(r#"{\"password\":"[redacted]"#.into());
+        rows.push(r#"{\"token\":\\"malformed-marker with-spaces-marker"#.into());
+        expected.push(r#"{\"token\":[redacted]"#.into());
+        let stdout = format!("{}\r\n", rows.join("\r\n"));
+        let expected = format!("{}\r\n", expected.join("\r\n"));
+        let core = Core::log(&stdout, "").await;
+        let mut child = Command::new(env!("CARGO_BIN_EXE_komodo-mcp"))
+            .env_clear()
+            .env("KOMODO_ADDRESS", &core.address)
+            .env("KOMODO_API_KEY", KEY)
+            .env("KOMODO_API_SECRET", SECRET)
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null())
+            .kill_on_drop(true).spawn().unwrap();
+        let mut session = ClientConfig::new(Default::default(), Implementation::new("encoded-redaction-regression", "1"))
+            .serve_with_lifecycle((child.stdout.take().unwrap(), child.stdin.take().unwrap()), ClientLifecycleMode::Initialize).await.unwrap();
+        let result = session.call_tool(CallToolRequestParams::new("get_stack_logs").with_arguments(json!({"id":incident()["stack"]["id"],"max_bytes":65536}).as_object().unwrap().clone())).await.unwrap();
+        assert_eq!(result.is_error, Some(false));
+        let value = serde_json::to_value(result).unwrap();
+        let data = &value["structuredContent"];
+        assert_eq!(data["stdout"], expected);
+        assert_eq!(data["stderr"], "");
+        assert_eq!(data["returned_bytes"], expected.len());
+        assert_eq!(data["returned_lines"], rows.len());
+        assert_eq!(data["truncation"]["bytes"], false);
+        let text: Value = serde_json::from_str(value["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(data, &text);
+        session.close().await.unwrap();
+        assert!(child.wait().await.unwrap().success());
+        assert_eq!(core.requests().len(), 2);
+    }).await.unwrap();
+}
+
+#[tokio::test]
 async fn unavailable_command_http_error_and_timeout_never_retry_or_return_raw_failure_payloads() {
     for (status, body, delay, kind) in [
         (
