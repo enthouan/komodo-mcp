@@ -410,6 +410,9 @@ async fn solve(
                 "get_deployment",
                 "list_deployments",
                 "fleet_health",
+                "list_alerts",
+                "list_updates",
+                "get_update",
                 "get_container_logs",
                 "get_deployment_logs",
                 "get_stack_logs"

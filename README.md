@@ -11,8 +11,9 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.8.0 SDK](https://docs.rs/rmcp/3.8.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Ten read-only tools list and inspect
-Servers, Stacks, and Deployments, summarize fleet health, and read bounded logs.
+exactly with optional features disabled. Thirteen read-only tools list and inspect
+Servers, Stacks, and Deployments, summarize fleet health, inspect alerts/update
+history, and read bounded logs.
 
 ## Fresh-checkout demo (synthetic Core)
 
@@ -296,12 +297,18 @@ and the [shared incident fixture](tests/fixtures/core-2.3.2/INCIDENT.md).
 redacted log tails. Stack logs accept exact service filters; pass one service
 for Swarm stacks. See [log limits, truncation, and redaction](docs/diagnostics.md#workload-logs).
 
+`list_alerts` and `list_updates` read one bounded page of recent records, optionally
+filtered by resource kind and stable ID. `get_update` exposes bounded, redacted
+failed-stage evidence without raw configuration or unrestricted logs. See
+[history paging and outcomes](docs/diagnostics.md#incident-history).
+
 ## Client and error foundation
 
 `CoreClient` in `src/client.rs` wraps one SDK instance and one configured reqwest
 transport in an `Arc`; cloned handles retain the connection pool. Its generic
 `read` method accepts official typed read requests and applies the same deadline
-and safe error conversion. Log reads enforce a body limit before typed decoding
+and safe error conversion. Log and incident-history reads enforce a body limit
+before typed decoding
 using the SDK's wire contract and the same authenticated connection pool;
 other reads use the SDK transport. `detect_version` validates and retains the observed
 SemVer response. The executable shares this client and version through

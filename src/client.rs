@@ -13,8 +13,10 @@ use crate::{
     error::{AppError, ErrorKind},
 };
 
-/// JSON body budget for workload log reads, before typed deserialization.
-pub const MAX_LOG_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+/// JSON body budget for log and incident-history reads, before typed decoding.
+pub const MAX_EVIDENCE_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+/// Compatibility name for the unchanged workload-log body budget.
+pub const MAX_LOG_RESPONSE_BYTES: usize = MAX_EVIDENCE_RESPONSE_BYTES;
 
 /// Production deadlines; injectable without changing the process environment.
 #[derive(Debug, Clone, Copy)]
@@ -34,7 +36,7 @@ impl Default for RequestPolicy {
 
 struct Inner {
     sdk: KomodoClient,
-    log_request: reqwest::RequestBuilder,
+    bounded_request: reqwest::RequestBuilder,
     policy: RequestPolicy,
     redactor: Redactor,
 }
@@ -78,17 +80,17 @@ impl CoreClient {
             .build()
             .map_err(|_| AppError::new(ErrorKind::Unreachable, "configure_transport", None))?;
         let redactor = config.redactor();
-        // The SDK's private transport buffers complete bodies. Log reads use
+        // The SDK's private transport buffers complete bodies. Evidence reads use
         // its typed request/response contract over the same authenticated pool,
         // with a streaming body cap before deserialization.
-        let log_request = http
+        let bounded_request = http
             .post(format!("{}/read", config.address))
             .header("x-api-key", &config.key)
             .header("x-api-secret", &config.secret);
         let sdk = KomodoClient::new(config.address, config.key, config.secret).set_reqwest(http);
         Ok(Self(Arc::new(Inner {
             sdk,
-            log_request,
+            bounded_request,
             policy,
             redactor,
         })))
@@ -111,6 +113,9 @@ impl CoreClient {
             "GetServerState" => "GetServerState",
             "GetSystemStats" => "GetSystemStats",
             "ListAllStackServices" => "ListAllStackServices",
+            "ListAlerts" => "ListAlerts",
+            "ListUpdates" => "ListUpdates",
+            "GetUpdate" => "GetUpdate",
             "GetContainerLog" => "GetContainerLog",
             "GetDeploymentLog" => "GetDeploymentLog",
             "GetStackLog" => "GetStackLog",
@@ -119,9 +124,14 @@ impl CoreClient {
         let read = async {
             if matches!(
                 T::req_type(),
-                "GetContainerLog" | "GetDeploymentLog" | "GetStackLog"
+                "GetContainerLog"
+                    | "GetDeploymentLog"
+                    | "GetStackLog"
+                    | "ListAlerts"
+                    | "ListUpdates"
+                    | "GetUpdate"
             ) {
-                self.read_log_body(request, operation).await
+                self.read_bounded_body(request, operation).await
             } else {
                 self.0
                     .sdk
@@ -136,7 +146,7 @@ impl CoreClient {
         }
     }
 
-    async fn read_log_body<T>(
+    async fn read_bounded_body<T>(
         &self,
         request: T,
         operation: &'static str,
@@ -147,7 +157,7 @@ impl CoreClient {
     {
         let mut response = self
             .0
-            .log_request
+            .bounded_request
             .try_clone()
             .ok_or_else(|| AppError::new(ErrorKind::InvalidResponse, operation, None))?
             .json(&serde_json::json!({"type":T::req_type(),"params":request}))
@@ -161,10 +171,10 @@ impl CoreClient {
         ) {
             return Err(AppError::from_http_failure(operation, status, &[]));
         }
-        let too_large = || AppError::new(ErrorKind::ResponseTooLarge, operation, Some(status));
+        let too_large = || AppError::response_too_large(operation, status);
         if response
             .content_length()
-            .is_some_and(|size| size > MAX_LOG_RESPONSE_BYTES as u64)
+            .is_some_and(|size| size > MAX_EVIDENCE_RESPONSE_BYTES as u64)
         {
             return Err(too_large());
         }
@@ -180,7 +190,7 @@ impl CoreClient {
                 Some(status),
             )
         })? {
-            if chunk.len() > MAX_LOG_RESPONSE_BYTES - body.len() {
+            if chunk.len() > MAX_EVIDENCE_RESPONSE_BYTES - body.len() {
                 return Err(too_large());
             }
             body.extend_from_slice(&chunk);

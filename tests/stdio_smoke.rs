@@ -221,12 +221,15 @@ async fn list_tools(process: &mut Process, id: &str) -> Result<()> {
                     .flat_map(|family| [family.list_tool(), family.get_tool()])
                     .chain([
                         "fleet_health",
+                        "list_alerts",
+                        "list_updates",
+                        "get_update",
                         "get_container_logs",
                         "get_deployment_logs",
                         "get_stack_logs",
                     ])
                     .collect();
-                ensure!(names == expected, "expected all ten read-only tools");
+                ensure!(names == expected, "expected all thirteen read-only tools");
                 for tool in &result.tools {
                     ensure!(tool.output_schema.is_some(), "missing output schema");
                     let metadata = serde_json::to_value(tool)?;
