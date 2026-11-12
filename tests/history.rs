@@ -470,6 +470,32 @@ async fn failed_read_returns_safe_error_without_fallback_or_retry() {
 }
 
 #[tokio::test]
+async fn missing_lookup_matches_only_the_tagged_core_failure() {
+    let params = json!({"id":incident()["update"]["id"]});
+    let mock = Mock::start(vec![
+        (
+            json!({"type":"GetUpdate","params":params}),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"error":"no update exists with given id","trace":[KEY,SECRET]}),
+        ),
+        (
+            json!({"type":"GetUpdate","params":params}),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"error":"proxy: no update exists with given id","trace":[KEY,SECRET]}),
+        ),
+    ])
+    .await;
+    for expected in [ErrorKind::NotFound, ErrorKind::Upstream] {
+        let error = history::get_update(&mock.client, update_id())
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, expected);
+        safe(&error);
+    }
+    mock.done(2);
+}
+
+#[tokio::test]
 async fn history_body_limits_apply_before_decode_to_fixed_and_chunked_responses() {
     let large = "x".repeat(komodo_mcp::client::MAX_EVIDENCE_RESPONSE_BYTES);
     for chunked in [false, true] {

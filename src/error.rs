@@ -194,7 +194,7 @@ impl AppError {
         body: &[u8],
     ) -> Self {
         // Match the pinned SDK's {error, trace} chain only after bounded reading.
-        // Preserve its narrow HTTP-500 permission classification without
+        // Preserve narrow HTTP-500 permission/missing-update classifications without
         // reconstructing, tracing, or returning an arbitrary error chain.
         #[derive(Deserialize)]
         struct CoreFailure {
@@ -202,19 +202,31 @@ impl AppError {
             #[serde(default)]
             trace: Vec<String>,
         }
+        let failure = (status == StatusCode::INTERNAL_SERVER_ERROR)
+            .then(|| serde_json::from_slice::<CoreFailure>(body).ok())
+            .flatten();
         let kind = if status == StatusCode::UNAUTHORIZED {
             ErrorKind::Authentication
         } else if status == StatusCode::FORBIDDEN
-            || (status == StatusCode::INTERNAL_SERVER_ERROR
-                && serde_json::from_slice::<CoreFailure>(body).is_ok_and(|failure| {
-                    core_2_3_2_permission_message(&failure.error)
-                        || failure
-                            .trace
-                            .iter()
-                            .any(|message| core_2_3_2_permission_message(message))
-                }))
+            || failure.as_ref().is_some_and(|failure| {
+                core_2_3_2_permission_message(&failure.error)
+                    || failure
+                        .trace
+                        .iter()
+                        .any(|message| core_2_3_2_permission_message(message))
+            })
         {
             ErrorKind::PermissionDenied
+        } else if operation == "GetUpdate"
+            && failure.as_ref().is_some_and(|failure| {
+                failure.error == "no update exists with given id"
+                    || failure
+                        .trace
+                        .iter()
+                        .any(|message| message == "no update exists with given id")
+            })
+        {
+            ErrorKind::NotFound
         } else {
             ErrorKind::Upstream
         };
