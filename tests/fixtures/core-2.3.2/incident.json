@@ -1,0 +1,33 @@
+{
+  "fixture_version": "synthetic-core-2.3.2/incident-v1",
+  "server": {"id": "000000000000000000000001", "name": "fixture-server"},
+  "healthy_server": {"id": "000000000000000000000009", "name": "other-server"},
+  "unavailable_server": {"id": "00000000000000000000000a", "name": "unavailable-server"},
+  "unknown_server": {"id": "00000000000000000000000b", "name": "unknown-server"},
+  "stack": {"id": "000000000000000000000002", "name": "alpha-web", "state": "unhealthy"},
+  "healthy_stack": {"id": "000000000000000000000004", "name": "beta-other", "state": "running"},
+  "deployment": {"id": "000000000000000000000003", "name": "fixture-deployment"},
+  "affected_service": "web",
+  "healthy_service": "db",
+  "container": "alpha-web-web-1",
+  "update": {
+    "id": "100000000000000000000001",
+    "operation": "DeployStack",
+    "status": "Complete",
+    "success": false,
+    "start_ts": 1735689600000,
+    "end_ts": 1735689605000,
+    "failed_stage": "Deploy Stack",
+    "stage_stderr": "web failed its healthcheck after rollout"
+  },
+  "alert": {
+    "id": "200000000000000000000001",
+    "ts": 1735689606000,
+    "variant": "StackStateChange",
+    "level": "CRITICAL"
+  },
+  "expected_log_excerpt": "web | ERROR: database migration missing: relation orders does not exist",
+  "credential_marker": "incident-private-credential-marker",
+  "raw_config_marker": "incident-private-toml-marker",
+  "other_data_marker": "incident-private-other-data-marker"
+}
