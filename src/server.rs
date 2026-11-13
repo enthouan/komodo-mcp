@@ -42,6 +42,9 @@ impl KomodoServer {
                 "deploy_stack" | "deploy_deployment" | "start_stack" | "stop_stack"
                 | "restart_stack" | "start_deployment" | "stop_deployment"
                 | "restart_deployment" => Some(Capability::Operate),
+                "preview_stack_update" | "apply_stack_update" => {
+                    Some(Capability::ConfigurationEdit)
+                }
                 _ => None,
             },
         )
@@ -50,6 +53,24 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description = "Preview a typed partial Stack edit with trusted configuration access. Reads authoritative configuration and returns redacted changed fields, resolved identity and a ten-minute process-local single-use preview_id; performs zero writes, including no-op edits. Omitted fields are preserved; null is rejected; empty environment or ignore_services explicitly clears that field. Never copy display redaction markers into input. Saving is separate from deployment and health. Core refreshes caches on update. Apply must use the exact same target and patch; the authoritative baseline is kept privately, including secrets.", input_schema = schema_for_input::<crate::configuration::StackPreviewInput>().expect("valid preview schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_stack_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_stack_update") {
+            Ok(input) => crate::configuration::preview_stack_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Apply the exact Stack target/patch from preview_stack_update once with trusted configuration access. Consume the preview before I/O, recheck authoritative configuration, and submit only supplied typed fields; no-op and stale previews submit zero writes. Core has no conditional write: another writer can race after the final read. Never automatically retry after timeout, cancellation, lost or invalid replies; submission_unknown retains uncertainty and the token cannot be replayed. Prepare a fresh preview only after inspecting saved configuration. Saves no deployment or lifecycle command; stored configuration does not establish runtime health.", input_schema = schema_for_input::<crate::configuration::StackApplyInput>().expect("valid apply schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_stack_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_stack_update") {
+            Ok(input) => crate::configuration::apply_stack_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description = "Inspect bounded recent history after a lost execution reply when no update ID is known. Reads only, no operate grant needed. Supply the original resolved target, requested whole/service scope, operation and available local UTC submission-window bounds. Search at most three fixed 100-record history pages and five service-detail lookups, with two-second read and ten-second total budgets; return at most five possible candidates. Core service logs may be absent, inaccessible or ambiguous. Zero candidates never proves non-acceptance, and one candidate never proves attribution: another caller can issue an identical action. Original submission remains unknown; no candidate is selected automatically and execution is never resubmitted. Retry observation for delayed history, not execution. If an acknowledged update ID is known, use get_update/wait_for_update directly. Candidate execution outcome is separate from workload health.", input_schema = schema_for_input::<crate::recovery::RecoveryInput>().expect("valid recovery schema"), output_schema = inventory::output_schema::<crate::recovery::RecoveryResult>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
     async fn reconcile_operation(
         &self,

@@ -719,6 +719,9 @@ impl Process {
         Self::start_address(&core.address, operate).await
     }
     pub async fn start_address(address: &str, operate: bool) -> (Self, Session) {
+        Self::start_profile(address, operate, false).await
+    }
+    pub async fn start_profile(address: &str, operate: bool, edit: bool) -> (Self, Session) {
         let mut child = Command::new(env!("CARGO_BIN_EXE_komodo-mcp"))
             .env_clear()
             .env("KOMODO_ADDRESS", address)
@@ -729,6 +732,10 @@ impl Process {
                 if operate { "true" } else { "false" },
             )
             .env("RUST_LOG", "trace")
+            .env(
+                "KOMODO_ALLOW_CONFIGURATION_EDIT",
+                if edit { "true" } else { "false" },
+            )
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -786,7 +793,10 @@ impl Process {
         assert!(self.child.id().is_none());
         super::assert_safe(std::str::from_utf8(&self.stderr.lock().unwrap()).unwrap());
     }
-    pub async fn finish(mut self, mut session: Session) {
+    pub async fn finish(self, session: Session) {
+        self.finish_excluding(session, &[]).await;
+    }
+    pub async fn finish_excluding(mut self, mut session: Session, forbidden: &[&str]) {
         let result = timeout(SHUTDOWN, session.close()).await;
         if result.is_err() {
             self.child.start_kill().unwrap();
@@ -806,5 +816,13 @@ impl Process {
         assert!(status.success());
         assert!(self.child.id().is_none());
         super::assert_safe(std::str::from_utf8(&self.stderr.lock().unwrap()).unwrap());
+        let captured = self.stderr.lock().unwrap();
+        let captured = std::str::from_utf8(&captured).unwrap();
+        for value in forbidden {
+            assert!(
+                !captured.contains(value),
+                "configuration input leaked to diagnostics"
+            );
+        }
     }
 }

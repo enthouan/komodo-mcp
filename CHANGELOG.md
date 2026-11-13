@@ -8,6 +8,13 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Add trusted typed Stack configuration preview/apply with private authoritative
+  baselines, explicit omission/clear/no-op behavior, redacted field changes,
+  single-use previews and bounded single-submission uncertainty. Preserve
+  independent operate/edit grants and verify the same-identity permission
+  boundary with the disposable Core/Periphery runner.
+  ([#16](https://github.com/enthouan/komodo-mcp/issues/16))
+
 ## v0.3.1
 
 Dependency and CI maintenance for workload operations and recovery.

@@ -8,7 +8,7 @@ use komodo_mcp::{
     server::KomodoServer,
 };
 use rmcp::{ServiceExt, service::QuitReason, transport::stdio};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{EnvFilter, prelude::*};
 
 // Keep this reporting boundary closed to raw SDK/protocol error chains.
 #[derive(Debug)]
@@ -45,13 +45,20 @@ async fn main() -> ExitCode {
 
 async fn run() -> Result<(), StartupError> {
     let config = Config::from_env()?;
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+    // Dependency Debug/Trace events include complete MCP requests and replies,
+    // including newly supplied configuration secrets that are not API credentials.
+    // Apply this hard filter after RUST_LOG, even for more specific directives.
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(tracing_subscriber::filter::filter_fn(|metadata| {
+            metadata.target().starts_with("komodo_mcp") || *metadata.level() <= tracing::Level::INFO
+        }))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(SafeDiagnostics::new(&config, std::io::stderr))
+                .with_ansi(false)
+                .without_time(),
         )
-        .with_writer(SafeDiagnostics::new(&config, std::io::stderr))
-        .with_ansi(false)
-        .without_time()
         .try_init()
         .map_err(|_| StartupError::Runtime("failed to configure diagnostics"))?;
 
