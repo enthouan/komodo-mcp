@@ -573,14 +573,20 @@ def entry(argv=None):
     ROOT = Path(tempfile.mkdtemp(prefix=PROJECT+'-'))
     COMPOSE = [*DOCKER,'compose','--project-name',PROJECT,'--file',str(ROOT/'compose.json')]
     REPORT.update(project=PROJECT,docker_context=args.docker_context,owner_label=OWNER,
-        started=datetime.datetime.now(datetime.timezone.utc).isoformat(),operations=[],cleanup_verified=False)
+        started=datetime.datetime.now(datetime.timezone.utc).isoformat(),operations=[],cleanup_verified=False,
+        phase='preflight',private_cleanup_directory=str(ROOT))
+    persist()
     result = 0
     try:
         endpoint = run([*DOCKER,'context','inspect',args.docker_context,'--format','{{.Endpoints.docker.Host}}'])
         if not endpoint.startswith('unix://'):
             raise Failure('select a local Unix-socket Docker context for loopback-only Core')
         BINARY = build_candidate()
+        REPORT['phase'] = 'provisioning'
+        persist()
         bootstrap()
+        REPORT['phase'] = 'exercising'
+        persist()
         exercise_environment()
     except BaseException as error:
         result = 1
@@ -590,6 +596,8 @@ def entry(argv=None):
         REPORT['failure'] = str(error) if isinstance(error,Failure) else type(error).__name__
         print('Disposable smoke did not pass:',REPORT['failure'],flush=True)
     finally:
+        REPORT['phase'] = 'cleanup'
+        persist()
         try:
             if RESERVED:
                 cleanup()
@@ -597,6 +605,7 @@ def entry(argv=None):
                 REPORT.update(cleanup_verified=True,cleanup_action='no resources created')
             if REPORT['cleanup_verified']:
                 shutil.rmtree(ROOT)
+                REPORT.pop('private_cleanup_directory',None)
         except BaseException as error:
             result = 1
             REPORT['passed'] = False
@@ -604,6 +613,7 @@ def entry(argv=None):
             REPORT['private_cleanup_directory'] = str(ROOT)
             print('Cleanup needs attention; retain the private directory identified in evidence.',flush=True)
         REPORT['finished'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        REPORT['phase'] = 'complete' if result == 0 else 'failed'
         persist()
     return result
 

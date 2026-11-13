@@ -68,6 +68,25 @@ class ScopeTests(unittest.TestCase):
                 self.assertNotIn('synthetic-private-key', str(error.exception))
         self.assertEqual(received, [])
 
+    def test_response_is_bounded_before_json_decode(self):
+        class Core(BaseHTTPRequestHandler):
+            def do_POST(self):
+                operation = json.loads(self.rfile.read(int(self.headers['Content-Length'])))['type']
+                body = b'{"version":"2.3.2"}' if operation == 'GetVersion' else b'x' * (smoke.MAX_BODY + 1)
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        with http_server(Core) as address:
+            api = smoke.Api(address)
+            self.assertEqual(api.read('GetVersion'), {'version': '2.3.2'})
+            with self.assertRaisesRegex(smoke.Failure, 'bounded Core response exceeded'):
+                api.read('Oversized')
+
     def test_existing_project_is_never_adopted_or_mutated(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(smoke, 'ROOT', Path(directory)), \
                 patch.object(smoke, 'PROJECT', 'komodo-mcp-smoke-test'), \
