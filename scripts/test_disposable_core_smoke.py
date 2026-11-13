@@ -31,6 +31,47 @@ def http_server(handler):
 
 
 class ScopeTests(unittest.TestCase):
+    def test_evidence_write_failure_still_cleans_and_cleanup_error_cannot_report_pass(self):
+        for failed in ['evidence', 'cleanup']:
+            with self.subTest(failed=failed), tempfile.TemporaryDirectory() as directory, \
+                    contextlib.ExitStack() as stack:
+                private = Path(directory)/'private'
+                private.mkdir()
+                for name,value in {'REPORT':{},'SECRETS':[],'RESERVED':False,'ROOT':None,
+                                   'PROJECT':'','OWNER':'','COMPOSE':[],'DOCKER':[],
+                                   'BINARY':None,'EVIDENCE':None}.items():
+                    stack.enter_context(patch.object(smoke,name,value))
+                stack.enter_context(patch.object(smoke.tempfile,'mkdtemp',return_value=str(private)))
+                stack.enter_context(patch.object(smoke,'run',return_value='unix:///synthetic-local-docker'))
+                stack.enter_context(patch.object(smoke,'build_candidate',return_value=Path('synthetic-binary')))
+                stack.enter_context(patch.object(smoke,'bootstrap',side_effect=lambda: setattr(smoke,'RESERVED',True)))
+                stack.enter_context(patch.object(smoke,'exercise_environment',side_effect=lambda: smoke.REPORT.update(passed=True)))
+                original_persist, writes = smoke.persist, 0
+
+                def persist():
+                    nonlocal writes
+                    writes += 1
+                    if writes == 4 and failed == 'evidence':
+                        raise OSError('synthetic evidence failure')
+                    original_persist()
+
+                def cleanup():
+                    smoke.REPORT['cleanup_verified'] = True
+                    if failed == 'cleanup':
+                        raise OSError('synthetic private-file cleanup failure')
+
+                stack.enter_context(patch.object(smoke,'persist',side_effect=persist))
+                cleaned = stack.enter_context(patch.object(smoke,'cleanup',side_effect=cleanup))
+                evidence = Path(directory)/'evidence.json'
+                result = smoke.entry(['--docker-context','synthetic-local','--project',
+                    'komodo-mcp-smoke-test','--evidence',str(evidence)])
+                self.assertEqual(result,1)
+                cleaned.assert_called_once()
+                report = json.loads(evidence.read_text())
+                self.assertFalse(report['passed'])
+                self.assertEqual(report['cleanup_verified'],failed == 'evidence')
+                self.assertEqual(private.exists(),failed == 'cleanup')
+
     def test_rejects_external_api_and_arbitrary_project_names(self):
         for name in ['main', 'existing-core', 'komodo-mcp-smoke-', '../smoke', 'komodo-mcp-smoke-A']:
             with self.assertRaises(argparse.ArgumentTypeError):

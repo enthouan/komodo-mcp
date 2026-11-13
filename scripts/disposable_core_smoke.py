@@ -626,7 +626,13 @@ def entry(argv=None):
         print('Disposable smoke did not pass:',REPORT['failure'],flush=True)
     finally:
         REPORT['phase'] = 'cleanup'
-        persist()
+        # Evidence failures must never prevent cleanup of the owned project.
+        try:
+            persist()
+        except BaseException as error:
+            result = 1
+            REPORT['passed'] = False
+            REPORT['evidence_error'] = type(error).__name__
         try:
             if RESERVED:
                 cleanup()
@@ -638,12 +644,17 @@ def entry(argv=None):
         except BaseException as error:
             result = 1
             REPORT['passed'] = False
+            REPORT['cleanup_verified'] = False
             REPORT['cleanup_error'] = str(error) if isinstance(error,Failure) else type(error).__name__
             REPORT['private_cleanup_directory'] = str(ROOT)
             print('Cleanup needs attention; retain the private directory identified in evidence.',flush=True)
         REPORT['finished'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         REPORT['phase'] = 'complete' if result == 0 else 'failed'
-        persist()
+        try:
+            persist()
+        except BaseException:
+            result = 1
+            print('Evidence could not be written; cleanup_verified=' + str(REPORT['cleanup_verified']),flush=True)
     return result
 
 
