@@ -11,7 +11,7 @@ Minor and patch updates are grouped by ecosystem. Major updates remain separate.
 Cargo allows five open version-update PRs and Actions allows three. Security
 updates use GitHub's separate limits. No dependency PR is automatically merged.
 
-The exact `komodo_client =2.3.2` and `rmcp =3.8.0` pins are excluded from the
+The exact `komodo_client` and `rmcp` pins in `Cargo.toml` are excluded from the
 compatible-update group so proposed SDK changes receive their own review.
 Before merging a Core SDK update, inspect that version's authoritative read API,
 update compatibility/permission fixtures, and rerun the real stdio tests. An MCP
