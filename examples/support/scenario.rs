@@ -419,6 +419,7 @@ async fn solve(
                 "list_alerts",
                 "list_updates",
                 "get_update",
+                "wait_for_update",
                 "get_container_logs",
                 "get_deployment_logs",
                 "get_stack_logs",

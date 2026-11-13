@@ -1,7 +1,8 @@
 use rmcp::{
-    ServerHandler,
+    RoleServer, ServerHandler,
     handler::server::tool::schema_for_input,
     model::{CallToolResult, Implementation, JsonObject, ServerCapabilities, ServerConfig},
+    service::RequestContext,
     tool, tool_handler, tool_router,
 };
 
@@ -32,6 +33,7 @@ impl KomodoServer {
                 | "list_alerts"
                 | "list_updates"
                 | "get_update"
+                | "wait_for_update"
                 | "get_container_logs"
                 | "get_deployment_logs"
                 | "get_stack_logs"
@@ -47,6 +49,21 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description = "Observe one known Core update ID with reads only; available without operate. Wait up to 1..30 seconds (default 10), at most 10 lookups, at least one second after each unfinished response. Return the ID, latest bounded observation and explicit end reason. A local deadline, request cap, read failure or cancelled wait is incomplete observation, not remote operation failure/cancellation. Resume with this tool or get_update in a new session using the same saved ID; never execute again to resume. Core Complete plus its success field determines final outcome; it does not establish workload health. Use fleet_health/stack_diagnose/logs separately. MCP cancellation stops local polling; save the ID before waiting because cancelled requests may have no response.", input_schema = schema_for_input::<crate::wait::WaitInput>().expect("valid wait schema"), output_schema = inventory::output_schema::<crate::wait::WaitResult>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn wait_for_update(
+        &self,
+        arguments: JsonObject,
+        context: RequestContext<RoleServer>,
+    ) -> CallToolResult {
+        let result = match inventory::parse(arguments, "wait_for_update") {
+            Ok(input) => {
+                crate::wait::wait_for_update(&self.client, input, context.ct.cancelled()).await
+            }
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description = "Deploy one existing Stack from its saved definition and image-pull policy. Explicitly choose whole_stack or one exact Compose service; dependencies, saved hooks, flags and wrappers can have broader effects. Swarm supports whole-stack deploy only. Unlike restart, deploy can recreate containers with saved changes. Submit once, return an update receipt and one immediate bounded observation; acknowledgement is not rollout success. Never automatically retry execution after a timeout/lost reply: inspect the saved update ID/history. A new explicit call is a new non-idempotent operation.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
     async fn deploy_stack(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "deploy_stack") {

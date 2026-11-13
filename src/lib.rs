@@ -12,3 +12,4 @@ pub mod logs;
 pub mod operations;
 pub mod server;
 pub mod triage;
+pub mod wait;

@@ -169,6 +169,51 @@ lookup. An ObjectId-shaped name can use four bounded list pages plus one detail
 read, execution and lookup: at most seven Core requests and 92 seconds of request
 budgets, excluding local work/scheduling. Startup's GetVersion probe is separate.
 
+## Wait and resume by update ID
+
+Save `update_id` before starting a wait. `wait_for_update` is available in a
+read-only session; Core still requires access to the update's target/history.
+It has no dependency on the submitting process, local memory or an operate grant:
+
+```json
+{"name":"wait_for_update","arguments":{"id":"100000000000000000000001","timeout_seconds":10}}
+```
+
+The total local observation budget is 1–30 seconds (default 10), including Core
+reads and sleeps. There are at most **10** lookups, with a pause of at least one
+second after each unfinished response. Requests retain the shared 2 MiB body cap
+and request deadline; the total wait deadline can stop an in-flight read sooner.
+The request cap can end a wait before the requested time budget. Result JSON is
+capped at 65536 bytes after redaction/escaping; latest evidence is marked truncated
+if stages are reduced, preserving the ID and prioritized failure evidence.
+
+| `end` | Meaning |
+| --- | --- |
+| `complete` | Core reported Complete. `latest_update.outcome` uses Core's final `success` field to distinguish succeeded/failed. |
+| `deadline` | The local time budget expired; remote execution may still be queued/running or already complete. |
+| `poll_limit` | The ten-lookup cap was reached; observation is incomplete. |
+| `observation_failed` | A read failed, such as missing/inaccessible history, permission loss or unavailable Core; inspect `observation_error`. |
+| `cancelled` | Local observation was cancelled; no remote cancellation was requested. A cancelled MCP request may have no response. |
+
+Every incomplete result retains `update_id` and the last valid `latest_update`
+when available. A later read failure never overwrites that evidence or turns a
+queued/running update into an execution failure. If the first read fails or the
+budget expires before any observation, `latest_update` is null. There is no silent
+fallback, background poller or execution resubmission.
+
+MCP `notifications/cancelled` stops local polling, including an in-flight lookup.
+Process loss also ends that observer. Save the ID in the calling client: the SDK
+can discard responses to cancelled requests. Cancellation of a wait does not
+cancel the Core operation. After timeout, cancellation or process/session restart,
+call this tool again with the same ID, or use `get_update` for one lookup. A fresh
+read-only session is sufficient. Retrying observation reads history; issuing a
+new deploy/start/stop/restart call starts a new operation.
+
+Core execution success is separate from workload health. After a successful
+wait, use `stack_diagnose` / `fleet_health` and bounded logs. The production stdio
+fixture includes a completed successful update followed by an **unhealthy** stack
+diagnosis, so a successful command is never treated as a health guarantee.
+
 ## Inspect results and recover without repeating execution
 
 Save the receipt and its `update_id`. In this or a new read-only MCP session:
