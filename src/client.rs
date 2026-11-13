@@ -140,12 +140,25 @@ impl CoreClient {
     {
         let operation = match T::req_type() {
             "UpdateStack" => "UpdateStack",
+            "CreateStack" => "CreateStack",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "write", None)),
         };
         crate::configuration::require_edit(self)?;
+        let parameters = serde_json::to_value(request).map_err(|_| {
+            AppError::arguments(operation, "Use a supported typed configuration request")
+        })?;
+        // Enforce Core's implicit execution boundary at the shared transport too.
+        // Do not rely on a previously observed auto_update policy: it can race.
+        crate::configuration::require_source_operate(
+            self,
+            operation == "UpdateStack"
+                && ["repo", "linked_repo", "file_contents", "files_on_host"]
+                    .iter()
+                    .any(|field| parameters["config"].get(field).is_some()),
+        )?;
         tokio::time::timeout(
             self.0.policy.operation_timeout,
-            self.request_bounded_body(&self.0.write_request, request, T::req_type(), operation),
+            self.request_bounded_body(&self.0.write_request, parameters, T::req_type(), operation),
         )
         .await
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
@@ -203,6 +216,10 @@ impl CoreClient {
             "GetStack" => "GetStack",
             "ListDeployments" => "ListDeployments",
             "GetDeployment" => "GetDeployment",
+            "GetSwarm" => "GetSwarm",
+            "ListSwarms" => "ListSwarms",
+            "GetRepo" => "GetRepo",
+            "ListRepos" => "ListRepos",
             "GetServerState" => "GetServerState",
             "GetSystemStats" => "GetSystemStats",
             "ListAllStackServices" => "ListAllStackServices",
@@ -340,5 +357,60 @@ impl CoreClient {
 
     pub(crate) fn redaction_marker(&self) -> &str {
         self.0.redactor.marker()
+    }
+}
+
+#[cfg(test)]
+mod write_policy_tests {
+    use super::*;
+    use komodo_client::{api::write::UpdateStack, entities::stack::PartialStackConfig};
+
+    #[tokio::test]
+    async fn shared_transport_denies_source_fields_and_clears_without_both_grants() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        for (operate, edit) in [(false, true), (true, false), (false, false)] {
+            let client = CoreClient::new(
+                Config::parse(
+                    &format!("http://{}", listener.local_addr().unwrap()),
+                    "fixture-key",
+                    "fixture-secret",
+                )
+                .unwrap()
+                .with_capabilities(CapabilityPolicy::new(operate, edit)),
+                RequestPolicy::default(),
+            )
+            .unwrap();
+            for config in [
+                PartialStackConfig {
+                    repo: Some(String::new()),
+                    ..Default::default()
+                },
+                PartialStackConfig {
+                    linked_repo: Some(String::new()),
+                    ..Default::default()
+                },
+                PartialStackConfig {
+                    file_contents: Some(String::new()),
+                    ..Default::default()
+                },
+                PartialStackConfig {
+                    files_on_host: Some(false),
+                    ..Default::default()
+                },
+            ] {
+                let result = client
+                    .write(UpdateStack {
+                        id: "000000000000000000000002".into(),
+                        config,
+                    })
+                    .await;
+                assert!(matches!(result,Err(e) if e.kind==ErrorKind::CapabilityDisabled));
+            }
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err()
+        );
     }
 }

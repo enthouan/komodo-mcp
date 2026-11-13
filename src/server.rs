@@ -42,9 +42,10 @@ impl KomodoServer {
                 "deploy_stack" | "deploy_deployment" | "start_stack" | "stop_stack"
                 | "restart_stack" | "start_deployment" | "stop_deployment"
                 | "restart_deployment" => Some(Capability::Operate),
-                "preview_stack_update" | "apply_stack_update" => {
-                    Some(Capability::ConfigurationEdit)
-                }
+                "preview_stack_update"
+                | "apply_stack_update"
+                | "preview_stack_create"
+                | "apply_stack_create" => Some(Capability::ConfigurationEdit),
                 _ => None,
             },
         )
@@ -53,7 +54,25 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
-    #[tool(description = "Preview a typed partial Stack edit with trusted configuration access. Reads authoritative configuration and returns redacted changed fields, resolved identity and a ten-minute process-local single-use preview_id; performs zero writes, including no-op edits. Omitted fields are preserved; null is rejected; empty environment or ignore_services explicitly clears that field. Never copy display redaction markers into input. Saving is separate from deployment and health. Core refreshes caches on update. Apply must use the exact same target and patch; the authoritative baseline is kept privately, including secrets.", input_schema = schema_for_input::<crate::configuration::StackPreviewInput>().expect("valid preview schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    #[tool(description = "Preview creation of one Stack definition with trusted configuration access. Supply a name, explicit inline/Git/linked-Repo/host source and an existing Server/Swarm attachment; optional settings omit default fields. Returns Core's normalized name, source/target and redacted changes with zero writes. Existing host/Git file contents are not edited. Core still enforces creation and Read/Attach permissions; visible name absence cannot prove global absence. Reuse the exact input and returned process-local single-use preview_id with apply_stack_create. Creation saves desired configuration without a deployment command or a runtime health claim.", input_schema = schema_for_input::<crate::configuration::StackCreateInput>().expect("create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_stack_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_stack_create") {
+            Ok(input) => crate::configuration::preview_stack_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Apply the exact Stack creation input and preview_id once with trusted configuration access. Recheck visible name absence and raw referenced definitions, then submit one typed CreateStack. Core owns global uniqueness and creation/Read-Attach authorization; no credentials are changed. A save is separate from deployment and health. No host-file write, Git commit or execution request is submitted. Lost/invalid replies retain submission_unknown; never automatically retry creation. Consumed/expired/restarted-process previews cannot be replayed, and Core has no upstream idempotency or conditional-create parameter.", input_schema = schema_for_input::<crate::configuration::StackCreateApplyInput>().expect("create apply schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_stack_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_stack_create") {
+            Ok(input) => crate::configuration::apply_stack_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Preview a typed partial Stack edit with trusted configuration access. Reads authoritative configuration and returns redacted changed fields, resolved identity and a ten-minute process-local single-use preview_id; performs zero writes, including no-op edits. Edit auto_pull, environment, ignore_services, project_name, source or attachment. Applying any supplied source also requires the independent operate grant, even if auto_update is currently disabled, because Core policy can race; configuration-only callers may preview it. Omitted fields are preserved; null is rejected; documented empty values clear supported fields. Source selectors distinguish inline, Git, linked Repo and existing host files; attachment resolves an existing Server or Swarm. Never copy display redaction markers into input. Saving is separate from deployment and health. MCP submits no deploy/file-write/Git-commit command. Core refreshes caches and source-field updates trigger its update check: an enabled saved auto_update policy can deploy through Core, so source apply requires both local grants. Inspect the previewed effects. Apply must use the exact same target and patch; the authoritative baseline is kept privately, including secrets.", input_schema = schema_for_input::<crate::configuration::StackPreviewInput>().expect("valid preview schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
     async fn preview_stack_update(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "preview_stack_update") {
             Ok(input) => crate::configuration::preview_stack_update(&self.client, input).await,
@@ -62,7 +81,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description = "Apply the exact Stack target/patch from preview_stack_update once with trusted configuration access. Consume the preview before I/O, recheck authoritative configuration, and submit only supplied typed fields; no-op and stale previews submit zero writes. Core has no conditional write: another writer can race after the final read. Never automatically retry after timeout, cancellation, lost or invalid replies; submission_unknown retains uncertainty and the token cannot be replayed. Prepare a fresh preview only after inspecting saved configuration. Saves no deployment or lifecycle command; stored configuration does not establish runtime health.", input_schema = schema_for_input::<crate::configuration::StackApplyInput>().expect("valid apply schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    #[tool(description = "Apply the exact Stack target/patch from preview_stack_update once with trusted configuration access. Consume the preview before I/O, recheck authoritative configuration, and submit only supplied typed fields; no-op and stale previews submit zero writes. Core has no conditional write: another writer can race after the final read. Never automatically retry after timeout, cancellation, lost or invalid replies; submission_unknown retains uncertainty and the token cannot be replayed. Prepare a fresh preview only after inspecting saved configuration. Applying a supplied source requires BOTH operate and configuration-edit grants, checked locally before any Core reads regardless of the observed auto_update policy. MCP submits no deployment or lifecycle command; source changes can trigger Core auto-deploy when the previewed auto_update policy is enabled. The inspected Core 2.3.2 target-reassignment path refreshes the new target and leaves old workloads in place despite the SDK cleanup warning. Inspect both targets. Stored configuration does not establish runtime health.", input_schema = schema_for_input::<crate::configuration::StackApplyInput>().expect("valid apply schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
     async fn apply_stack_update(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "apply_stack_update") {
             Ok(input) => crate::configuration::apply_stack_update(&self.client, input).await,

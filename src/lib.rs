@@ -13,5 +13,6 @@ pub mod logs;
 pub mod operations;
 pub mod recovery;
 pub mod server;
+pub mod stack_configuration;
 pub mod triage;
 pub mod wait;

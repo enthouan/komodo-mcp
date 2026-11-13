@@ -137,9 +137,15 @@ target reads or execution; constructing a call manually cannot bypass discovery.
 All sixteen existing read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
-adds `preview_stack_update` and `apply_stack_update`; Core `Write` on that Stack
-is required to save. See the [configuration workflow](docs/configuration.md) for
-partial fields, secret handling, stale previews, no-op and uncertain submissions.
+adds `preview_stack_create`/`apply_stack_create` and
+`preview_stack_update`/`apply_stack_update`. Core `Write` on an existing Stack,
+creation permission for new Stacks, and Read/Attach on new Server/Swarm/Repo
+references remain required. See the [configuration workflow](docs/configuration.md)
+for inline/Git/host sources, partial fields, secret handling, stale previews,
+Core auto-deploy effects, no-op and uncertain submissions.
+Applying a supplied Stack source requires both local grants because Core can
+auto-deploy; configuration-only access still permits creation and ordinary
+settings/attachment edits.
 
 Use an enabled non-admin Core identity with `Read` on the resources being
 inspected. Deploy, start, stop and restart require Core `Execute` on the selected

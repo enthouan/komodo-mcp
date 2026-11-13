@@ -9,8 +9,11 @@ use std::{
 };
 
 use komodo_client::{
-    api::write::UpdateStack,
-    entities::stack::{PartialStackConfig, Stack},
+    api::write::{CreateStack, UpdateStack},
+    entities::{
+        stack::{Stack, StackConfig},
+        to_docker_compatible_name,
+    },
 };
 use rmcp::schemars::{self, JsonSchema};
 use serde::{Deserialize, Serialize};
@@ -28,7 +31,7 @@ const TTL: Duration = Duration::from_secs(600);
 const MAX_PREVIEWS: usize = 16;
 const MAX_PATCH_BYTES: usize = 16 * 1024;
 
-fn present<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
+pub(crate) fn present<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
     d: D,
 ) -> Result<Option<T>, D::Error> {
     T::deserialize(d).map(Some)
@@ -39,6 +42,30 @@ fn present<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
 #[derive(Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StackPatch {
+    /// Applying a supplied source needs both local operate and configuration-edit
+    /// grants, regardless of Core's current auto_update policy. Creation is separate.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "crate::stack_configuration::Source")]
+    pub source: Option<crate::stack_configuration::Source>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "crate::stack_configuration::Attachment")]
+    pub attachment: Option<crate::stack_configuration::Attachment>,
+    /// Empty string restores Core's default Stack-name project selection.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    #[schemars(with = "String")]
+    pub project_name: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -78,10 +105,32 @@ pub struct StackApplyInput {
     pub preview_id: String,
 }
 
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StackCreateInput {
+    pub name: String,
+    /// Creation requires source and attachment; other fields are optional.
+    #[schemars(schema_with = "create_config_schema")]
+    pub config: StackPatch,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StackCreateApplyInput {
+    pub name: String,
+    #[schemars(schema_with = "create_config_schema")]
+    pub config: StackPatch,
+    pub preview_id: String,
+}
+
+fn create_config_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({"allOf":[generator.subschema_for::<StackPatch>()],"required":["source","attachment"]})
+}
+
 #[derive(Clone, Serialize, JsonSchema)]
 pub struct ConfigurationTarget {
     pub kind: &'static str,
-    pub id: String,
+    pub id: Option<String>,
     pub name: String,
 }
 
@@ -94,7 +143,7 @@ pub struct FieldChange {
     pub before_truncated: bool,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Clone, Copy, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ConfigurationOutcome {
     Preview,
@@ -103,7 +152,7 @@ pub enum ConfigurationOutcome {
     SubmissionUnknown,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct ConfigurationResult {
     pub outcome: ConfigurationOutcome,
     pub resource: ConfigurationTarget,
@@ -113,6 +162,14 @@ pub struct ConfigurationResult {
     pub saved_configuration_verified: bool,
     pub observation_error: Option<AppError>,
     pub effects: Vec<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub definition: Option<DefinitionPreview>,
+}
+
+#[derive(Clone, Serialize, JsonSchema)]
+#[serde(tag = "kind", content = "details", rename_all = "snake_case")]
+pub enum DefinitionPreview {
+    Stack(crate::stack_configuration::DefinitionPreview),
 }
 
 // No Debug: these values can contain raw secrets. Nothing here is serialized.
@@ -120,6 +177,7 @@ struct Preview {
     created: Instant,
     input: Value,
     baseline: Value,
+    prepared: Value,
     result: ConfigurationResult,
 }
 struct Entries {
@@ -160,19 +218,11 @@ impl PreviewStore {
         let token = format!("configuration-{}-{}", entries.nonce, entries.next);
         entry.result.preview_id = Some(token.clone());
         // Result is an allowlisted projection; only the private entry has secrets.
-        let result = ConfigurationResult {
-            resource: entry.result.resource.clone(),
-            changes: entry.result.changes.clone(),
-            outcome: if entry.result.changes.is_empty() {
-                ConfigurationOutcome::NoOp
-            } else {
-                ConfigurationOutcome::Preview
-            },
-            preview_id: Some(token.clone()),
-            writes_submitted: 0,
-            saved_configuration_verified: false,
-            observation_error: None,
-            effects: entry.result.effects.clone(),
+        let mut result = entry.result.clone();
+        result.outcome = if entry.result.changes.is_empty() {
+            ConfigurationOutcome::NoOp
+        } else {
+            ConfigurationOutcome::Preview
         };
         entries.values.insert(token, entry);
         Ok(result)
@@ -204,14 +254,33 @@ pub(crate) fn require_edit(client: &CoreClient) -> Result<(), AppError> {
     Ok(())
 }
 
+pub(crate) fn require_source_operate(
+    client: &CoreClient,
+    source_submitted: bool,
+) -> Result<(), AppError> {
+    if source_submitted && !client.capabilities().allows(Capability::Operate) {
+        return Err(AppError {
+            field: Some("KOMODO_ALLOW_OPERATE"),
+            correction: Some(
+                "Stack source updates require both operate and configuration-edit grants because Core can auto-deploy. The saved auto_update value can race; no request was submitted.",
+            ),
+            ..AppError::new(ErrorKind::CapabilityDisabled, "UpdateStack", None)
+        });
+    }
+    Ok(())
+}
+
 impl StackPatch {
-    fn validate(&self, client: &CoreClient) -> Result<Value, AppError> {
+    fn validate(&self, client: &CoreClient) -> Result<(), AppError> {
         let value = serde_json::to_value(self).expect("typed patch");
         let encoded = value.to_string();
         if encoded.len() > MAX_PATCH_BYTES
             || encoded.contains(client.redaction_marker())
             || encoded.contains("[redacted]")
             || encoded.contains("[hidden]")
+            || self.project_name.as_ref().is_some_and(|s| {
+                s.len() > 128 || (!s.is_empty() && to_docker_compatible_name(s) != *s)
+            })
             || self
                 .ignore_services
                 .as_ref()
@@ -222,23 +291,23 @@ impl StackPatch {
                 "Use a patch of at most 16384 JSON bytes, at most 32 nonempty ignore_services of at most 128 bytes each, and original values or secret references rather than display redaction markers",
             ));
         }
-        // Core deserializes environment strings with the pinned SDK helper
-        // (including its trailing newline normalization). Preview and compare
-        // the same canonical typed value that will actually be stored.
-        Ok(serde_json::to_value(self.typed()?).expect("typed partial config"))
-    }
-    fn typed(&self) -> Result<PartialStackConfig, AppError> {
-        serde_json::from_value(serde_json::to_value(self).expect("typed patch")).map_err(|_| {
-            AppError::arguments(
-                OP,
-                "Use a supported typed configuration value; check the environment variable syntax",
-            )
-        })
+        if let Some(source) = &self.source {
+            source.validate()?;
+        }
+        Ok(())
     }
 }
 
 fn baseline(stack: &Stack) -> Value {
     json!({"kind":"stack","id":stack.id,"name":stack.name,"template":stack.template,"config":stack.config})
+}
+
+fn sensitive_locator(value: &Value) -> bool {
+    match value {
+        Value::String(s) => s.contains(['@', '?', '#']) || s.contains("://"),
+        Value::Array(items) => items.iter().any(sensitive_locator),
+        _ => false,
+    }
 }
 
 fn changes(client: &CoreClient, config: &Value, patch: &Value) -> Vec<FieldChange> {
@@ -248,9 +317,13 @@ fn changes(client: &CoreClient, config: &Value, patch: &Value) -> Vec<FieldChang
         .iter()
         .filter(|(key, value)| config[*key] != **value)
         .map(|(key, after)| {
-            let sensitive = key == "environment";
+            let sensitive = matches!(
+                key.as_str(),
+                "environment" | "file_contents" | "git_account"
+            ) || sensitive_locator(&config[key])
+                || sensitive_locator(after);
             let display = |v: &Value| {
-                if sensitive && v.as_str() != Some("") {
+                if sensitive && !v.is_null() && v.as_str() != Some("") {
                     Value::String(client.redaction_marker().into())
                 } else if let Some(items) = v.as_array() {
                     Value::Array(
@@ -269,7 +342,10 @@ fn changes(client: &CoreClient, config: &Value, patch: &Value) -> Vec<FieldChang
                             .collect(),
                     )
                 } else {
-                    v.clone()
+                    v.as_str().map_or_else(
+                        || v.clone(),
+                        |s| Value::String(s.chars().take(256).collect()),
+                    )
                 }
             };
             FieldChange {
@@ -283,36 +359,171 @@ fn changes(client: &CoreClient, config: &Value, patch: &Value) -> Vec<FieldChang
         .collect()
 }
 
+fn prepared_value(prepared: &crate::stack_configuration::Prepared) -> Value {
+    json!({"config":prepared.config,"references":prepared.references})
+}
+
+fn prepared_patch(prepared: &crate::stack_configuration::Prepared) -> Result<Value, AppError> {
+    let value = serde_json::to_value(&prepared.config).expect("typed partial");
+    if value.to_string().len() > MAX_PATCH_BYTES {
+        return Err(AppError::arguments(
+            OP,
+            "The serialized partial configuration must fit within 16384 JSON bytes",
+        ));
+    }
+    Ok(value)
+}
+
+fn result_for_stack(
+    client: &CoreClient,
+    id: Option<String>,
+    name: &str,
+    current: Option<&StackConfig>,
+    prepared: &crate::stack_configuration::Prepared,
+    runtime: Option<String>,
+) -> Result<ConfigurationResult, AppError> {
+    use crate::stack_configuration as sc;
+    let patch = prepared_patch(prepared)?;
+    let default = StackConfig::default();
+    let after = sc::proposed(current.unwrap_or(&default), &prepared.config)?;
+    let fields = changes(
+        client,
+        &current.map_or(Value::Object(Default::default()), |v| {
+            serde_json::to_value(v).expect("typed config")
+        }),
+        &patch,
+    );
+    let source_check = ["repo", "linked_repo", "file_contents", "files_on_host"]
+        .iter()
+        .any(|k| patch.get(k).is_some());
+    let auto_deploy = current.is_some_and(|v| v.auto_update) && source_check && !fields.is_empty();
+    let before = current.map(sc::summary);
+    let after = sc::summary(&after);
+    let target_changed = before.as_ref().is_some_and(|v| {
+        serde_json::to_value(&v.attachment).expect("attachment")
+            != serde_json::to_value(&after.attachment).expect("attachment")
+    });
+    let mut effects = vec![
+        "MCP submits only a typed definition write, never deployment, lifecycle, host-file writes or Git commits. Core refreshes Stack/target caches; saving does not establish deployment or health.",
+        "Apply consumes the ten-minute process-local preview, rechecks authoritative configuration and references, and submits at most once. Core has no conditional write or invocation idempotency: another writer can race after the final reads.",
+    ];
+    if source_check && current.is_some() {
+        effects.push("Applying a supplied source requires both local configuration-edit and operate grants, even when auto_update is currently disabled or the source is unchanged, because Core's policy can race. A configuration-only caller can preview but cannot submit it.");
+        effects.push(if auto_deploy {"Submitted source fields trigger Core CheckStackForUpdate. The saved auto_update policy is enabled: Core itself can automatically deploy. Applying this source requires both local operate and configuration-edit grants."} else {"Submitted source fields trigger Core CheckStackForUpdate. The previewed saved auto_update policy is disabled; policy changes after our final read can still race."});
+    }
+    if target_changed {
+        effects.push("The pinned SDK warns about old-target cleanup. The inspected Core 2.3.2 UpdateStack implementation does not tear down the old target; old workloads may remain. It refreshes caches using the new target. Inspect both targets separately.");
+    }
+    if current.is_some_and(|v| {
+        patch
+            .get("project_name")
+            .is_some_and(|p| p != &v.project_name)
+    }) {
+        effects.push("Changing project_name changes the Compose project selected by future operations; an already running project can remain under its old name. Inspect it separately.");
+    }
+    Ok(ConfigurationResult {
+        outcome: ConfigurationOutcome::Preview,
+        resource: ConfigurationTarget {
+            kind: "stack",
+            id,
+            name: name.chars().take(256).collect(),
+        },
+        preview_id: None,
+        changes: fields,
+        writes_submitted: 0,
+        saved_configuration_verified: false,
+        observation_error: None,
+        effects,
+        definition: Some(DefinitionPreview::Stack(sc::DefinitionPreview {
+            before,
+            after,
+            resolved_references: prepared.reference_summaries.clone(),
+            observed_runtime_state: runtime,
+            core_auto_deploy_possible: auto_deploy,
+            requires_operate_to_apply: source_check && current.is_some(),
+            target_changed,
+            old_target_cleanup: "not_performed_by_inspected_core_2_3_2_update_path",
+        })),
+    })
+}
+
+fn finish_save(
+    mut result: ConfigurationResult,
+    response: Result<Stack, AppError>,
+    patch: &Value,
+    expected_name: &str,
+    expected_id: Option<&str>,
+    operation: &'static str,
+) -> ConfigurationResult {
+    result.preview_id = None;
+    result.writes_submitted = 1;
+    match response {
+        Ok(saved)
+            if saved.name == expected_name
+                && saved.id.len() == 24
+                && saved.id.bytes().all(|b| b.is_ascii_hexdigit())
+                && expected_id.is_none_or(|id| id == saved.id) =>
+        {
+            let saved_config = serde_json::to_value(&saved.config).expect("typed config");
+            if patch
+                .as_object()
+                .expect("partial object")
+                .iter()
+                .all(|(k, v)| saved_config[k] == *v)
+            {
+                result.outcome = ConfigurationOutcome::Saved;
+                result.saved_configuration_verified = true;
+                result.resource.id = Some(saved.id);
+                if let Some(DefinitionPreview::Stack(definition)) = &mut result.definition {
+                    definition.after = crate::stack_configuration::summary(&saved.config);
+                }
+            } else {
+                result.outcome = ConfigurationOutcome::SubmissionUnknown;
+                result.observation_error =
+                    Some(AppError::new(ErrorKind::InvalidResponse, operation, None));
+            }
+        }
+        other => {
+            result.outcome = ConfigurationOutcome::SubmissionUnknown;
+            result.observation_error = Some(
+                other
+                    .err()
+                    .unwrap_or_else(|| AppError::new(ErrorKind::InvalidResponse, operation, None)),
+            );
+        }
+    }
+    result
+}
+
 pub async fn preview_stack_update(
     client: &CoreClient,
     input: StackPreviewInput,
 ) -> Result<ConfigurationResult, AppError> {
     require_edit(client)?;
-    let patch = input.patch.validate(client)?;
-    let (_, stack) =
-        inventory::resolve_stack(&client.bounded_evidence(), input.target.clone()).await?;
-    let baseline = baseline(&stack);
-    let result = ConfigurationResult {
-        outcome: ConfigurationOutcome::Preview,
-        resource: ConfigurationTarget {
-            kind: "stack",
-            id: stack.id,
-            name: stack.name.chars().take(256).collect(),
-        },
-        changes: changes(client, &baseline["config"], &patch),
-        preview_id: None,
-        writes_submitted: 0,
-        saved_configuration_verified: false,
-        observation_error: None,
-        effects: vec![
-            "Saves only supplied fields. MCP submits no deployment, file-write or lifecycle command; Core refreshes Stack and target caches. Saved configuration does not establish deployment or health.",
-            "Apply rechecks the private authoritative configuration, then submits once. Core has no conditional-write or invocation-idempotency parameter: another writer can race after the final read. The single-use preview expires in ten minutes and cannot survive process restart.",
-        ],
-    };
+    input.patch.validate(client)?;
+    let bounded = client.bounded_evidence();
+    let (listed, stack) = inventory::resolve_stack(&bounded, input.target.clone()).await?;
+    let prepared =
+        crate::stack_configuration::prepare(&bounded, &input.patch, Some(&stack.config)).await?;
+    let result = result_for_stack(
+        client,
+        Some(stack.id.clone()),
+        &stack.name,
+        Some(&stack.config),
+        &prepared,
+        Some(
+            serde_json::to_value(listed.info.state)
+                .expect("state")
+                .as_str()
+                .unwrap_or("unknown")
+                .into(),
+        ),
+    )?;
     client.previews().insert(Preview {
         created: Instant::now(),
-        input: serde_json::to_value(&input).expect("typed input"),
-        baseline,
+        input: serde_json::to_value(input).expect("typed input"),
+        baseline: baseline(&stack),
+        prepared: prepared_value(&prepared),
         result,
     })
 }
@@ -322,7 +533,8 @@ pub async fn apply_stack_update(
     input: StackApplyInput,
 ) -> Result<ConfigurationResult, AppError> {
     require_edit(client)?;
-    let patch = input.patch.validate(client)?;
+    require_source_operate(client, input.patch.source.is_some())?;
+    input.patch.validate(client)?;
     let submitted = StackPreviewInput {
         target: input.target.clone(),
         patch: input.patch.clone(),
@@ -331,8 +543,15 @@ pub async fn apply_stack_update(
         &input.preview_id,
         &serde_json::to_value(submitted).expect("typed input"),
     )?;
-    let (_, current) = inventory::resolve_stack(&client.bounded_evidence(), input.target).await?;
+    let bounded = client.bounded_evidence();
+    let (_, current) = inventory::resolve_stack(&bounded, input.target).await?;
     if baseline(&current) != entry.baseline {
+        return Err(AppError::new(ErrorKind::StalePreview, OP, None));
+    }
+    let prepared =
+        crate::stack_configuration::prepare(&bounded, &input.patch, Some(&current.config)).await?;
+    let patch = prepared_patch(&prepared)?;
+    if prepared_value(&prepared) != entry.prepared {
         return Err(AppError::new(ErrorKind::StalePreview, OP, None));
     }
     entry.result.preview_id = None;
@@ -341,44 +560,114 @@ pub async fn apply_stack_update(
         entry.result.saved_configuration_verified = true;
         return Ok(entry.result);
     }
-    // Consumed before I/O: concurrent callers/replayed tokens cannot resubmit,
-    // including when cancellation or transport loss leaves acceptance unknown.
-    entry.result.writes_submitted = 1;
-    let result = client
+    let response = client
         .write(UpdateStack {
             id: current.id.clone(),
-            config: input.patch.typed()?,
+            config: prepared.config,
         })
         .await;
-    match result {
-        Ok(saved) if saved.id == current.id && saved.name == current.name => {
-            let saved_config = serde_json::to_value(&saved.config).expect("typed configuration");
-            let verified = patch
-                .as_object()
-                .expect("patch object")
-                .iter()
-                .all(|(k, v)| saved_config[k] == *v);
-            if verified {
-                entry.result.outcome = ConfigurationOutcome::Saved;
-                entry.result.saved_configuration_verified = true;
-            } else {
-                entry.result.outcome = ConfigurationOutcome::SubmissionUnknown;
-                entry.result.observation_error = Some(AppError::new(
-                    ErrorKind::InvalidResponse,
-                    "UpdateStack",
-                    None,
-                ));
-            }
-        }
-        other => {
-            entry.result.outcome = ConfigurationOutcome::SubmissionUnknown;
-            entry.result.observation_error =
-                Some(other.err().unwrap_or_else(|| {
-                    AppError::new(ErrorKind::InvalidResponse, "UpdateStack", None)
-                }));
-        }
+    Ok(finish_save(
+        entry.result,
+        response,
+        &patch,
+        &current.name,
+        Some(&current.id),
+        "UpdateStack",
+    ))
+}
+
+fn create_name(input: &StackCreateInput, client: &CoreClient) -> Result<String, AppError> {
+    input.config.validate(client)?;
+    let name = to_docker_compatible_name(&input.name);
+    if input.name.len() > 256
+        || name.is_empty()
+        || name.len() > 128
+        || (name.len() == 24 && name.bytes().all(|b| b.is_ascii_hexdigit()))
+        || input.config.source.is_none()
+        || input.config.attachment.is_none()
+    {
+        return Err(AppError::arguments(
+            "CreateStack",
+            "Provide a nonempty name (at most 128 normalized characters; no ObjectId name), an explicit source, and an existing Server or Swarm attachment",
+        ));
     }
-    Ok(entry.result)
+    Ok(name)
+}
+
+async fn require_absent(client: &CoreClient, name: &str) -> Result<(), AppError> {
+    match inventory::resolve_stack(
+        client,
+        DetailInput {
+            id: None,
+            name: Some(name.into()),
+        },
+    )
+    .await
+    {
+        Err(e) if e.kind == ErrorKind::NotFound => Ok(()),
+        Ok(_) => Err(AppError::new(ErrorKind::StalePreview, "CreateStack", None)),
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn preview_stack_create(
+    client: &CoreClient,
+    input: StackCreateInput,
+) -> Result<ConfigurationResult, AppError> {
+    require_edit(client)?;
+    let name = create_name(&input, client)?;
+    let bounded = client.bounded_evidence();
+    require_absent(&bounded, &name).await?;
+    let prepared = crate::stack_configuration::prepare(&bounded, &input.config, None).await?;
+    let mut result = result_for_stack(client, None, &name, None, &prepared, None)?;
+    result.effects.push("Creation checks only visible name absence. Core enforces global uniqueness and its creation/Read-Attach permissions; visibility gaps and a concurrent creator can still reject the write. Core can normalize the supplied name, shown in this preview. New definitions are not deployed.");
+    client.previews().insert(Preview {
+        created: Instant::now(),
+        input: serde_json::to_value(&input).expect("typed input"),
+        baseline: json!({"kind":"stack_create","name":name}),
+        prepared: prepared_value(&prepared),
+        result,
+    })
+}
+
+pub async fn apply_stack_create(
+    client: &CoreClient,
+    input: StackCreateApplyInput,
+) -> Result<ConfigurationResult, AppError> {
+    require_edit(client)?;
+    let submitted = StackCreateInput {
+        name: input.name,
+        config: input.config,
+    };
+    let name = create_name(&submitted, client)?;
+    let entry = client.previews().take(
+        &input.preview_id,
+        &serde_json::to_value(&submitted).expect("typed input"),
+    )?;
+    if entry.baseline != json!({"kind":"stack_create","name":name}) {
+        return Err(invalid_preview());
+    }
+    let bounded = client.bounded_evidence();
+    require_absent(&bounded, &name).await?;
+    let prepared = crate::stack_configuration::prepare(&bounded, &submitted.config, None).await?;
+    let patch = prepared_patch(&prepared)?;
+    if prepared_value(&prepared) != entry.prepared {
+        return Err(AppError::new(ErrorKind::StalePreview, "CreateStack", None));
+    }
+    let response = client
+        .write(CreateStack {
+            name: name.clone(),
+            config: prepared.config,
+        })
+        .await;
+    Ok(finish_save(
+        entry.result,
+        response,
+        &patch,
+        &name,
+        None,
+        "CreateStack",
+    ))
 }
 
 #[cfg(test)]
@@ -390,11 +679,12 @@ mod tests {
             created: Instant::now(),
             input: json!({}),
             baseline: json!({"secret":"private"}),
+            prepared: json!({}),
             result: ConfigurationResult {
                 outcome: ConfigurationOutcome::Preview,
                 resource: ConfigurationTarget {
                     kind: "stack",
-                    id: "fixture".into(),
+                    id: Some("fixture".into()),
                     name: "fixture".into(),
                 },
                 preview_id: None,
@@ -403,6 +693,7 @@ mod tests {
                 saved_configuration_verified: false,
                 observation_error: None,
                 effects: vec![],
+                definition: None,
             },
         }
     }
