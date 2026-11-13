@@ -8,9 +8,30 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+## v0.3.1
+
+Dependency and CI maintenance for workload operations and recovery.
+
+- Update the official MCP SDK from rmcp 3.8.0 to 3.9.0 with the existing stdio
+  feature selection, verified through MCP lifecycle, tool-schema and subprocess
+  checks.
+  ([#67](https://github.com/enthouan/komodo-mcp/pull/67))
 - Pin the Rust setup action by commit and explicitly retain compiler 1.99.1 in
   CI and benchmarks, so action updates do not select an unavailable compiler.
   ([#66](https://github.com/enthouan/komodo-mcp/pull/66))
+
+### Evidence and distribution limits
+
+Verification uses production stdio MCP processes with synthetic **Core 2.3.2
+wire fixtures** and the pinned `komodo_client =2.3.2`. The existing disposable
+Core/Periphery 2.3.2 [live smoke evidence](https://github.com/enthouan/komodo-mcp/issues/74#issuecomment-6844295403)
+remains pinned to the v0.3.0 implementation commit `4f8d3f8`. This dependency cut
+adds no new live compatibility or performance claim; archived benchmark reports
+retain their original source and executable identities.
+
+Release artifacts are an annotated source tag and GitHub Release notes. Build
+the stdio executable from source using the
+[installation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/README.md#fresh-checkout-demo-synthetic-core).
 
 ## v0.3.0
 
