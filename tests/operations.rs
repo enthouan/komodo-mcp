@@ -469,8 +469,12 @@ async fn production_binary_discovers_mutations_only_when_enabled_and_returns_rec
         .await;
         let (process, session) = Process::start(&core, operate).await;
         let tools = session.list_tools(None).await.unwrap().tools;
-        assert_eq!(tools.len(), 14 + 2 * usize::from(operate));
-        for tool in tools.iter().filter(|t| t.name.starts_with("deploy_")) {
+        assert_eq!(tools.len(), 14 + 8 * usize::from(operate));
+        for tool in tools.iter().filter(|t| {
+            ["deploy_", "start_", "stop_", "restart_"]
+                .iter()
+                .any(|prefix| t.name.starts_with(prefix))
+        }) {
             let a = tool.annotations.as_ref().unwrap();
             assert_eq!(a.read_only_hint, Some(false));
             assert_eq!(a.idempotent_hint, Some(false));
@@ -481,24 +485,40 @@ async fn production_binary_discovers_mutations_only_when_enabled_and_returns_rec
             for (tool, args) in [
                 ("deploy_stack", service("web")),
                 ("deploy_deployment", json!({"id":DEPLOYMENT})),
+                ("start_stack", service("web")),
+                ("stop_stack", whole()),
+                ("restart_stack", service("db")),
+                ("start_deployment", json!({"id":DEPLOYMENT})),
+                ("stop_deployment", json!({"id":DEPLOYMENT})),
+                ("restart_deployment", json!({"id":DEPLOYMENT})),
             ] {
                 assert_eq!(
                     success(call(&session, tool, args).await)["submission"],
                     "accepted"
                 );
             }
-            assert_eq!(core.executions(), 2);
+            assert_eq!(core.executions(), 8);
         } else {
             let before = core.requests().len();
-            assert!(
-                session
-                    .call_tool(
-                        CallToolRequestParams::new("deploy_stack")
-                            .with_arguments(whole().as_object().unwrap().clone())
-                    )
-                    .await
-                    .is_err()
-            );
+            for name in [
+                "deploy_stack",
+                "start_stack",
+                "stop_stack",
+                "restart_stack",
+                "start_deployment",
+                "stop_deployment",
+                "restart_deployment",
+            ] {
+                assert!(
+                    session
+                        .call_tool(
+                            CallToolRequestParams::new(name)
+                                .with_arguments(whole().as_object().unwrap().clone())
+                        )
+                        .await
+                        .is_err()
+                );
+            }
             assert_eq!(core.requests().len(), before);
             assert_eq!(core.executions(), 0);
         }

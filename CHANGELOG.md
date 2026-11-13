@@ -8,6 +8,12 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Add start, stop and restart for existing Server-backed Stacks and Deployments,
+  including exact deployed Compose service scope. Reuse single-submission receipts,
+  preserve Core failures and busy outcomes, reject Swarm lifecycle actions, and
+  describe action-specific dependencies without substituting unpause or redeploy.
+  ([#13](https://github.com/enthouan/komodo-mcp/issues/13))
+
 - Add explicit single-target Stack/Deployment deploy tools, named Compose service
   scope, stable-ID submissions, bounded sanitized update receipts and immediate
   observation. Reject unsupported filters without expanding scope; retain unknown

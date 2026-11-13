@@ -36,7 +36,9 @@ impl KomodoServer {
                 | "get_deployment_logs"
                 | "get_stack_logs"
                 | "stack_diagnose" => Some(Capability::Read),
-                "deploy_stack" | "deploy_deployment" => Some(Capability::Operate),
+                "deploy_stack" | "deploy_deployment" | "start_stack" | "stop_stack"
+                | "restart_stack" | "start_deployment" | "stop_deployment"
+                | "restart_deployment" => Some(Capability::Operate),
                 _ => None,
             },
         )
@@ -58,6 +60,102 @@ impl KomodoServer {
     async fn deploy_deployment(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "deploy_deployment") {
             Ok(input) => crate::operations::deploy_deployment(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Start one existing Server-backed Stack by stable ID or exact name. Swarm is rejected before execution. Choose whole_stack or one exact deployed Compose service. Compose can start existing dependencies. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; inspect update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn start_stack(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "start_stack") {
+            Ok(input) => {
+                crate::operations::stack_operation(
+                    &self.client,
+                    input,
+                    crate::operations::WorkloadOperation::Start,
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Start one existing Server-backed Deployment by stable ID or exact name. Swarm is rejected before execution. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; inspect update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<DetailInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn start_deployment(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "start_deployment") {
+            Ok(input) => {
+                crate::operations::deployment_operation(
+                    &self.client,
+                    input,
+                    crate::operations::WorkloadOperation::Start,
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Stop one existing Server-backed Stack by stable ID or exact name. Swarm is rejected before execution. Choose whole_stack or one exact deployed Compose service. Compose stops selected services without removing them; no dependency expansion is requested. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; inspect update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn stop_stack(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "stop_stack") {
+            Ok(input) => {
+                crate::operations::stack_operation(
+                    &self.client,
+                    input,
+                    crate::operations::WorkloadOperation::Stop,
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Stop one existing Server-backed Deployment by stable ID or exact name. Swarm is rejected before execution. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; inspect update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<DetailInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn stop_deployment(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "stop_deployment") {
+            Ok(input) => {
+                crate::operations::deployment_operation(
+                    &self.client,
+                    input,
+                    crate::operations::WorkloadOperation::Stop,
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Restart one existing Server-backed Stack by stable ID or exact name. Swarm is rejected before execution. Choose whole_stack or one exact deployed Compose service. Compose may restart dependents configured with depends_on.restart; Core adds no --no-deps. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; inspect update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn restart_stack(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "restart_stack") {
+            Ok(input) => {
+                crate::operations::stack_operation(
+                    &self.client,
+                    input,
+                    crate::operations::WorkloadOperation::Restart,
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Restart one existing Server-backed Deployment by stable ID or exact name. Swarm is rejected before execution. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; inspect update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<DetailInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn restart_deployment(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "restart_deployment") {
+            Ok(input) => {
+                crate::operations::deployment_operation(
+                    &self.client,
+                    input,
+                    crate::operations::WorkloadOperation::Restart,
+                )
+                .await
+            }
             Err(error) => Err(error),
         };
         inventory::tool_result(&self.client, result)
