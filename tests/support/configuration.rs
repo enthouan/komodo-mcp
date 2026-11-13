@@ -13,15 +13,20 @@ use axum::{
 };
 use komodo_client::{
     api::write::{
-        CreateDeployment, CreateServer, CreateStack, UpdateDeployment, UpdateServer, UpdateStack,
+        CreateDeployment, CreateServer, CreateStack, DeleteDeployment, DeleteServer, DeleteStack,
+        UpdateDeployment, UpdateServer, UpdateStack,
     },
     entities::{
+        Operation, ResourceTarget,
+        alerter::Alerter,
         build::Build,
+        builder::Builder,
         deployment::Deployment,
         repo::{Repo, RepoListItemInfo},
         server::{Server, ServerInfo},
         stack::Stack,
         swarm::{Swarm, SwarmListItemInfo},
+        update::{Log, Update, UpdateStatus},
     },
 };
 use serde_json::{Value, json};
@@ -73,6 +78,16 @@ pub struct Data {
     pub server: Value,
     pub created_servers: BTreeMap<String, Value>,
     pub post_write_read_status: Option<u16>,
+    pub deletion_enabled: bool,
+    pub containers: BTreeMap<String, Value>,
+    pub extra_references: BTreeMap<String, Vec<Value>>,
+    pub deletion_updates: Vec<Value>,
+    pub deletion_history_visible: bool,
+    pub cleanup_skip: bool,
+    pub cleanup_fail: bool,
+    pub stack_failure_success_log: bool,
+    pub reference_status: Option<u16>,
+    pub runtime_unreachable: bool,
     pub swarm: Value,
     pub repo: Value,
     pub requests: Vec<Request>,
@@ -135,6 +150,16 @@ impl Core {
             .unwrap(),
             created_servers: BTreeMap::new(),
             post_write_read_status: None,
+            deletion_enabled: false,
+            containers: BTreeMap::new(),
+            extra_references: BTreeMap::new(),
+            deletion_updates: vec![],
+            deletion_history_visible: false,
+            cleanup_skip: false,
+            cleanup_fail: false,
+            stack_failure_success_log: false,
+            reference_status: None,
+            runtime_unreachable: false,
             swarm,
             repo,
             requests: vec![],
@@ -165,6 +190,46 @@ impl Core {
             .filter(|r| r.path == "write")
             .cloned()
             .collect()
+    }
+    #[allow(
+        dead_code,
+        reason = "Specialized deletion scenarios share this fixture"
+    )]
+    pub async fn start_deletion() -> Self {
+        let core = Self::start().await;
+        {
+            let mut d = core.data.lock().unwrap();
+            d.deletion_enabled = true;
+            d.stack =
+                serde_json::to_value(serde_json::from_value::<Stack>(d.stack.clone()).unwrap())
+                    .unwrap();
+            d.stack["config"]["project_name"] = json!("desired-project");
+            d.stack["info"]["deployed_project_name"] = json!("running-project");
+            d.deployment["config"]["custom_name"] = json!("desired-deployment");
+            d.deployment["info"]["deployed_name"] = json!("running-deployment");
+            d.server["config"]["enabled"] = json!(true);
+            for (byte, name, project) in [
+                ("11", "running-project-web", Some("running-project")),
+                ("22", "running-project-orphan", Some("running-project")),
+                ("33", "running-deployment", None),
+            ] {
+                let id = byte.repeat(32);
+                let labels = project.map_or(json!({}), |p| json!({"com.docker.compose.project":p}));
+                d.containers.insert(id.clone(),json!({"Id":id,"Name":format!("/{name}"),"State":{"Status":"running","Running":true},"Config":{"Labels":labels,"Env":["PASSWORD=deletion-private-container-environment"]}}));
+            }
+            d.repo["config"]["server_id"] = json!(SERVER);
+            let builder:Builder=serde_json::from_value(json!({"_id":{"$oid":"00000000000000000000000c"},"name":"dependent-builder","template":false,"config":{"type":"Server","params":{"server_ids":[SERVER]}}})).unwrap();
+            let alerter:Alerter=serde_json::from_value(json!({"_id":{"$oid":"00000000000000000000000d"},"name":"dependent-alerter","template":false,"config":{"enabled":false,"resources":[{"type":"Stack","id":resource_id(&d.stack)},{"type":"Deployment","id":resource_id(&d.deployment)},{"type":"Server","id":SERVER}],"except_resources":[{"type":"Server","id":SERVER}]}})).unwrap();
+            d.extra_references.insert(
+                "builder".into(),
+                vec![serde_json::to_value(builder).unwrap()],
+            );
+            d.extra_references.insert(
+                "alerter".into(),
+                vec![serde_json::to_value(alerter).unwrap()],
+            );
+        }
+        core
     }
 }
 fn record(data: &mut Data, headers: &HeaderMap, path: &'static str, value: &Value) {
@@ -198,6 +263,11 @@ async fn read(
             .into_response();
     }
     let operation = value["type"].as_str().unwrap();
+    if data.deletion_enabled
+        && let Some(response) = deletion_read(&data, &value)
+    {
+        return response;
+    }
     if operation == "GetVersion" {
         return Json(json!({"version":"2.3.2"})).into_response();
     }
@@ -216,6 +286,7 @@ async fn read(
         "ListRepos" | "GetRepo" => vec![data.repo.clone()],
         _ => panic!("unexpected read {operation}"),
     };
+    let raw = raw.into_iter().filter(|v| !v.is_null()).collect::<Vec<_>>();
     if operation.starts_with("Get") {
         let key = match operation {
             "GetStack" => "stack",
@@ -251,6 +322,7 @@ async fn read(
         result["id"]=resource_id(v).clone();result["name"]=v["name"].clone();
         if operation=="ListServers" {
             result["info"]["region"]=v["config"]["region"].clone();
+            if data.deletion_enabled {result["info"]["state"]=json!(if v["config"]["enabled"]==false {"Disabled"}else if data.runtime_unreachable {"NotOk"}else{"Ok"});}
             if data.created_servers.contains_key(resource_id(v).as_str().unwrap()) {result["info"]["state"]=json!(if v["config"]["enabled"]==false {"Disabled"} else {"NotOk"});}
         }
         if operation=="ListStacks" {
@@ -312,6 +384,9 @@ async fn write(
                 | WriteReply::Redirect
         );
         let saved = match value["type"].as_str().unwrap() {
+            "DeleteStack" | "DeleteDeployment" | "DeleteServer" => {
+                deletion_write(&mut data, &value, may_save)
+            }
             "UpdateStack" => {
                 let typed: UpdateStack = serde_json::from_value(value["params"].clone()).unwrap();
                 assert_eq!(serde_json::to_value(&typed).unwrap(), value["params"]);
@@ -448,8 +523,10 @@ async fn write(
         }
         WriteReply::MissingRequested => {
             let mut s=saved;
-            let key=value["params"]["config"].as_object().unwrap().keys().next().unwrap();
-            s["config"].as_object_mut().unwrap().remove(key);Json(s).into_response()
+            if let Some(config)=value["params"].get("config").and_then(Value::as_object) {
+                let key=config.keys().next().unwrap();s["config"].as_object_mut().unwrap().remove(key);
+            } else {s.as_object_mut().unwrap().remove("info");}
+            Json(s).into_response()
         }
         WriteReply::WrongTrust => {let mut s=saved;s["info"]["public_key"]=json!("unexpected-accepted-public-key");Json(s).into_response()}
         WriteReply::MissingTrust => {let mut s=saved;s["info"].as_object_mut().unwrap().remove("public_key");Json(s).into_response()}
@@ -459,4 +536,276 @@ async fn write(
         // Hyper closes this owned fixture connection without returning an ACK.
         WriteReply::Lost => panic!("fixture intentionally dropped an accepted response"),
     }
+}
+
+fn reference_rows(d: &Data, family: &str) -> Vec<Value> {
+    let mut result = match family {
+        "stack" => std::iter::once(d.stack.clone())
+            .chain(d.created.values().cloned())
+            .collect(),
+        "deployment" => std::iter::once(d.deployment.clone())
+            .chain(d.created_deployments.values().cloned())
+            .collect(),
+        "repo" => vec![d.repo.clone()],
+        _ => vec![],
+    };
+    result.extend(
+        d.extra_references
+            .get(family)
+            .into_iter()
+            .flatten()
+            .cloned(),
+    );
+    result.retain(|v| !v.is_null());
+    result.sort_by_key(|v| v["name"].as_str().unwrap().to_owned());
+    result
+}
+fn cache_container(v: &Value) -> Value {
+    json!({"server_id":SERVER,"name":v["Name"].as_str().unwrap().trim_start_matches('/'),"id":v["Id"],"state":v["State"]["Status"]})
+}
+fn deletion_read(d: &Data, request: &Value) -> Option<Response> {
+    let op = request["type"].as_str().unwrap();
+    let p = &request["params"];
+    if let Some(family) = match op {
+        "ListFullStacks" => Some("stack"),
+        "ListFullDeployments" => Some("deployment"),
+        "ListFullRepos" => Some("repo"),
+        "ListFullBuilders" => Some("builder"),
+        "ListFullAlerters" => Some("alerter"),
+        _ => None,
+    } {
+        if let Some(status) = d.reference_status {
+            return Some(
+                (
+                    StatusCode::from_u16(status).unwrap(),
+                    format!("{KEY} {SECRET}"),
+                )
+                    .into_response(),
+            );
+        }
+        let limit = p["limit"].as_u64().unwrap() as usize;
+        assert!(limit > 0);
+        let page = p["page"].as_u64().unwrap() as usize;
+        return Some(
+            Json(json!(
+                reference_rows(d, family)
+                    .into_iter()
+                    .skip(page * limit)
+                    .take(limit)
+                    .collect::<Vec<_>>()
+            ))
+            .into_response(),
+        );
+    }
+    if let Some((family, key)) = match op {
+        "GetAlerter" => Some(("alerter", "alerter")),
+        "GetBuilder" => Some(("builder", "builder")),
+        _ => None,
+    } {
+        let item = reference_rows(d, family)
+            .into_iter()
+            .find(|v| resource_id(v) == &p[key]);
+        return Some(match item {Some(v)=>Json(v).into_response(),None=>(StatusCode::INTERNAL_SERVER_ERROR,Json(json!({"error":format!("Did not find any {} matching {}",if family=="alerter"{"Alerter"}else{"Builder"},p[key].as_str().unwrap())}))).into_response()});
+    }
+    match op {
+        "ListContainers" => Some(
+            Json(json!(
+                d.containers
+                    .values()
+                    .map(cache_container)
+                    .collect::<Vec<_>>()
+            ))
+            .into_response(),
+        ),
+        "InspectContainer" => {
+            if d.server.is_null() {
+                return Some(
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error":format!("Did not find any Server matching {SERVER}")})),
+                    )
+                        .into_response(),
+                );
+            }
+            if d.runtime_unreachable || d.server["config"]["enabled"] == false {
+                return Some((StatusCode::INTERNAL_SERVER_ERROR,Json(json!({"error":"Cannot inspect container: server is NotOk","trace":[format!("{KEY} {SECRET}")]}))).into_response());
+            }
+            let locator = p["container"].as_str().unwrap();
+            let item = d.containers.values().find(|v| {
+                v["Id"] == locator || v["Name"].as_str().unwrap().trim_start_matches('/') == locator
+            });
+            Some(match item {Some(v)=>Json(v.clone()).into_response(),None=>(StatusCode::INTERNAL_SERVER_ERROR,Json(json!({"error":format!("Docker responded with status code 404: No such container: {locator}"),"trace":[format!("{KEY} {SECRET}")]}))).into_response()})
+        }
+        "ListAllStackServices" => {
+            let services=d.containers.values().filter(|v|v["Config"]["Labels"]["com.docker.compose.project"]=="running-project" && v["Name"]!="/running-project-orphan").map(|v|json!({"stack_id":resource_id(&d.stack),"stack_name":d.stack["name"],"service":"web","image":"busybox:1.37.0","container":cache_container(v),"swarm_service":null,"state":"Running","image_digests":null})).collect::<Vec<_>>();
+            Some(Json(json!(services)).into_response())
+        }
+        "ListUpdates" => {
+            let query = &p["query"];
+            let target_type = &query["target.type"];
+            let target_id = &query["target.id"];
+            let operation = &query["operation"];
+            let updates = if !d.deletion_history_visible && !d.deletion_updates.is_empty() {
+                vec![]
+            } else {
+                d.deletion_updates.iter().filter(|u|&u["target"]["type"]==target_type && &u["target"]["id"]==target_id && &u["operation"]==operation).map(|u|json!({"id":resource_id(u),"operation":u["operation"],"target":u["target"],"start_ts":u["start_ts"],"success":u["success"],"operator":"fixture-user","username":"fixture-user","status":u["status"],"other_data":""})).collect()
+            };
+            Some(Json(json!({"updates":updates,"next_page":null})).into_response())
+        }
+        "GetUpdate" => Some(if !d.deletion_history_visible {
+            (StatusCode::FORBIDDEN, format!("{KEY} {SECRET}")).into_response()
+        } else {
+            match d
+                .deletion_updates
+                .iter()
+                .find(|v| resource_id(v) == &p["id"])
+            {
+                Some(v) => Json(v.clone()).into_response(),
+                None => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error":"no update exists with given id"})),
+                )
+                    .into_response(),
+            }
+        }),
+        _ => None,
+    }
+}
+fn deletion_write(d: &mut Data, request: &Value, may_save: bool) -> Value {
+    let op = request["type"].as_str().unwrap();
+    let id = request["params"]["id"].as_str().unwrap();
+    let saved = match op {
+        "DeleteStack" => {
+            let typed: DeleteStack = serde_json::from_value(request["params"].clone()).unwrap();
+            assert_eq!(typed.id, id);
+            d.stack.clone()
+        }
+        "DeleteDeployment" => {
+            let typed: DeleteDeployment =
+                serde_json::from_value(request["params"].clone()).unwrap();
+            assert_eq!(typed.id, id);
+            d.deployment.clone()
+        }
+        "DeleteServer" => {
+            let typed: DeleteServer = serde_json::from_value(request["params"].clone()).unwrap();
+            assert_eq!(typed.id, id);
+            d.server.clone()
+        }
+        _ => panic!("unexpected deletion"),
+    };
+    assert_eq!(resource_id(&saved), id);
+    if !may_save {
+        return saved;
+    }
+    let mut logs = vec![];
+    if op != "DeleteServer" {
+        if d.cleanup_skip {
+            logs.push(Log::simple(
+                if op == "DeleteStack" {
+                    "Destroy Stack"
+                } else {
+                    "Remove Container"
+                },
+                if op == "DeleteStack" {
+                    "Skipping stack destroy, Server is disabled."
+                } else {
+                    "Skipping container removal, server is disabled."
+                }
+                .into(),
+            ));
+        } else if d.cleanup_fail || d.stack_failure_success_log {
+            logs.push(if d.stack_failure_success_log {
+                Log::simple(
+                    "Failed to destroy stack",
+                    "deletion-private-cleanup-error sensitive-config-credential-marker".into(),
+                )
+            } else {
+                Log::error(
+                    "Remove Container",
+                    "deletion-private-cleanup-error sensitive-config-credential-marker".into(),
+                )
+            });
+        } else if saved["config"]["swarm_id"]
+            .as_str()
+            .unwrap_or_default()
+            .is_empty()
+        {
+            if op == "DeleteStack" {
+                d.containers.retain(|_, v| {
+                    v["Config"]["Labels"]["com.docker.compose.project"] != "running-project"
+                });
+            } else {
+                d.containers
+                    .retain(|_, v| v["Name"] != "/running-deployment");
+            }
+            logs.push(Log::simple(
+                if op == "DeleteStack" {
+                    "Compose Command"
+                } else {
+                    "Remove Container"
+                },
+                "cleanup command done".into(),
+            ));
+        }
+    }
+    let (target, operation) = match op {
+        "DeleteStack" => {
+            d.stack = Value::Null;
+            (ResourceTarget::Stack(id.into()), Operation::DeleteStack)
+        }
+        "DeleteDeployment" => {
+            d.deployment = Value::Null;
+            (
+                ResourceTarget::Deployment(id.into()),
+                Operation::DeleteDeployment,
+            )
+        }
+        _ => {
+            d.server = Value::Null;
+            for value in std::iter::once(&mut d.stack)
+                .chain(d.created.values_mut())
+                .chain(std::iter::once(&mut d.deployment))
+                .chain(d.created_deployments.values_mut())
+                .chain(std::iter::once(&mut d.repo))
+            {
+                if value["config"]["server_id"] == id {
+                    value["config"]["server_id"] = json!("");
+                }
+            }
+            // Match Core's legacy scalar query; current vector references remain.
+            for value in d.extra_references.get_mut("builder").into_iter().flatten() {
+                if value["config"]["params"]["server_id"] == id {
+                    value["config"]["params"]["server_id"] = json!("");
+                }
+            }
+            (ResourceTarget::Server(id.into()), Operation::DeleteServer)
+        }
+    };
+    let kind = op.strip_prefix("Delete").unwrap();
+    for a in d.extra_references.get_mut("alerter").into_iter().flatten() {
+        for field in ["resources", "except_resources"] {
+            a["config"][field]
+                .as_array_mut()
+                .unwrap()
+                .retain(|t| t["type"] != kind || t["id"] != id);
+        }
+    }
+    logs.push(Log::simple(
+        "Deleted Toml",
+        format!("deletion-private-archived-definition {KEY} {SECRET} PASSWORD=never-return-this"),
+    ));
+    let mut update = Update {
+        id: format!("{:024x}", 0x500 + d.deletion_updates.len()),
+        operation,
+        target,
+        start_ts: 1,
+        operator: "fixture-user".into(),
+        logs,
+        status: UpdateStatus::Complete,
+        ..Default::default()
+    };
+    update.finalize();
+    d.deletion_updates
+        .push(serde_json::to_value(update).unwrap());
+    saved
 }

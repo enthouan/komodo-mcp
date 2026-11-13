@@ -4,6 +4,7 @@ pub mod capabilities;
 pub mod client;
 pub mod config;
 pub mod configuration;
+pub mod deletion;
 pub mod deployment_configuration;
 pub mod diagnostics;
 pub mod error;

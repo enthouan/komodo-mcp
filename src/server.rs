@@ -42,6 +42,7 @@ impl KomodoServer {
                 "deploy_stack" | "deploy_deployment" | "start_stack" | "stop_stack"
                 | "restart_stack" | "start_deployment" | "stop_deployment"
                 | "restart_deployment" => Some(Capability::Operate),
+                "apply_resource_delete" => Some(Capability::Destructive),
                 "preview_stack_update"
                 | "apply_stack_update"
                 | "preview_stack_create"
@@ -53,7 +54,8 @@ impl KomodoServer {
                 | "preview_server_create"
                 | "apply_server_create"
                 | "preview_server_update"
-                | "apply_server_update" => Some(Capability::ConfigurationEdit),
+                | "apply_server_update"
+                | "preview_resource_delete" => Some(Capability::ConfigurationEdit),
                 _ => None,
             },
         )
@@ -62,6 +64,24 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description = "Preview deliberate deletion of exactly one Stack, Deployment or Server by kind and stable ID, with action=delete and trusted configuration access. Resolve through positive inventory policy, identify deployed cleanup names, fresh known container IDs and bounded visible Alerter/Server-dependent references; disclose hidden, truncated and unavailable effects. Core can tear down live workloads inside a definition write, skip cleanup or remove the record despite cleanup errors. Server deletion leaves host workloads and can leave current Builder server_ids references dangling. Return the shared bounded ten-minute single-use preview_id. Applying requires BOTH local grants regardless of previewed state. No mutation is submitted by preview.", input_schema = schema_for_input::<crate::deletion::PreviewInput>().expect("deletion preview schema"), output_schema = inventory::output_schema::<crate::deletion::DeletionResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = true))]
+    async fn preview_resource_delete(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_resource_delete") {
+            Ok(input) => crate::deletion::preview(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Deliberately apply the exact resource kind/stable ID, action=delete and preview_id once. BOTH configuration-edit and operate must be enabled; discovery and direct dispatch are disabled without either. Revalidate raw definition, deployed cleanup identity, attachment, relevant runtime, history and visible reference effects before one typed delete. Core requires Write and can remove containers/services/stacks before deleting the definition. No bulk selection, separate MCP execution, provisioning, retry or credential fallback. Keep acknowledgement, direct definition observation, fresh known-container inspection, visible reference after-state and cleanup-update candidates/errors separate. Core can hide history after removing resource permissions; successful update flags or missing cache data do not prove cleanup. Core archives secret-bearing Deleted Toml; MCP never returns that stdout. Final-read/write races remain. Lost/invalid/oversized/mismatched responses retain submission_unknown; never automatically repeat deletion.", input_schema = schema_for_input::<crate::deletion::ApplyInput>().expect("deletion apply schema"), output_schema = inventory::output_schema::<crate::deletion::DeletionResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_resource_delete(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_resource_delete") {
+            Ok(input) => crate::deletion::apply(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description = "Preview creation of one Server record with trusted configuration access and zero writes. Require a name and explicit address (empty selects inbound), enabled and insecure_tls settings. Optional initial_public_key establishes initial pinned trust only; enabled creation requires a key and applying it requires both local grants. New records explicitly disable automatic image pruning and automatic key rotation. Return bounded redacted changes and a shared ten-minute single-use preview_id. Core enforces admin or create_server_permissions plus non-admin creation policy. This does not provision a host, run a shell, create a network or deploy a workload.", input_schema = schema_for_input::<crate::server_configuration::CreateInput>().expect("server create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
     async fn preview_server_create(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "preview_server_create") {

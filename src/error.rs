@@ -126,6 +126,9 @@ impl AppError {
     pub(crate) fn response_too_large(operation: &'static str, status: StatusCode) -> Self {
         let mut error = Self::new(ErrorKind::ResponseTooLarge, operation, Some(status));
         error.correction = match operation {
+            "DeleteStack" | "DeleteDeployment" | "DeleteServer" => Some(
+                "Deletion or runtime cleanup may already have occurred. Inspect the exact resource ID and runtime separately; never automatically repeat deletion.",
+            ),
             "UpdateStack" | "CreateStack" | "UpdateDeployment" | "CreateDeployment"
             | "CreateServer" | "UpdateServer" => Some(
                 "The configuration may already have been saved. Inspect the definition; never automatically repeat the write.",
@@ -155,6 +158,11 @@ impl AppError {
                     | "UpdateServer"
             ) {
                 "Core configuration response exceeded its input budget."
+            } else if matches!(
+                operation,
+                "DeleteStack" | "DeleteDeployment" | "DeleteServer"
+            ) {
+                "Core deletion acknowledgement exceeded its input budget."
             } else if matches!(operation, "DeployStack" | "Deploy") {
                 "Core execution acknowledgement exceeded its input budget."
             } else {
@@ -173,6 +181,13 @@ impl AppError {
             kind,
             message: if kind == ErrorKind::PermissionDenied && operation == "CreateStack" {
                 "Core denied Stack creation; check the enabled user's creation permissions, Core's non-admin creation policy, and Read/Attach on the target and linked Repo. No credential fallback was attempted."
+            } else if kind == ErrorKind::PermissionDenied
+                && matches!(
+                    operation,
+                    "DeleteStack" | "DeleteDeployment" | "DeleteServer"
+                )
+            {
+                "Core denied deletion; check Write access on this exact resource for the same enabled identity. No retry, credential fallback or unrelated deletion was attempted."
             } else if kind == ErrorKind::PermissionDenied && operation == "CreateServer" {
                 "Core denied Server creation; check the enabled user's create_server_permissions and Core's non-admin creation policy, or use an authorized admin. No credential fallback or provisioning was attempted."
             } else if kind == ErrorKind::PermissionDenied && operation == "UpdateServer" {
@@ -250,6 +265,34 @@ impl AppError {
         Self::new(kind, operation, status)
     }
 
+    pub(crate) fn from_container_http_failure(
+        status: StatusCode,
+        body: &[u8],
+        locator: Option<&str>,
+    ) -> Self {
+        let error = Self::from_http_failure("InspectContainer", status, body);
+        if error.kind != ErrorKind::NotFound {
+            return error;
+        }
+        let exact = locator
+            .filter(|id| id.len() == 64 && id.bytes().all(|b| b.is_ascii_hexdigit()))
+            .is_some_and(|id| {
+                let expected =
+                    format!("Docker responded with status code 404: No such container: {id}");
+                serde_json::from_slice::<serde_json::Value>(body).is_ok_and(|v| {
+                    v["error"] == expected
+                        || v["trace"]
+                            .as_array()
+                            .is_some_and(|trace| trace.iter().any(|s| s == &expected))
+                })
+            });
+        if exact {
+            error
+        } else {
+            Self::new(ErrorKind::Upstream, "InspectContainer", Some(status))
+        }
+    }
+
     pub(crate) fn from_http_failure(
         operation: &'static str,
         status: StatusCode,
@@ -303,6 +346,14 @@ fn core_2_3_2_missing_target(operation: &str, error: &anyhow::Error) -> bool {
 }
 
 fn core_2_3_2_missing_message(operation: &str, message: &str) -> bool {
+    // Periphery 2.3.2 uses Bollard 0.21.0's exact Docker 404 message.
+    // Inspection is issued by full validated IDs. No generic 'not found'
+    // substring, HTTP 404, empty cache, or missing Server establishes absence.
+    if operation == "InspectContainer" {
+        return message
+            .strip_prefix("Docker responded with status code 404: No such container: ")
+            .is_some_and(|id| id.len() == 64 && id.bytes().all(|c| c.is_ascii_hexdigit()));
+    }
     let resource = match operation {
         "GetServer" => "Server",
         "GetStack" => "Stack",
@@ -310,6 +361,8 @@ fn core_2_3_2_missing_message(operation: &str, message: &str) -> bool {
         "GetSwarm" => "Swarm",
         "GetRepo" => "Repo",
         "GetBuild" => "Build",
+        "GetBuilder" => "Builder",
+        "GetAlerter" => "Alerter",
         _ => return false,
     };
     let prefix = format!("Did not find any {resource} matching ");
@@ -371,3 +424,32 @@ impl fmt::Display for AppError {
 }
 
 impl std::error::Error for AppError {}
+
+#[cfg(test)]
+mod deletion_tests {
+    use super::*;
+    #[test]
+    fn container_absence_requires_exact_known_id_and_pinned_failure_shape() {
+        let id = "11".repeat(32);
+        let missing = |suffix: &str| {
+            serde_json::to_vec(&serde_json::json!({"error":format!("Docker responded with status code 404: No such container: {suffix}")})).unwrap()
+        };
+        assert_eq!(
+            AppError::from_container_http_failure(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &missing(&id),
+                Some(&id)
+            )
+            .kind,
+            ErrorKind::NotFound
+        );
+        for (status,body,locator) in [
+            (StatusCode::INTERNAL_SERVER_ERROR,missing(&"22".repeat(32)),Some(id.as_str())),
+            (StatusCode::INTERNAL_SERVER_ERROR,missing(&id),Some("short-id")),
+            (StatusCode::NOT_FOUND,missing(&id),Some(id.as_str())),
+            (StatusCode::INTERNAL_SERVER_ERROR,serde_json::to_vec(&serde_json::json!({"error":"Did not find any Server matching 000000000000000000000001"})).unwrap(),Some(id.as_str())),
+        ] {
+            assert_ne!(AppError::from_container_http_failure(status,&body,locator).kind,ErrorKind::NotFound);
+        }
+    }
+}

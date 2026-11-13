@@ -852,6 +852,167 @@ async def exercise_server_definitions(address, editor, denied_creator, initial_p
     print('Verified real Core Server creation/alert edit, pinned trust, separate unreachable state and permission denial.',flush=True)
 
 
+async def exercise_deletion(address, admin, deleter, reader, deleter_id, reader_id, server_id, stack_id, deployment_id):
+    """Delete only this invocation's resources; observe nested Docker independently."""
+    async def write(operation, params):
+        return await asyncio.to_thread(admin.write, operation, params)
+
+    async def grant(user_id, kind, resource_id, level, specific=None):
+        await write('UpdatePermissionOnTarget', {'user_target':{'type':'User','id':user_id},
+            'resource_target':{'type':kind,'id':resource_id},
+            'permission':{'level':level,'specific':specific or []}})
+
+    def workload_ids(kind):
+        selector = ['label=com.docker.compose.project=mcp-delete-stack'] if kind == 'stack' else ['name=^/mcp-delete-deployment$']
+        return run([*COMPOSE,'exec','-T','docker','docker','ps','--no-trunc','-aq','--filter',*selector]).splitlines()
+
+    def host_snapshot():
+        ids=run([*COMPOSE,'exec','-T','docker','docker','ps','--no-trunc','-aq']).splitlines()
+        require(0<len(ids)<=16,'unexpected owned nested workload count')
+        template='{"id":{{json .Id}},"image":{{json .Config.Image}},"state":{{json .State.Status}}}'
+        return sorted([json.loads(line) for line in run([*COMPOSE,'exec','-T','docker','docker','inspect','--format',template,*ids]).splitlines()],key=lambda x:x['id'])
+
+    stack=await write('CreateStack',{'name':'mcp-delete-stack','config':{
+        'server_id':server_id,'project_name':'mcp-delete-stack','auto_pull':False,
+        'file_contents':'services:\n  app:\n    image: busybox:1.37.0\n    command: ["sleep", "600"]\n    stop_grace_period: 1s\n'}})
+    deployment=await write('CreateDeployment',{'name':'mcp-delete-deployment','config':{
+        'server_id':server_id,'image':{'type':'Image','params':{'image':'busybox:1.37.0'}},
+        'network':'bridge','command':'sleep 600','termination_timeout':1}})
+    delete_ids={'stack':identity(stack),'deployment':identity(deployment)}
+    REPORT['scope']['deletion_workloads']=delete_ids
+    await grant(deleter_id,'Server',server_id,'Write',['Inspect','Attach'])
+    for kind, resource_id in delete_ids.items():
+        await grant(deleter_id,kind.title(),resource_id,'Write',['Inspect','Logs'])
+        await grant(reader_id,kind.title(),resource_id,'Read')
+    async with await Mcp.start(address,deleter) as mcp:
+        for kind, resource_id in delete_ids.items():
+            tool, args = ('deploy_stack',{'target':{'id':resource_id},'scope':{'kind':'whole_stack'}}) if kind=='stack' else ('deploy_deployment',{'id':resource_id})
+            receipt=await mcp.tool(tool,args)
+            require((await observe(mcp,receipt['update_id']))['outcome']=='succeeded','owned deletion workload deployment failed')
+    await asyncio.to_thread(poll,lambda: all(workload_ids(k) for k in delete_ids),'running deletion workloads')
+    # The same real Read identity can inspect but Core must deny the Write.
+    request={'target':{'kind':'stack','id':delete_ids['stack']},'action':'delete'}
+    async with LossProxy(address,reader,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,reader,True,True) as mcp:
+            p=await mcp.tool('preview_resource_delete',request)
+            denied=await mcp.tool('apply_resource_delete',{**request,'preview_id':p['preview_id']})
+            require(denied['outcome']=='submission_unknown' and not denied['definition_removal']['reported_by_core'],
+                    'Core Read identity unexpectedly acknowledged a delete')
+            require(denied['definition_removal']['observation']=='definition_still_present_at_read',
+                    'Core Read denial removed the definition')
+            require(any(e['kind']=='permission_denied' for e in denied['observation_errors']),
+                    'Core Read delete did not expose sanitized Write denial')
+            require(proxy.write_attempts==1 and proxy.execute_attempts==0,'denied delete retried or executed')
+            REPORT['deletion_read_identity_denial']={'non_admin':True,'local_grants':'both','core_permission':'Read',
+                'submission':'unknown','write_attempts':1,'execute_attempts':0,'definition_still_present':True}
+
+    # Local policy denies disabled direct apply before any Core request.
+    for operate, edit in [(False,False),(True,False),(False,True)]:
+        async with LossProxy(address,deleter,lose_reply=False) as proxy:
+            async with await Mcp.start(proxy.address,deleter,operate,edit) as mcp:
+                names={t['name'] for t in (await mcp.rpc('tools/list',{}))['tools']}
+                require('apply_resource_delete' not in names,'disabled delete advertised')
+                reads=dict(proxy.read_operations)
+                denied=await mcp.rpc('tools/call',{'name':'apply_resource_delete','arguments':{
+                    **request,'preview_id':'disabled-direct-delete'}},allow_error=True)
+                require('protocol_error' in denied and proxy.read_operations==reads and proxy.write_attempts==0,
+                        'disabled direct delete reached Core')
+    REPORT['deletion_local_policy']={'profiles_denied':['read_only','operate_only','configuration_only'],
+        'discovery_and_direct_denial':True,'core_reads':0,'core_writes':0}
+
+    REPORT['running_deletions']=[]
+    for kind, resource_id in delete_ids.items():
+        before=await asyncio.to_thread(workload_ids,kind)
+        require(len(before)==1 and all(re.fullmatch('[0-9a-f]{64}',i) for i in before),'running deletion fixture lacks exact Docker identity')
+        async with LossProxy(address,deleter,lose_reply=False) as proxy:
+            async with await Mcp.start(proxy.address,deleter,True,True) as mcp:
+                request={'target':{'kind':kind,'id':resource_id},'action':'delete'}
+                p=await mcp.tool('preview_resource_delete',request)
+                require(proxy.write_attempts==0 and p['writes_submitted']==0,'destructive preview wrote to Core')
+                require(set(before)<={w['container_id'] for w in p['known_workloads']},'preview did not identify running owned workload')
+                result=await mcp.tool('apply_resource_delete',{**request,'preview_id':p['preview_id']})
+                require(result['outcome']=='acknowledged' and result['definition_removal']['reported_by_core'],
+                        'running delete not acknowledged')
+                require(result['definition_removal']['observation']=='definition_absent_at_direct_read',
+                        'deleted definition not directly observed absent')
+                require(all(w['observation']=='fresh_inspection_reports_known_id_absent' for w in result['known_workloads']),
+                        'fresh Core/Periphery inspection did not corroborate known-ID absence')
+                require(not await asyncio.to_thread(workload_ids,kind),'owned workload remained after cleanup')
+                require(proxy.write_attempts==1 and proxy.execute_attempts==0,'delete issued a retry or separate execution')
+                REPORT['running_deletions'].append({'kind':kind,'id':resource_id,'container_ids_before':before,
+                    'preview_writes':0,'delete_writes':1,'separate_execute_attempts':0,'result':result,
+                    'independent_nested_docker_absence':True})
+        persist()
+
+    repo=await write('CreateRepo',{'name':'mcp-delete-dependent-repo','config':{'server_id':server_id}})
+    builder=await write('CreateBuilder',{'name':'mcp-delete-dependent-builder','config':{
+        'type':'Server','params':{'server_ids':[server_id]}}})
+    alerter=await write('CreateAlerter',{'name':'mcp-delete-dependent-alerter','config':{
+        'enabled':False,'resources':[{'type':'Server','id':server_id}],
+        'except_resources':[{'type':'Server','id':server_id}]}})
+    refs={'stack':stack_id,'deployment':deployment_id,'repo':identity(repo),
+          'builder':identity(builder),'alerter':identity(alerter)}
+    for kind, resource_id in refs.items():
+        await grant(deleter_id,kind.title(),resource_id,'Read')
+    before=await asyncio.to_thread(host_snapshot)
+    require(len(before)>=3 and all(w['state']=='running' for w in before),'Server detachment needs original running workloads')
+    deleter_api=Api(address,{'x-api-key':deleter['key'],'x-api-secret':deleter['secret']})
+    expected_ids={w['id'] for w in before}
+    # Earlier live deletes intentionally changed the cache. Wait for its normal
+    # monitor refresh before asking the operator to bind a stable Server preview.
+    # Production revalidation must still reject any subsequent effect change.
+    await asyncio.to_thread(poll,lambda: {c.get('id') for c in deleter_api.read('ListContainers',{'server':server_id})}==expected_ids,
+                            'Server container cache convergence after owned workload deletion')
+    REPORT['server_deletion_precondition']={'nested_docker_ids':sorted(expected_ids),
+        'core_cached_ids_converged':True,'earlier_deleted_ids_excluded':True}
+    persist()
+    async with LossProxy(address,deleter,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,deleter,True,True) as mcp:
+            request={'target':{'kind':'server','id':server_id},'action':'delete'}
+            p=await mcp.tool('preview_resource_delete',request)
+            require(proxy.write_attempts==0,'Server delete preview wrote')
+            for kind, resource_id in refs.items():
+                require(any(r['kind']==kind and r['id']==resource_id for r in p['visible_references']),
+                        'Server preview missed visible '+kind+' reference')
+            raw=await mcp.rpc('tools/call',{'name':'apply_resource_delete','arguments':{
+                **request,'preview_id':p['preview_id']}})
+            if raw.get('isError'):
+                error=raw.get('structuredContent',{})
+                REPORT['server_deletion_failure']={'kind':error.get('kind'),'field':error.get('field'),
+                    'write_attempts':proxy.write_attempts,'execute_attempts':proxy.execute_attempts}
+                persist()
+                raise Failure('Server deletion failed with sanitized '+str(error.get('kind'))+' in '+str(error.get('field')))
+            result=raw['structuredContent']
+            require(result['outcome']=='acknowledged' and result['definition_removal']['observation']=='definition_absent_at_direct_read',
+                    'Server delete not acknowledged and directly observed absent')
+            observations=[]
+            for kind, resource_id in refs.items():
+                value=await asyncio.to_thread(admin.read,'Get'+kind.title(),{kind:resource_id})
+                if kind in ['stack','deployment','repo']:
+                    require(value['config']['server_id']=='','Core did not detach owned '+kind)
+                    expected='no_longer_referencing_target'
+                elif kind=='builder':
+                    require(value['config']['params']['server_ids']==[server_id],
+                            'pinned Core Builder legacy-field behavior changed; inspect the new result')
+                    expected='still_referencing_target'
+                else:
+                    require(value['config']['resources']==value['config']['except_resources']==[],
+                            'Core did not remove owned Alerter references')
+                    expected='no_longer_referencing_target'
+                require(all(r['after']==expected for r in result['visible_references'] if r['kind']==kind and r['id']==resource_id),
+                        'MCP reference after-state differs from independent read-back')
+                observations.append({'kind':kind,'id':resource_id,'observation':expected})
+            after=await asyncio.to_thread(host_snapshot)
+            require(before==after,'Server deletion changed owned container identities, images or states')
+            require(proxy.write_attempts==1 and proxy.execute_attempts==0,'Server delete retried or submitted execution')
+            REPORT['server_deletion']={'id':server_id,'result':result,'references':observations,
+                'independent_workloads_before':before,'independent_workloads_after':after,
+                'host_workloads_unchanged':True,'write_attempts':1,'separate_execute_attempts':0,
+                'provisioner_used_only_for_fixture_setup_and_independent_observation':True}
+    persist()
+    print('Verified running Stack/Deployment deletion, Core/local denial, Server detachment and surviving host workloads.',flush=True)
+
+
 def exercise_environment():
     addresses = run([*COMPOSE, 'port', 'core', '9120']).splitlines()
     if len(addresses) != 1 or not re.fullmatch(r'127\.0\.0\.1:\d+', addresses[0]):
@@ -899,12 +1060,12 @@ def exercise_environment():
     REPORT['scope'].update(stack_id=stack_id, deployment_id=deployment_id)
     credentials = []
     for username, level in [('mcp-smoke-operator', 'Execute'), ('mcp-smoke-reader', 'Read'),
-                            ('mcp-smoke-editor', 'Write')]:
+                            ('mcp-smoke-editor', 'Write'), ('mcp-smoke-deleter', 'Write')]:
         user = admin.write('CreateServiceUser', {'username': username, 'description': 'Disposable komodo-mcp acceptance identity'})
         user_id = identity(user)
         if user['admin'] or user['super_admin']:
             raise Failure('test identity unexpectedly administrative')
-        admin.write('UpdateUserBasePermissions', {'user_id': user_id, 'enabled': True, 'create_servers': level == 'Write', 'create_builds': False})
+        admin.write('UpdateUserBasePermissions', {'user_id': user_id, 'enabled': True, 'create_servers': username == 'mcp-smoke-editor', 'create_builds': False})
         for kind, resource_id, grant in [('Server', server_id, 'Read'), ('Stack', stack_id, level), ('Deployment', deployment_id, level)]:
             admin.write('UpdatePermissionOnTarget', {'user_target': {'type': 'User', 'id': user_id},
                 'resource_target': {'type': kind, 'id': resource_id}, 'permission': {'level': grant,
@@ -922,7 +1083,7 @@ def exercise_environment():
         REPORT['scope']['non_admin_identities'].append({'id': user_id, 'username': username, 'workload_permission': level})
     fd = os.open(ROOT/'test-identities.json', os.O_CREAT|os.O_EXCL|os.O_WRONLY, 0o600)
     with os.fdopen(fd,'w') as output:
-        json.dump({'operator': credentials[0], 'reader': credentials[1], 'editor':credentials[2]}, output)
+        json.dump({'operator': credentials[0], 'reader': credentials[1], 'editor':credentials[2], 'deleter':credentials[3]}, output)
     poll(lambda: {'web','db'} <= {s['service_name'] for s in admin.read('GetStack', {'stack': stack_id})['info']['latest_services']}, 'latest saved Compose services')
     persist()
     REPORT['compose_version'] = run([*COMPOSE, 'exec', '-T', 'periphery', 'docker', 'compose', 'version', '--short'])
@@ -935,6 +1096,10 @@ def exercise_environment():
     REPORT['observed_services'] = [{'service': s['service'], 'state': s['state']} for s in services]
     if not {'web','db'} <= {s['service'] for s in services}:
         raise Failure('requested service/dependency were not observed')
+    # Server removal is last: it deliberately detaches the original workloads.
+    asyncio.run(exercise_deletion(address,admin,credentials[3],credentials[1],
+        REPORT['scope']['non_admin_identities'][3]['id'],REPORT['scope']['non_admin_identities'][1]['id'],
+        server_id,stack_id,deployment_id))
     REPORT['passed'] = True
     print('Disposable real-Core acceptance passed.', flush=True)
 

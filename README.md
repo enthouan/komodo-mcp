@@ -160,6 +160,16 @@ existing keys are preserved, and connectivity is observed separately from a
 verified save. See [Server records](docs/servers.md) for fields, Core permissions,
 background-policy effects and the absence of provisioning/key-rotation fallback.
 
+Deliberate deletion adds `preview_resource_delete` for trusted configuration
+access and `apply_resource_delete` only when both local grants are enabled.
+Select one exact Stack/Deployment/Server kind and stable ID with `action=delete`.
+Preview identifies visible workloads/references and incomplete coverage; apply
+revalidates before one typed write. Core can tear down live workloads inside that
+write. Definition removal, fresh runtime observations, cleanup errors and visible
+reference changes are reported separately. See [deletion](docs/deletion.md) for
+Server detachment, remaining host workloads, Builder limitations and uncertain
+submissions without retries.
+
 Use an enabled non-admin Core identity with `Read` on the resources being
 inspected. Deploy, start, stop and restart require Core `Execute` on the selected
 Stack or Deployment; granting the local operate capability is insufficient. Core's

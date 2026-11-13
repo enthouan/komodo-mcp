@@ -38,6 +38,19 @@ the definition is saved while connectivity remains NotOk. The Execute identity
 has no Server creation permission and proves sanitized Core denial without a
 fallback. Server sessions issue zero MCP executions and preserve all existing
 workload IDs/images/states. New Server records disable pruning and key rotation.
+Deletion uses a fourth enabled non-admin identity with scoped Write and Server
+Inspect access. The provisioner creates dedicated running Stack/Deployment
+fixtures with short termination settings; production MCP previews and deletes
+them once. Fresh Core/Periphery inspections and independent nested Docker reads
+check exact container-ID absence separately from definition removal. The Read
+identity, even with both local grants, receives Core's Write denial. All three
+incomplete local grant profiles hide and deny direct deletion before Core I/O.
+Finally the owned original Server is deleted: Stack/Deployment/Repo and disabled
+Alerter references are checked, the current Builder vector is observed remaining,
+and original workload IDs/images/states remain unchanged. This final scenario
+runs after earlier operation/configuration proofs. Swarm deletion, cleanup errors
+and skipped cleanup retain deterministic fixture coverage. Provisioner access is
+used only for setup and independent observations, never as an MCP fallback.
 All are enabled non-admin users; API keys expire in
 one hour. Provisioning credentials never enter an MCP child. The test workload
 uses BusyBox **1.37.0** and `depends_on.restart: true`; only deploy has saved hooks.

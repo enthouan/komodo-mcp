@@ -9,6 +9,9 @@ pub enum Capability {
     Read,
     Operate,
     ConfigurationEdit,
+    /// Deliberate deletion can implicitly remove live workloads through Core.
+    /// Both independent startup grants are necessary.
+    Destructive,
 }
 
 /// Independent, immutable startup grants. Reads are always locally enabled.
@@ -52,6 +55,7 @@ impl CapabilityPolicy {
             Capability::Read => true,
             Capability::Operate => self.operate,
             Capability::ConfigurationEdit => self.configuration_edit,
+            Capability::Destructive => self.operate && self.configuration_edit,
         }
     }
 }

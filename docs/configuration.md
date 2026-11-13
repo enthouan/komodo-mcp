@@ -5,6 +5,9 @@ This page describes the shared contract and Stack fields. See also
 settings and separate runtime observations, and [Server records](servers.md) for
 connection/alert settings and explicit initial trust. These resources share the same
 bounded token store; operation/resource-kind binding prevents cross-type replay.
+The same store also holds [deliberate deletion previews](deletion.md); destructive
+apply requires both independent local grants and reports definition removal
+separately from runtime cleanup.
 
 Set `KOMODO_ALLOW_CONFIGURATION_EDIT=true` in the MCP child environment. The
 default is false. This trusted grant is independent of

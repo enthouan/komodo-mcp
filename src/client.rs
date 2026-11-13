@@ -207,6 +207,27 @@ impl CoreClient {
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
     }
 
+    /// A single typed destructive write. Its raw acknowledgement is retained
+    /// privately so missing fields cannot be manufactured by SDK defaults.
+    pub(crate) async fn delete<T>(&self, request: T) -> Result<serde_json::Value, AppError>
+    where
+        T: Serialize + KomodoWriteRequest,
+    {
+        let operation = match T::req_type() {
+            "DeleteStack" => "DeleteStack",
+            "DeleteDeployment" => "DeleteDeployment",
+            "DeleteServer" => "DeleteServer",
+            _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "delete", None)),
+        };
+        crate::deletion::require_apply(self)?;
+        tokio::time::timeout(
+            self.0.policy.operation_timeout,
+            self.request_bounded_body(&self.0.write_request, request, T::req_type(), operation),
+        )
+        .await
+        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
+    }
+
     /// One explicit typed submission, over the existing authenticated pool.
     /// Every uncertain failure is returned without retrying or changing credentials.
     pub(crate) async fn execute<T>(&self, request: T) -> Result<T::Response, AppError>
@@ -245,6 +266,40 @@ impl CoreClient {
         Self(Arc::clone(&self.0), true)
     }
 
+    /// Full reference scans must distinguish missing reference fields from SDK
+    /// defaults. Keep the raw bounded response private until its shape is checked.
+    pub(crate) async fn read_references<T>(&self, request: T) -> Result<serde_json::Value, AppError>
+    where
+        T: Serialize + KomodoReadRequest,
+    {
+        let operation = match T::req_type() {
+            "ListFullBuilders" => "ListFullBuilders",
+            "ListFullAlerters" => "ListFullAlerters",
+            "ListFullRepos" => "ListFullRepos",
+            "ListFullStacks" => "ListFullStacks",
+            "ListFullDeployments" => "ListFullDeployments",
+            "GetBuilder" => "GetBuilder",
+            "GetAlerter" => "GetAlerter",
+            "GetServer" => "GetServer",
+            "GetRepo" => "GetRepo",
+            "GetStack" => "GetStack",
+            "GetDeployment" => "GetDeployment",
+            _ => {
+                return Err(AppError::new(
+                    ErrorKind::UnsupportedTarget,
+                    "dependency_read",
+                    None,
+                ));
+            }
+        };
+        tokio::time::timeout(
+            self.0.policy.operation_timeout,
+            self.request_bounded_body(&self.0.bounded_request, request, T::req_type(), operation),
+        )
+        .await
+        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
+    }
+
     /// Typed read entry point with the existing SDK contract and safe failures.
     pub async fn read<T>(&self, request: T) -> Result<T::Response, AppError>
     where
@@ -265,6 +320,15 @@ impl CoreClient {
             "ListRepos" => "ListRepos",
             "GetBuild" => "GetBuild",
             "ListBuilds" => "ListBuilds",
+            "GetBuilder" => "GetBuilder",
+            "GetAlerter" => "GetAlerter",
+            "ListFullBuilders" => "ListFullBuilders",
+            "ListFullAlerters" => "ListFullAlerters",
+            "ListFullRepos" => "ListFullRepos",
+            "ListFullStacks" => "ListFullStacks",
+            "ListFullDeployments" => "ListFullDeployments",
+            "ListContainers" => "ListContainers",
+            "InspectContainer" => "InspectContainer",
             "GetServerState" => "GetServerState",
             "GetSystemStats" => "GetSystemStats",
             "ListAllStackServices" => "ListAllStackServices",
@@ -327,13 +391,18 @@ impl CoreClient {
         T: Serialize,
         R: DeserializeOwned,
     {
+        let body = serde_json::json!({"type":request_type,"params":request});
+        let inspected_container = (operation == "InspectContainer")
+            .then(|| body["params"]["container"].as_str())
+            .flatten();
         let mut response = self
             .clone_request(builder, operation)?
-            .json(&serde_json::json!({"type":request_type,"params":request}))
+            .json(&body)
             .send()
             .await
             .map_err(|error| AppError::from_upstream(operation, error.into()))?;
-        self.decode_bounded_body(&mut response, operation).await
+        self.decode_bounded_body(&mut response, operation, inspected_container)
+            .await
     }
 
     fn clone_request(
@@ -350,6 +419,7 @@ impl CoreClient {
         &self,
         response: &mut reqwest::Response,
         operation: &'static str,
+        inspected_container: Option<&str>,
     ) -> Result<R, AppError> {
         let status = response.status();
         if matches!(
@@ -383,6 +453,13 @@ impl CoreClient {
             body.extend_from_slice(&chunk);
         }
         if !status.is_success() {
+            if operation == "InspectContainer" {
+                return Err(AppError::from_container_http_failure(
+                    status,
+                    &body,
+                    inspected_container,
+                ));
+            }
             return Err(AppError::from_http_failure(operation, status, &body));
         }
         serde_json::from_slice(&body)
@@ -416,6 +493,38 @@ mod write_policy_tests {
             stack::PartialStackConfig,
         },
     };
+
+    #[tokio::test]
+    async fn shared_delete_transport_requires_both_grants_without_opening_a_connection() {
+        use komodo_client::api::write::{DeleteDeployment, DeleteServer, DeleteStack};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        for (operate, edit) in [(false, false), (true, false), (false, true)] {
+            let client = CoreClient::new(
+                Config::parse(
+                    &format!("http://{}", listener.local_addr().unwrap()),
+                    "fixture-key",
+                    "fixture-secret",
+                )
+                .unwrap()
+                .with_capabilities(CapabilityPolicy::new(operate, edit)),
+                RequestPolicy::default(),
+            )
+            .unwrap();
+            let id = "000000000000000000000001".to_owned();
+            for r in [
+                client.delete(DeleteStack { id: id.clone() }).await,
+                client.delete(DeleteDeployment { id: id.clone() }).await,
+                client.delete(DeleteServer { id }).await,
+            ] {
+                assert!(matches!(r,Err(e) if e.kind==ErrorKind::CapabilityDisabled));
+            }
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err()
+        );
+    }
 
     #[tokio::test]
     async fn shared_transport_denies_implicit_execution_fields_without_both_grants() {
