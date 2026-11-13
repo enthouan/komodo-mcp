@@ -236,9 +236,10 @@ async fn list_tools(process: &mut Process, id: &str) -> Result<()> {
                         "get_deployment_logs",
                         "get_stack_logs",
                         "stack_diagnose",
+                        "find_resources_by_tag",
                     ])
                     .collect();
-                ensure!(names == expected, "expected all sixteen read-only tools");
+                ensure!(names == expected, "expected all seventeen read-only tools");
                 for tool in &result.tools {
                     ensure!(tool.output_schema.is_some(), "missing output schema");
                     let metadata = serde_json::to_value(tool)?;

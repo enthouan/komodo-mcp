@@ -349,7 +349,10 @@ class LossProxy:
             request = json.loads(await asyncio.wait_for(reader.readexactly(size), 5))
             if endpoint == '/write':
                 # Record field names only; configuration values can be secret.
-                self.write_operations.append({'type': request['type'], 'fields': sorted(request['params'].get('config',{}))})
+                record={'type':request['type'],'fields':sorted(request['params'].get('config',{}))}
+                if request['type'] in ['CreateTag','RenameTag','DeleteTag','UpdateResourceMeta']:
+                    record['parameter_fields']=sorted(request['params'])
+                self.write_operations.append(record)
             if endpoint == '/read':
                 operation = request['type']
                 self.read_operations[operation] = self.read_operations.get(operation,0) + 1
@@ -498,7 +501,7 @@ async def exercise(address, operator, reader, stack_id, deployment_id):
     async with await Mcp.start(address,reader,False) as observer:
         tools = (await observer.rpc('tools/list',{}))['tools']
         names = {tool['name'] for tool in tools}
-        require(len(names) == 16 and not any(name.startswith(('deploy_','start_','stop_','restart_')) for name in names), 'default read-only discovery must expose sixteen readers')
+        require(len(names) == 17 and not any(name.startswith(('deploy_','start_','stop_','restart_')) for name in names), 'default read-only discovery must expose seventeen readers')
         diagnosis = await observer.tool('stack_diagnose',{'id':stack_id})
         fleet = await observer.tool('fleet_health',{})
         REPORT['final_health'] = {'stack_diagnosis':diagnosis['outcome'],
@@ -852,6 +855,120 @@ async def exercise_server_definitions(address, editor, denied_creator, initial_p
     print('Verified real Core Server creation/alert edit, pinned trust, separate unreachable state and permission denial.',flush=True)
 
 
+async def exercise_tags(address,editor,reader,stack_id):
+    """Own tags through MCP; preserve assignments/metadata and running workloads."""
+    api=Api(address,{'x-api-key':editor['key'],'x-api-secret':editor['secret']})
+    before=await asyncio.to_thread(api.read,'GetStack',{'stack':stack_id})
+    prior=sorted(before['tags'])
+    runtime_before=await asyncio.to_thread(containers)
+    created=[]
+    async with LossProxy(address,editor,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,editor,False,True) as mcp:
+            for name in ['MCP kept tag','MCP old tag']:
+                request={'name':name}
+                writes=proxy.write_attempts
+                p=await mcp.tool('preview_tag_create',request)
+                require(proxy.write_attempts==writes and p['writes_submitted']==0,'tag preview wrote')
+                saved=await mcp.tool('apply_tag_create',{**request,'preview_id':p['preview_id']})
+                require(saved['outcome']=='acknowledged' and saved['change_verified'],'tag create not verified')
+                created.append(saved['tag_after']['id'])
+            keep,tag_id=created
+            rename={'tag':{'id':tag_id},'name':'MCP renamed tag'}
+            p=await mcp.tool('preview_tag_rename',rename)
+            renamed=await mcp.tool('apply_tag_rename',{**rename,'preview_id':p['preview_id']})
+            require(renamed['change_verified'] and renamed['tag_after']['id']==tag_id,'rename changed identity or was not verified')
+            writes=proxy.write_attempts
+            p=await mcp.tool('preview_tag_rename',rename)
+            require((await mcp.tool('apply_tag_rename',{**rename,'preview_id':p['preview_id']}))['outcome']=='no_op'
+                    and proxy.write_attempts==writes,'unchanged tag rename wrote')
+            base={'target':{'kind':'stack','id':stack_id}}
+            async def assign(tags,mode='replace'):
+                request={**base,'mode':mode,'tags':tags}
+                p=await mcp.tool('preview_resource_tags',request)
+                r=await mcp.tool('apply_resource_tags',{**request,'preview_id':p['preview_id']})
+                require(r['change_verified'],'exact assignment/preserved metadata not verified')
+                return p,r
+            await assign([{'id':i} for i in [*prior,keep]])
+            p,added=await assign([{'name':'MCP renamed tag'}],'add')
+            require(sorted(t['id'] for t in p['before_tags'])==sorted([*prior,keep]),'add preview lost previous tags')
+            expected=sorted([*prior,keep,tag_id])
+            require(sorted(t['id'] for t in added['observed_tags'])==expected,'add did not preserve unrelated assignments')
+            writes=proxy.write_attempts
+            p=await mcp.tool('preview_resource_tags',base)
+            omitted=await mcp.tool('apply_resource_tags',{**base,'preview_id':p['preview_id']})
+            require(omitted['outcome']=='no_op' and proxy.write_attempts==writes,'omitted tags wrote')
+            await assign([{'id':tag_id}],'add')
+            require(proxy.write_attempts==writes,'adding an existing tag wrote')
+            _,cleared=await assign([])
+            require(cleared['observed_tags']==[],'explicit empty set did not clear')
+            await assign([{'id':i} for i in expected])
+            stored=await asyncio.to_thread(api.read,'GetStack',{'stack':stack_id})
+            require(all(before[k]==stored[k] for k in ['name','description','template','config']),
+                    'tag assignment changed unrelated authoritative metadata/configuration')
+            delete={'tag':{'id':tag_id},'action':'delete'}
+            p=await mcp.tool('preview_tag_delete',delete)
+            reads,writes=dict(proxy.read_operations),proxy.write_attempts
+            denied=await mcp.rpc('tools/call',{'name':'apply_tag_delete','arguments':{
+                **delete,'preview_id':p['preview_id']}},allow_error=True)
+            require('protocol_error' in denied and proxy.read_operations==reads and proxy.write_attempts==writes,
+                    'configuration-only tag deletion reached Core')
+            require(proxy.execute_attempts==0,'ordinary tag session executed a workload')
+            metadata_writes=[w for w in proxy.write_operations if w['type']=='UpdateResourceMeta']
+            require(len(metadata_writes)==4 and all(w['parameter_fields']==['tags','target'] for w in metadata_writes),
+                    'tag assignments sent unrelated metadata fields')
+            REPORT['tags']={'created_ids':created,'renamed_tag_id':tag_id,'new_name':'MCP renamed tag',
+                'before_assignments':prior,'after_add_assignments':expected,'assignment_clear_verified':True,
+                'omission_existing_add_and_rename_noop_writes':0,'unrelated_metadata_config_preserved':True,
+                'configuration_only_delete_denied_before_core':True,'ordinary_execute_attempts':0,
+                'ordinary_writes':proxy.write_operations}
+    async with LossProxy(address,reader,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,reader,False,False) as mcp:
+            found=await mcp.tool('find_resources_by_tag',{'tag':{'name':'MCP renamed tag'},'kind':'stack','page_size':1})
+            require(found['tag']['id']==tag_id and any(r['id']==stack_id for r in found['resources']),
+                    'read-only discovery by renamed tag did not find the resource')
+            require(proxy.write_attempts==proxy.execute_attempts==0,'tag discovery mutated Core')
+            REPORT['tags']['read_only_new_name_discovery']={'tag_id':tag_id,'resource_id':stack_id,'writes':0,'executions':0}
+        async with await Mcp.start(proxy.address,reader,True,True) as mcp:
+            request={'tag':{'id':tag_id},'action':'delete'}
+            p=await mcp.tool('preview_tag_delete',request)
+            denied=await mcp.tool('apply_tag_delete',{**request,'preview_id':p['preview_id']})
+            require(denied['outcome']=='submission_unknown' and denied['tag_record_observation']=='tag_still_present_at_exact_id_read'
+                    and any(e['kind']=='permission_denied' for e in denied['errors']),'non-owner tag deletion was not denied')
+            require(proxy.write_attempts==1 and proxy.execute_attempts==0,'non-owner denial retried or executed')
+            REPORT['tags']['non_owner_delete_denial']={'both_local_grants':True,'core_read_identity':True,
+                'permission_denial':True,'tag_still_present':True,'write_attempts':1,'execute_attempts':0}
+    async with LossProxy(address,editor,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,editor,True,True) as mcp:
+            request={'tag':{'id':tag_id},'action':'delete'}
+            p=await mcp.tool('preview_tag_delete',request)
+            require(any(a['kind']=='stack' and a['id']==stack_id for a in p['visible_assignments']),
+                    'delete preview missed visible tag assignment')
+            deleted=await mcp.tool('apply_tag_delete',{**request,'preview_id':p['preview_id']})
+            require(deleted['outcome']=='acknowledged' and deleted['tag_removal_reported_by_core']
+                    and deleted['tag_record_observation']=='tag_absent_at_exact_id_read','owned tag deletion not corroborated')
+            stored=await asyncio.to_thread(api.read,'GetStack',{'stack':stack_id})
+            require(sorted(stored['tags'])==sorted([*prior,keep]),'tag deletion changed unrelated assignments')
+            require(all(a['observation']=='tag_no_longer_assigned' for a in deleted['visible_assignments'] if a['id']==stack_id),
+                    'assignment after-state did not match independent read-back')
+            REPORT['tags']['guarded_delete_result']=deleted
+            # Remove the other owned tag through the same explicit policy.
+            request={'tag':{'id':keep},'action':'delete'}
+            p=await mcp.tool('preview_tag_delete',request)
+            cleanup=await mcp.tool('apply_tag_delete',{**request,'preview_id':p['preview_id']})
+            require(cleanup['tag_record_observation']=='tag_absent_at_exact_id_read','owned keep-tag cleanup not observed')
+            require(proxy.write_attempts==2 and proxy.execute_attempts==0,'tag delete retried or executed')
+            REPORT['tags']['owner_delete_writes']=2
+            REPORT['tags']['owner_delete_execute_attempts']=0
+    final=await asyncio.to_thread(api.read,'GetStack',{'stack':stack_id})
+    require(sorted(final['tags'])==prior,'owned tag cleanup did not restore initial assignment set')
+    require(await asyncio.to_thread(containers)==runtime_before,'tag operations changed workload identities/states/start times')
+    REPORT['tags'].update(initial_assignments_restored=True,workload_ids_states_start_times_unchanged=True,
+        live_matrix=['tag lifecycle and Stack assignment/discovery/deletion on Core 2.3.2'],
+        fixture_only_matrix=['Server/Deployment assignment','all eleven visible deletion families','Swarm omission','partial cleanup and silent resolution-drop races'])
+    persist()
+    print('Verified real tag lifecycle, assignment preservation/clear, renamed discovery, ownership denial and guarded deletion.',flush=True)
+
+
 async def exercise_deletion(address, admin, deleter, reader, deleter_id, reader_id, server_id, stack_id, deployment_id):
     """Delete only this invocation's resources; observe nested Docker independently."""
     async def write(operation, params):
@@ -1096,6 +1213,7 @@ def exercise_environment():
     REPORT['observed_services'] = [{'service': s['service'], 'state': s['state']} for s in services]
     if not {'web','db'} <= {s['service'] for s in services}:
         raise Failure('requested service/dependency were not observed')
+    asyncio.run(exercise_tags(address,credentials[2],credentials[1],stack_id))
     # Server removal is last: it deliberately detaches the original workloads.
     asyncio.run(exercise_deletion(address,admin,credentials[3],credentials[1],
         REPORT['scope']['non_admin_identities'][3]['id'],REPORT['scope']['non_admin_identities'][1]['id'],

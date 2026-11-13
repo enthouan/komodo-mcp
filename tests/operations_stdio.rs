@@ -30,7 +30,7 @@ async fn discover_inspect_act_follow_and_observe_health_for_every_action_and_sco
     })
     .await;
     let (process, session) = Process::start(&core, true).await;
-    assert_eq!(session.list_tools(None).await.unwrap().tools.len(), 24);
+    assert_eq!(session.list_tools(None).await.unwrap().tools.len(), 25);
     assert_eq!(
         data(call(&session, "get_stack", json!({"id":STACK})).await)["id"],
         STACK
@@ -118,7 +118,7 @@ async fn readonly_defaults_and_core_denied_busy_rollout_failures_remain_observab
         })
         .await;
         let (process, session) = Process::start(&core, false).await;
-        assert_eq!(session.list_tools(None).await.unwrap().tools.len(), 16);
+        assert_eq!(session.list_tools(None).await.unwrap().tools.len(), 17);
         let reads = core.requests().len();
         let disabled = tokio::time::timeout(
             support::operations::DEADLINE,

@@ -8,6 +8,14 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Add typed tag creation/rename and explicit resource assignment preview/apply,
+  preserving omitted assignments and unrelated metadata, with additive set
+  behavior, deliberate empty-set clearing and read-only discovery by renamed
+  tags. Reuse guarded deletion for exact tags and report visible assignment
+  effects, partial cleanup and Core's omitted Swarm cleanup separately. Verify
+  authoritative read-back against silent resolution drops and retain uncertain
+  responses without retries. ([#20](https://github.com/enthouan/komodo-mcp/issues/20))
+
 - Add deliberate single-resource Stack/Deployment/Server deletion through the
   shared private preview store, requiring both local grants for apply. Revalidate
   deployed identities, runtime and visible references; separate definition

@@ -217,12 +217,74 @@ impl CoreClient {
             "DeleteStack" => "DeleteStack",
             "DeleteDeployment" => "DeleteDeployment",
             "DeleteServer" => "DeleteServer",
+            "DeleteTag" => "DeleteTag",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "delete", None)),
         };
         crate::deletion::require_apply(self)?;
         tokio::time::timeout(
             self.0.policy.operation_timeout,
             self.request_bounded_body(&self.0.write_request, request, T::req_type(), operation),
+        )
+        .await
+        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
+    }
+
+    /// Typed tag operations, retaining raw acknowledgements before SDK defaults.
+    pub(crate) async fn tag_write<T>(&self, request: T) -> Result<serde_json::Value, AppError>
+    where
+        T: Serialize + KomodoWriteRequest,
+    {
+        let operation = match T::req_type() {
+            op @ ("CreateTag" | "RenameTag" | "UpdateResourceMeta") => op,
+            _ => {
+                return Err(AppError::new(
+                    ErrorKind::UnsupportedTarget,
+                    "tag_write",
+                    None,
+                ));
+            }
+        };
+        crate::configuration::require_edit(self)?;
+        let mut params = serde_json::to_value(request)
+            .map_err(|_| AppError::arguments(operation, "Use a typed tag request"))?;
+        if operation == "UpdateResourceMeta" {
+            if !params["description"].is_null()
+                || !params["template"].is_null()
+                || !params["tags"].as_array().is_some_and(|a| {
+                    a.len() <= 64
+                        && a.iter()
+                            .all(|v| v.as_str().is_some_and(crate::deletion::object_id))
+                })
+                || !matches!(
+                    params["target"]["type"].as_str(),
+                    Some("Stack" | "Deployment" | "Server")
+                )
+                || !params["target"]["id"]
+                    .as_str()
+                    .is_some_and(crate::deletion::object_id)
+            {
+                return Err(AppError::arguments(
+                    operation,
+                    "Only exact stable tag IDs and one managed resource's tags may be updated",
+                ));
+            }
+            params
+                .as_object_mut()
+                .expect("typed object")
+                .remove("description");
+            params
+                .as_object_mut()
+                .expect("typed object")
+                .remove("template");
+        } else if operation == "CreateTag" && params["color"].is_null() {
+            params
+                .as_object_mut()
+                .expect("typed object")
+                .remove("color");
+        }
+        tokio::time::timeout(
+            self.0.policy.operation_timeout,
+            self.request_bounded_body(&self.0.write_request, params, T::req_type(), operation),
         )
         .await
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
@@ -273,6 +335,10 @@ impl CoreClient {
         T: Serialize + KomodoReadRequest,
     {
         let operation = match T::req_type() {
+            op @ ("ListTags" | "ListServers" | "ListStacks" | "ListDeployments" | "ListSwarms"
+            | "ListBuilds" | "ListRepos" | "ListBuilders" | "ListAlerters"
+            | "ListProcedures" | "ListActions" | "ListResourceSyncs" | "GetSwarm"
+            | "GetBuild" | "GetProcedure" | "GetAction" | "GetResourceSync") => op,
             "ListFullBuilders" => "ListFullBuilders",
             "ListFullAlerters" => "ListFullAlerters",
             "ListFullRepos" => "ListFullRepos",
@@ -496,7 +562,7 @@ mod write_policy_tests {
 
     #[tokio::test]
     async fn shared_delete_transport_requires_both_grants_without_opening_a_connection() {
-        use komodo_client::api::write::{DeleteDeployment, DeleteServer, DeleteStack};
+        use komodo_client::api::write::{DeleteDeployment, DeleteServer, DeleteStack, DeleteTag};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         for (operate, edit) in [(false, false), (true, false), (false, true)] {
             let client = CoreClient::new(
@@ -514,11 +580,84 @@ mod write_policy_tests {
             for r in [
                 client.delete(DeleteStack { id: id.clone() }).await,
                 client.delete(DeleteDeployment { id: id.clone() }).await,
-                client.delete(DeleteServer { id }).await,
+                client.delete(DeleteServer { id: id.clone() }).await,
+                client.delete(DeleteTag { id }).await,
             ] {
                 assert!(matches!(r,Err(e) if e.kind==ErrorKind::CapabilityDisabled));
             }
         }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn shared_tag_transport_requires_configuration_and_refuses_unrelated_metadata_before_io()
+    {
+        use komodo_client::{
+            api::write::{CreateTag, RenameTag, UpdateResourceMeta},
+            entities::ResourceTarget,
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        for operate in [false, true] {
+            let client = CoreClient::new(
+                Config::parse(
+                    &format!("http://{}", listener.local_addr().unwrap()),
+                    "fixture-key",
+                    "fixture-secret",
+                )
+                .unwrap()
+                .with_capabilities(CapabilityPolicy::new(operate, false)),
+                RequestPolicy::default(),
+            )
+            .unwrap();
+            for r in [
+                client
+                    .tag_write(CreateTag {
+                        name: "tag".into(),
+                        color: None,
+                    })
+                    .await,
+                client
+                    .tag_write(RenameTag {
+                        id: "000000000000000000007001".into(),
+                        name: "new".into(),
+                    })
+                    .await,
+                client
+                    .tag_write(UpdateResourceMeta {
+                        target: ResourceTarget::Stack("000000000000000000000002".into()),
+                        description: None,
+                        template: None,
+                        tags: Some(vec![]),
+                    })
+                    .await,
+            ] {
+                assert!(matches!(r,Err(e)if e.kind==ErrorKind::CapabilityDisabled));
+            }
+        }
+        let client = CoreClient::new(
+            Config::parse(
+                &format!("http://{}", listener.local_addr().unwrap()),
+                "fixture-key",
+                "fixture-secret",
+            )
+            .unwrap()
+            .with_capabilities(CapabilityPolicy::new(false, true)),
+            RequestPolicy::default(),
+        )
+        .unwrap();
+        let r = client
+            .tag_write(UpdateResourceMeta {
+                target: ResourceTarget::Stack("000000000000000000000002".into()),
+                description: Some("unrelated".into()),
+                template: None,
+                tags: Some(vec![]),
+            })
+            .await;
+        assert!(matches!(r,Err(e)if e.kind==ErrorKind::InvalidArguments));
         assert!(
             tokio::time::timeout(Duration::from_millis(20), listener.accept())
                 .await

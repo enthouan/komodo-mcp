@@ -38,6 +38,17 @@ the definition is saved while connectivity remains NotOk. The Execute identity
 has no Server creation permission and proves sanitized Core denial without a
 fallback. Server sessions issue zero MCP executions and preserve all existing
 workload IDs/images/states. New Server records disable pruning and key rotation.
+Before resource deletion, the editor creates and renames owned tags, changes
+Stack assignments with additive preservation, zero-write omission/no-op and
+explicit clearing, and discovers the resource by its new tag name through a
+separate read-only process. Exact request field names and unrelated authoritative
+metadata/configuration are checked. Configuration-only tag deletion is denied
+locally; the Read identity with both local grants receives Core's tag-owner
+denial. The owner deliberately deletes both new tags through the shared policy,
+restoring initial assignments and retaining workload IDs/states/start times.
+Swarm's omitted tag cleanup and other resource-family assignments are covered
+by deterministic wire fixtures and pinned source, without a live matrix claim.
+
 Deletion uses a fourth enabled non-admin identity with scoped Write and Server
 Inspect access. The provisioner creates dedicated running Stack/Deployment
 fixtures with short termination settings; production MCP previews and deletes

@@ -24,7 +24,7 @@ pub(crate) fn require_apply(client: &CoreClient) -> Result<(), AppError> {
     if !client.capabilities().allows(Capability::Destructive) {
         return Err(AppError {
             correction: Some(
-                "Deliberate deletion requires both KOMODO_ALLOW_CONFIGURATION_EDIT=true and KOMODO_ALLOW_OPERATE=true because Core can tear down live workloads. No Core request was submitted.",
+                "Deliberate deletion requires both KOMODO_ALLOW_CONFIGURATION_EDIT=true and KOMODO_ALLOW_OPERATE=true because Core deletion can remove live workloads or resource assignments. No Core request was submitted.",
             ),
             ..AppError::new(ErrorKind::CapabilityDisabled, "resource_delete", None)
         });
@@ -59,10 +59,10 @@ impl ResourceKind {
 fn invalid() -> AppError {
     AppError::new(ErrorKind::InvalidResponse, "resource_delete", None)
 }
-fn object_id(s: &str) -> bool {
+pub(crate) fn object_id(s: &str) -> bool {
     s.len() == 24 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
-fn raw_id(v: &Value) -> Result<String, AppError> {
+pub(crate) fn raw_id(v: &Value) -> Result<String, AppError> {
     let a = v.get("id").and_then(Value::as_str);
     let b = v
         .get("_id")
@@ -195,7 +195,7 @@ pub struct DeletionResult {
 }
 
 impl Target {
-    fn validate(mut self) -> Result<Self, AppError> {
+    pub(crate) fn validate(mut self) -> Result<Self, AppError> {
         if !object_id(&self.id) {
             return Err(AppError::arguments(
                 "resource_delete",

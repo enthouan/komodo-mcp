@@ -8,6 +8,9 @@ bounded token store; operation/resource-kind binding prevents cross-type replay.
 The same store also holds [deliberate deletion previews](deletion.md); destructive
 apply requires both independent local grants and reports definition removal
 separately from runtime cleanup.
+The same store also serves [tag lifecycle and assignment](tags.md), including
+explicit replacement, clearing and additive preservation. Tag deletion uses the
+shared destructive gate.
 
 Set `KOMODO_ALLOW_CONFIGURATION_EDIT=true` in the MCP child environment. The
 default is false. This trusted grant is independent of

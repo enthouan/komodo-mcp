@@ -9,9 +9,9 @@ with a pinned TypeScript stdio reference using synthetic Core fixtures. See the
 provisional results and repeatable commands.
 
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
-Komodo, using the official [rmcp 3.8.0 SDK](https://docs.rs/rmcp/3.8.0/rmcp/).
+Komodo, using the official [rmcp 3.9.0 SDK](https://docs.rs/rmcp/3.9.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Fourteen read-only tools list and inspect
+exactly with optional features disabled. Seventeen read-only tools list and inspect
 Servers, Stacks, and Deployments, summarize fleet health, inspect alerts/update
 history, read bounded logs, and diagnose a stack in one call.
 Optional operate-enabled tools deploy one existing workload and return its Core
@@ -134,7 +134,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All sixteen existing read tools remain locally available in every grant
+All seventeen read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -169,6 +169,15 @@ write. Definition removal, fresh runtime observations, cleanup errors and visibl
 reference changes are reported separately. See [deletion](docs/deletion.md) for
 Server detachment, remaining host workloads, Builder limitations and uncertain
 submissions without retries.
+
+Tags add typed creation, rename and explicit assignment preview/apply tools.
+Omission preserves assignments, replace with `[]` clears them, and add preserves
+unrelated IDs. `find_resources_by_tag` discovers visible managed resources by an
+exact renamed tag in every profile. Tag deletion reuses the shared destructive
+gate and identifies visible cross-resource effects; Core 2.3.2 can leave Swarm
+assignments dangling. Core tag-owner/admin and resource Write permissions remain
+separate. See [tags and assignments](docs/tags.md) for exact fields, preserved
+metadata, read-back verification and concurrency/visibility limits.
 
 Use an enabled non-admin Core identity with `Read` on the resources being
 inspected. Deploy, start, stop and restart require Core `Execute` on the selected

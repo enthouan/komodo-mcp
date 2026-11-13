@@ -17,5 +17,6 @@ pub mod recovery;
 pub mod server;
 pub mod server_configuration;
 pub mod stack_configuration;
+pub mod tags;
 pub mod triage;
 pub mod wait;

@@ -38,11 +38,12 @@ impl KomodoServer {
                 | "get_container_logs"
                 | "get_deployment_logs"
                 | "get_stack_logs"
-                | "stack_diagnose" => Some(Capability::Read),
+                | "stack_diagnose"
+                | "find_resources_by_tag" => Some(Capability::Read),
                 "deploy_stack" | "deploy_deployment" | "start_stack" | "stop_stack"
                 | "restart_stack" | "start_deployment" | "stop_deployment"
                 | "restart_deployment" => Some(Capability::Operate),
-                "apply_resource_delete" => Some(Capability::Destructive),
+                "apply_resource_delete" | "apply_tag_delete" => Some(Capability::Destructive),
                 "preview_stack_update"
                 | "apply_stack_update"
                 | "preview_stack_create"
@@ -55,7 +56,14 @@ impl KomodoServer {
                 | "apply_server_create"
                 | "preview_server_update"
                 | "apply_server_update"
-                | "preview_resource_delete" => Some(Capability::ConfigurationEdit),
+                | "preview_resource_delete"
+                | "preview_tag_create"
+                | "apply_tag_create"
+                | "preview_tag_rename"
+                | "apply_tag_rename"
+                | "preview_resource_tags"
+                | "apply_resource_tags"
+                | "preview_tag_delete" => Some(Capability::ConfigurationEdit),
                 _ => None,
             },
         )
@@ -64,6 +72,80 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="Find visible Server, Stack or Deployment records by one exact tag id or case-sensitive name. Resolve the tag to its stable ID, then use bounded positive pages and verify returned tag assignments. This remains read-only in every local profile. Hidden records and concurrent changes are not an exhaustive snapshot; an empty visible page does not prove no assignments.",input_schema=schema_for_input::<crate::tags::FindInput>().expect("tag discovery schema"),output_schema=inventory::output_schema::<crate::tags::FindResult>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn find_resources_by_tag(&self, arguments: JsonObject) -> CallToolResult {
+        let r = match inventory::parse(arguments, "find_resources_by_tag") {
+            Ok(input) => crate::tags::find(&self.client, input).await,
+            Err(e) => Err(e),
+        };
+        inventory::tool_result(&self.client, r)
+    }
+
+    #[tool(description="Preview creating one exact case-sensitive tag with Core's default Slate color and zero writes. Trusted configuration access is required. Check exact name absence, retain a shared bounded ten-minute single-use preview, and disclose Core's caller ownership/non-admin creation policy. This does not assign a resource or execute a workload.",input_schema=schema_for_input::<crate::tags::CreateInput>().expect("tag create schema"),output_schema=inventory::output_schema::<crate::tags::TagResult>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
+    async fn preview_tag_create(&self, arguments: JsonObject) -> CallToolResult {
+        let r = match inventory::parse(arguments, "preview_tag_create") {
+            Ok(input) => crate::tags::preview_create(&self.client, input).await,
+            Err(e) => Err(e),
+        };
+        inventory::tool_result(&self.client, r)
+    }
+    #[tool(description="Apply the exact previewed tag name and preview_id once with trusted configuration access. Revalidate exact name absence before one typed CreateTag; verify the raw returned stable identity/name/color and authoritative read-back separately. Core assigns ownership and enforces creation policy. Lost/invalid/denied replies remain submission_unknown; no retry, resource assignment, execution or credential fallback.",input_schema=schema_for_input::<crate::tags::ApplyCreate>().expect("tag create apply schema"),output_schema=inventory::output_schema::<crate::tags::TagResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=false))]
+    async fn apply_tag_create(&self, arguments: JsonObject) -> CallToolResult {
+        let r = match inventory::parse(arguments, "apply_tag_create") {
+            Ok(input) => crate::tags::apply_create(&self.client, input).await,
+            Err(e) => Err(e),
+        };
+        inventory::tool_result(&self.client, r)
+    }
+    #[tool(description="Preview renaming one exact stable tag identity. Require trusted configuration access, preserve owner/color and assignment IDs, check exact name uniqueness and display the before/after name. An unchanged name is an explicit zero-write no-op. Raw identity/owner/color and intended name stay privately bound to the shared preview; Core requires tag owner or admin.",input_schema=schema_for_input::<crate::tags::RenameInput>().expect("tag rename schema"),output_schema=inventory::output_schema::<crate::tags::TagResult>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
+    async fn preview_tag_rename(&self, arguments: JsonObject) -> CallToolResult {
+        let r = match inventory::parse(arguments, "preview_tag_rename") {
+            Ok(input) => crate::tags::preview_rename(&self.client, input).await,
+            Err(e) => Err(e),
+        };
+        inventory::tool_result(&self.client, r)
+    }
+    #[tool(description="Apply the exact previewed tag rename once. Revalidate stable ID, private owner/color/name and destination-name absence; preserve assignment IDs. No-op submits zero writes. Separate typed RenameTag acknowledgement from exact read-back, keep transport uncertainty without retries, and retain Core tag-owner/admin authority. Discovery by the new name resolves the same stable tag ID.",input_schema=schema_for_input::<crate::tags::ApplyRename>().expect("tag rename apply schema"),output_schema=inventory::output_schema::<crate::tags::TagResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=false))]
+    async fn apply_tag_rename(&self, arguments: JsonObject) -> CallToolResult {
+        let r = match inventory::parse(arguments, "apply_tag_rename") {
+            Ok(input) => crate::tags::apply_rename(&self.client, input).await,
+            Err(e) => Err(e),
+        };
+        inventory::tool_result(&self.client, r)
+    }
+    #[tool(description="Preview the before/after exact tag sets for one Server, Stack or Deployment by kind/stable ID. Trusted configuration access is required. Omitted tags preserve assignments; replace with [] explicitly clears; mode=add unions requested resolved tags with existing assignments. Resolve exact IDs/names and bind private full resource metadata/configuration and tag definitions. Zero writes; at most32 requested/64 total tags. Core's metadata endpoint can create names or drop failed resolutions, so MCP sends only resolved IDs and discloses the final read-modify-write race.",input_schema=schema_for_input::<crate::tags::AssignInput>().expect("tag assignment schema"),output_schema=inventory::output_schema::<crate::tags::TagResult>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
+    async fn preview_resource_tags(&self, arguments: JsonObject) -> CallToolResult {
+        let r = match inventory::parse(arguments, "preview_resource_tags") {
+            Ok(input) => crate::tags::preview_assign(&self.client, input).await,
+            Err(e) => Err(e),
+        };
+        inventory::tool_result(&self.client, r)
+    }
+    #[tool(description="Apply the exact previewed resource kind/ID, mode, tag selectors and preview_id once. Revalidate raw resource metadata/configuration and resolved tag definitions. Omission/unchanged/add-existing are zero-write no-ops; replace[] clears deliberately. Submit only target and exact stable tag IDs through typed UpdateResourceMeta, preserving description/template/configuration. Core requires Write. Report acknowledgement separately from exact tags/unrelated-metadata read-back; concurrent deletion can still make Core drop an ID. No execute, automatic retry or credential fallback.",input_schema=schema_for_input::<crate::tags::ApplyAssign>().expect("tag assignment apply schema"),output_schema=inventory::output_schema::<crate::tags::TagResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=false))]
+    async fn apply_resource_tags(&self, arguments: JsonObject) -> CallToolResult {
+        let r = match inventory::parse(arguments, "apply_resource_tags") {
+            Ok(input) => crate::tags::apply_assign(&self.client, input).await,
+            Err(e) => Err(e),
+        };
+        inventory::tool_result(&self.client, r)
+    }
+    #[tool(description="Preview deliberate deletion of one exact tag with action=delete, using the shared destructive preview policy. Trusted configuration access is required; no writes. Identify its stable ID/name and bounded visible assignments across eleven resource families, disclose hidden/truncated/error gaps and Core's cross-resource assignment removal. Core 2.3.2 omits Swarm cleanup, so those assignments may remain dangling. Applying requires BOTH local grants and Core tag owner/admin, even if no visible assignment exists.",input_schema=schema_for_input::<crate::tags::DeleteInput>().expect("tag deletion schema"),output_schema=inventory::output_schema::<crate::tags::TagResult>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=true))]
+    async fn preview_tag_delete(&self, arguments: JsonObject) -> CallToolResult {
+        let r = match inventory::parse(arguments, "preview_tag_delete") {
+            Ok(input) => crate::tags::preview_delete(&self.client, input).await,
+            Err(e) => Err(e),
+        };
+        inventory::tool_result(&self.client, r)
+    }
+    #[tool(description="Deliberately delete the exact previewed tag identity with action=delete and preview_id once. BOTH startup grants are enforced by discovery/direct dispatch/shared transport; Core requires tag owner/admin and can remove assignments on hidden resources. Revalidate tag and visible assignment effects before one typed DeleteTag. Cross-collection cleanup can partially occur before failure; Core omits Swarm records. Report raw acknowledgement, exact tag-record read and visible assignment after-states separately. Never infer global cleanup from tag absence, retry uncertainty, execute workloads or repair unrelated records.",input_schema=schema_for_input::<crate::tags::ApplyDelete>().expect("tag deletion apply schema"),output_schema=inventory::output_schema::<crate::tags::TagResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn apply_tag_delete(&self, arguments: JsonObject) -> CallToolResult {
+        let r = match inventory::parse(arguments, "apply_tag_delete") {
+            Ok(input) => crate::tags::apply_delete(&self.client, input).await,
+            Err(e) => Err(e),
+        };
+        inventory::tool_result(&self.client, r)
+    }
+
     #[tool(description = "Preview deliberate deletion of exactly one Stack, Deployment or Server by kind and stable ID, with action=delete and trusted configuration access. Resolve through positive inventory policy, identify deployed cleanup names, fresh known container IDs and bounded visible Alerter/Server-dependent references; disclose hidden, truncated and unavailable effects. Core can tear down live workloads inside a definition write, skip cleanup or remove the record despite cleanup errors. Server deletion leaves host workloads and can leave current Builder server_ids references dangling. Return the shared bounded ten-minute single-use preview_id. Applying requires BOTH local grants regardless of previewed state. No mutation is submitted by preview.", input_schema = schema_for_input::<crate::deletion::PreviewInput>().expect("deletion preview schema"), output_schema = inventory::output_schema::<crate::deletion::DeletionResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = true))]
     async fn preview_resource_delete(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "preview_resource_delete") {
