@@ -99,8 +99,10 @@ class ScopeTests(unittest.TestCase):
         with http_server(Destination) as destination:
             class Redirect(BaseHTTPRequestHandler):
                 def do_POST(self):
+                    self.rfile.read(int(self.headers['Content-Length']))
                     self.send_response(302)
                     self.send_header('Location', destination + '/stolen')
+                    self.send_header('Content-Length', '0')
                     self.end_headers()
 
                 def log_message(self, *_args):
@@ -117,7 +119,7 @@ class ScopeTests(unittest.TestCase):
             def do_POST(self):
                 operation = json.loads(self.rfile.read(int(self.headers['Content-Length'])))['type']
                 body = b'{"version":"2.3.2"}' if operation == 'GetVersion' else b'x' * (smoke.MAX_BODY + 1)
-                self.send_response(200)
+                self.send_response(403 if operation == 'OversizedError' else 200)
                 self.send_header('Content-Length', str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -128,8 +130,9 @@ class ScopeTests(unittest.TestCase):
         with http_server(Core) as address:
             api = smoke.Api(address)
             self.assertEqual(api.read('GetVersion'), {'version': '2.3.2'})
-            with self.assertRaisesRegex(smoke.Failure, 'bounded Core response exceeded'):
-                api.read('Oversized')
+            for operation in ['Oversized','OversizedError']:
+                with self.assertRaisesRegex(smoke.Failure, 'bounded Core response exceeded'):
+                    api.read(operation)
 
     def test_existing_project_is_never_adopted_or_mutated(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(smoke, 'ROOT', Path(directory)), \
@@ -300,6 +303,39 @@ raise SystemExit(int(sys.argv[3]))
 
 
 class ObservationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fault_proxy_preserves_bounded_core_permission_errors_without_retries_or_trace_messages(self):
+        received = []
+        private = 'synthetic-private-error-chain'
+
+        class Core(BaseHTTPRequestHandler):
+            def do_POST(self):
+                request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                received.append((self.path, self.headers['x-api-key'], request['type']))
+                status = 403 if request['type'] == 'CreateServer' else 500
+                body = json.dumps({'error':'Core denied permission','trace':[private]}).encode()
+                self.send_response(status)
+                self.send_header('Content-Length',str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        credentials = {'key':'synthetic-reader-key','secret':'synthetic-reader-secret'}
+        with http_server(Core) as address:
+            async with smoke.LossProxy(address,credentials,lose_reply=False) as proxy:
+                api = smoke.Api(proxy.address,{'x-api-key':credentials['key'],'x-api-secret':credentials['secret']})
+                for operation,status in [('CreateServer',403),('UpdateServer',500)]:
+                    with self.assertRaises(smoke.CoreHttpFailure) as caught:
+                        await asyncio.to_thread(api.write,operation,{'name':'owned','config':{}})
+                    self.assertEqual(caught.exception.status,status)
+                    self.assertEqual(json.loads(caught.exception.body)['trace'],[private])
+                    self.assertNotIn(private,str(caught.exception))
+                self.assertEqual(proxy.write_attempts,2)
+                self.assertEqual(proxy.execute_attempts,0)
+                self.assertEqual(proxy.failures,[])
+        self.assertEqual(received,[('/write',credentials['key'],'CreateServer'),('/write',credentials['key'],'UpdateServer')])
+
     async def test_read_identity_proxy_measures_unexpected_execute_before_ack(self):
         received = []
 

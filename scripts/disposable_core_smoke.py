@@ -43,6 +43,13 @@ class Failure(Exception):
     pass
 
 
+class CoreHttpFailure(Failure):
+    """Bounded private error body; only safe status/operation enters the message."""
+    def __init__(self, operation, status, body):
+        super().__init__(f'{operation or "Core request"}: Core HTTP {status}')
+        self.status, self.body = status, body
+
+
 def require(condition, message):
     if not condition:
         raise Failure(message)
@@ -136,8 +143,6 @@ class Api:
             timer.start()
             connection.request('GET' if data is None else 'POST', endpoint, body=data, headers=headers)
             with connection.getresponse() as response:
-                if not 200 <= response.status < 300:
-                    raise Failure(f'{operation or endpoint}: Core HTTP {response.status}')
                 body = bytearray()
                 while True:
                     if expired.is_set() or time.monotonic() >= deadline:
@@ -148,10 +153,11 @@ class Api:
                         raise Failure('bounded Core response exceeded')
                     if not block:
                         break
-                value = json.loads(body)
                 require(not expired.is_set() and time.monotonic() < deadline,
                         'Core request deadline exceeded')
-                return value
+                if not 200 <= response.status < 300:
+                    raise CoreHttpFailure(operation, response.status, bytes(body))
+                return json.loads(body)
         except (OSError, ValueError, http.client.HTTPException):
             if expired.is_set() or time.monotonic() >= deadline:
                 raise Failure('Core request deadline exceeded') from None
@@ -347,14 +353,18 @@ class LossProxy:
             if endpoint == '/read':
                 operation = request['type']
                 self.read_operations[operation] = self.read_operations.get(operation,0) + 1
-            reply = await asyncio.wait_for(asyncio.to_thread(self.api.request, endpoint, request['type'], request['params']), 12)
-            if endpoint == '/execute':
-                self.ids.append(identity(reply))
-                if self.lose_reply:
-                    return  # Core accepted; deliberately lose only its acknowledgement.
-            body = json.dumps(reply).encode()
+            try:
+                reply = await asyncio.wait_for(asyncio.to_thread(self.api.request, endpoint, request['type'], request['params']), 12)
+            except CoreHttpFailure as error:
+                status, body = error.status, error.body
+            else:
+                status, body = 200, json.dumps(reply).encode()
+                if endpoint == '/execute':
+                    self.ids.append(identity(reply))
+                    if self.lose_reply:
+                        return  # Core accepted; deliberately lose only its acknowledgement.
             if len(body) > MAX_BODY: raise Failure('proxy reply exceeded bound')
-            writer.write(b'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ' + str(len(body)).encode() + b'\r\n\r\n' + body)
+            writer.write(b'HTTP/1.1 ' + str(status).encode() + b' Core response\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ' + str(len(body)).encode() + b'\r\n\r\n' + body)
             await asyncio.wait_for(writer.drain(), 5)
         except Exception as error:
             self.failures.append(type(error).__name__)
