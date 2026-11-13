@@ -330,7 +330,7 @@ pub async fn stack_operation(
         auto_pull: deploy.then_some(stack.config.auto_pull),
         saved_extra_args: deploy && !stack.config.extra_args.is_empty(),
         saved_command_wrapper: deploy && !stack.config.compose_cmd_wrapper.is_empty(),
-        broader_effects_possible: action != WorkloadOperation::Stop,
+        broader_effects_possible: true,
         compose_dependencies: stack.config.swarm_id.is_empty().then_some(match action {
             WorkloadOperation::Deploy => ComposeDependencies::DeploySavedDefinition,
             WorkloadOperation::Start => ComposeDependencies::StartExistingWithDependencies,
