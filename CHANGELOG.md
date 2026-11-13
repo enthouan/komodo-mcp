@@ -8,6 +8,15 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Add typed Deployment creation and partial updates using the shared private
+  preview/apply contract, with direct images, versioned Build references and
+  existing Server/Swarm targets. Preserve omitted ports, environment references
+  and targets; redact privileged/secret fields; require both local grants for
+  image updates; distinguish desired configuration from cached/runtime evidence
+  and disclose Core registry, auto-deploy and old-target effects. Bind tokens
+  to operation/resource kind and redact configured credentials before bounded
+  display clipping. ([#18](https://github.com/enthouan/komodo-mcp/issues/18))
+
 - Extend the shared typed Stack preview/apply flow with creation, inline/Git/
   linked-Repo/host source declarations and existing Server/Swarm attachments.
   Preserve omitted source fields, bind raw referenced definitions, separate

@@ -23,6 +23,12 @@ made.
 The configuration-only editor can save ordinary settings but its direct source
 update is denied locally with zero Core reads/writes, preserving the independent
 operate boundary against Core auto-deploy.
+The editor also creates a direct-image Deployment and patches only its image,
+preserving authoritative ports, environment and target. Combined grants permit
+image updates; configuration-only direct apply is denied before Core reads/writes.
+The runner compares saved desired image with the original running container and
+checks Deployment Server reassignment/restoration without changing its ID, image
+or running state. Build references and Swarm targets remain fixture-only coverage.
 All are enabled non-admin users; API keys expire in
 one hour. Provisioning credentials never enter an MCP child. The test workload
 uses BusyBox **1.37.0** and `depends_on.restart: true`; only deploy has saved hooks.

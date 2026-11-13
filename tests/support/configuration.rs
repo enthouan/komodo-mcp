@@ -12,8 +12,10 @@ use axum::{
     routing::post,
 };
 use komodo_client::{
-    api::write::{CreateStack, UpdateStack},
+    api::write::{CreateDeployment, CreateStack, UpdateDeployment, UpdateStack},
     entities::{
+        build::Build,
+        deployment::Deployment,
         repo::{Repo, RepoListItemInfo},
         stack::Stack,
         swarm::{Swarm, SwarmListItemInfo},
@@ -34,6 +36,10 @@ pub enum WriteReply {
     Oversized,
     Denied,
     WrongTarget,
+    WrongName,
+    Template,
+    MissingConfig,
+    MissingRequested,
     Redirect,
     Lost,
     WriteDenied,
@@ -43,9 +49,14 @@ pub enum WriteReply {
 pub const SERVER: &str = "000000000000000000000001";
 pub const SWARM: &str = "000000000000000000000009";
 pub const REPO: &str = "00000000000000000000000a";
+pub const BUILD: &str = "00000000000000000000000b";
 pub struct Data {
     pub stack: Value,
     pub created: BTreeMap<String, Value>,
+    pub deployment: Value,
+    pub created_deployments: BTreeMap<String, Value>,
+    pub observed_deployment_image: String,
+    pub build: Value,
     pub server: Value,
     pub swarm: Value,
     pub repo: Value,
@@ -68,6 +79,22 @@ impl Core {
         stack["config"]["ignore_services"] = json!(["init"]);
         stack["config"]["environment"] =
             json!("PASSWORD=[[SECRET_REFERENCE]]\nOTHER=sensitive-environment-marker");
+        let mut deployment = Family::Deployment.detail();
+        deployment["config"]["image"] = json!({"type":"Image","params":{"image":"busybox:1.37.0"}});
+        deployment["config"]["ports"] = json!("9000:9000");
+        deployment["config"]["environment"] =
+            json!("TOKEN=[[DEPLOY_SECRET_REFERENCE]]\nPRIVATE=deployment-private-environment");
+        deployment["config"]["image_registry_account"] =
+            json!("private-registry-account-reference");
+        let deployment =
+            serde_json::to_value(serde_json::from_value::<Deployment>(deployment).unwrap())
+                .unwrap();
+        let build = serde_json::to_value(Build {
+            id: BUILD.into(),
+            name: "fixture-build".into(),
+            ..Default::default()
+        })
+        .unwrap();
         let swarm = serde_json::to_value(Swarm {
             id: SWARM.into(),
             name: "fixture-swarm".into(),
@@ -83,6 +110,10 @@ impl Core {
         let data = Arc::new(Mutex::new(Data {
             stack,
             created: BTreeMap::new(),
+            deployment,
+            created_deployments: BTreeMap::new(),
+            observed_deployment_image: "busybox:1.36.1".into(),
+            build,
             server: Family::Server.detail(),
             swarm,
             repo,
@@ -148,6 +179,10 @@ async fn read(
             .chain(data.created.values().cloned())
             .collect::<Vec<_>>(),
         "ListServers" | "GetServer" => vec![data.server.clone()],
+        "ListDeployments" | "GetDeployment" => std::iter::once(data.deployment.clone())
+            .chain(data.created_deployments.values().cloned())
+            .collect(),
+        "ListBuilds" | "GetBuild" => vec![data.build.clone()],
         "ListSwarms" | "GetSwarm" => vec![data.swarm.clone()],
         "ListRepos" | "GetRepo" => vec![data.repo.clone()],
         _ => panic!("unexpected read {operation}"),
@@ -157,6 +192,8 @@ async fn read(
             "GetStack" => "stack",
             "GetServer" => "server",
             "GetSwarm" => "swarm",
+            "GetDeployment" => "deployment",
+            "GetBuild" => "build",
             _ => "repo",
         };
         if let Some(item) = raw
@@ -165,7 +202,8 @@ async fn read(
         {
             return Json(item).into_response();
         }
-        return (StatusCode::INTERNAL_SERVER_ERROR,Json(json!({"error":format!("Did not find any Stack matching {}",value["params"][key].as_str().unwrap())}))).into_response();
+        let kind = operation.strip_prefix("Get").unwrap();
+        return (StatusCode::INTERNAL_SERVER_ERROR,Json(json!({"error":format!("Did not find any {kind} matching {}",value["params"][key].as_str().unwrap())}))).into_response();
     }
     let query = &value["params"]["query"];
     let mut items=raw.iter().filter(|v| {
@@ -176,6 +214,8 @@ async fn read(
         let mut result=match operation {
             "ListStacks"=>Family::Stack.summary(),
             "ListServers"=>Family::Server.summary(),
+            "ListDeployments"=>Family::Deployment.summary(),
+            "ListBuilds"=>json!({"type":"Build","tags":[],"template":false,"info":{"state":"Ok","last_built_at":0,"version":{"major":1,"minor":2,"patch":3},"builder_id":"","files_on_host":false,"dockerfile_contents":true,"linked_repo":"","linked_repo_name":"","git_provider":"github.com","repo":"","branch":"main","repo_link":"","built_hash":null,"latest_hash":null,"image_registry_domain":null}}),
             "ListSwarms"=>json!({"type":"Swarm","tags":[],"template":false,"info":SwarmListItemInfo::default()}),
             _=>json!({"type":"Repo","tags":[],"template":false,"info":RepoListItemInfo::default()}),
         };
@@ -184,6 +224,14 @@ async fn read(
             result["info"]["server_id"]=v["config"].get("server_id").cloned().unwrap_or(json!(""));
             result["info"]["swarm_id"]=v["config"].get("swarm_id").cloned().unwrap_or(json!(""));
             if data.created.contains_key(resource_id(v).as_str().unwrap()) {result["info"]["state"]=json!("down");result["info"]["services"]=json!([]);}
+        }
+        if operation=="ListDeployments" {
+            result["info"]["server_id"]=v["config"]["server_id"].clone();
+            result["info"]["swarm_id"]=v["config"]["swarm_id"].clone();
+            if data.created_deployments.contains_key(resource_id(v).as_str().unwrap()) {
+                result["info"]["state"]=json!("not_deployed");
+                result["info"]["image"]=v["config"]["image"]["params"].get("image").cloned().unwrap_or(json!("fixture-build:latest"));
+            } else { result["info"]["image"]=json!(data.observed_deployment_image); }
         }
         result
     }).collect::<Vec<_>>();
@@ -262,13 +310,46 @@ async fn write(
                 }
                 saved
             }
+            "UpdateDeployment" => {
+                let typed: UpdateDeployment =
+                    serde_json::from_value(value["params"].clone()).unwrap();
+                assert_eq!(serde_json::to_value(&typed).unwrap(), value["params"]);
+                let target = if typed.id == resource_id(&data.deployment).as_str().unwrap() {
+                    &mut data.deployment
+                } else {
+                    data.created_deployments.get_mut(&typed.id).unwrap()
+                };
+                if may_save {
+                    for (key, v) in value["params"]["config"].as_object().unwrap() {
+                        target["config"][key] = v.clone();
+                    }
+                }
+                target.clone()
+            }
+            "CreateDeployment" => {
+                let typed: CreateDeployment =
+                    serde_json::from_value(value["params"].clone()).unwrap();
+                assert_eq!(serde_json::to_value(&typed).unwrap(), value["params"]);
+                let id = format!("{:024x}", 0x200 + data.created_deployments.len());
+                let saved = serde_json::to_value(Deployment {
+                    id: id.clone(),
+                    name: typed.name,
+                    config: typed.config.into(),
+                    ..Default::default()
+                })
+                .unwrap();
+                if may_save {
+                    data.created_deployments.insert(id, saved.clone());
+                }
+                saved
+            }
             other => panic!("unexpected write {other}"),
         };
         (data.reply, saved)
     };
     match reply {
         WriteReply::Valid => Json(saved).into_response(),
-        WriteReply::WriteDenied => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"User does not have required permissions on this Stack. Must have at least Write permissions","trace":[format!("{KEY} {SECRET}")]}))).into_response(),
+        WriteReply::WriteDenied => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":format!("User does not have required permissions on this {}. Must have at least Write permissions",if value["type"].as_str().unwrap().ends_with("Deployment"){"Deployment"}else{"Stack"}),"trace":[format!("{KEY} {SECRET}")]}))).into_response(),
         WriteReply::AttachDenied => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"User does not have required permissions on this Server. Must have at least Read permissions, as well as these specific permissions: [Attach]","trace":[format!("{KEY} {SECRET}")]}))).into_response(),
         WriteReply::Delayed => {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
@@ -287,6 +368,20 @@ async fn write(
             let mut s = saved;
             s["_id"] = json!({"$oid":"000000000000000000000099"});
             Json(s).into_response()
+        }
+        WriteReply::WrongName => {
+            let mut s=saved;s["name"]=json!("other-resource");Json(s).into_response()
+        }
+        WriteReply::Template => {
+            let mut s=saved;s["template"]=json!(true);Json(s).into_response()
+        }
+        WriteReply::MissingConfig => {
+            let mut s=saved;s.as_object_mut().unwrap().remove("config");Json(s).into_response()
+        }
+        WriteReply::MissingRequested => {
+            let mut s=saved;
+            let key=value["params"]["config"].as_object().unwrap().keys().next().unwrap();
+            s["config"].as_object_mut().unwrap().remove(key);Json(s).into_response()
         }
         WriteReply::Redirect => {
             (StatusCode::TEMPORARY_REDIRECT, [("location", "/write")], "").into_response()

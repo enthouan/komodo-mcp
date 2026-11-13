@@ -126,7 +126,7 @@ impl AppError {
     pub(crate) fn response_too_large(operation: &'static str, status: StatusCode) -> Self {
         let mut error = Self::new(ErrorKind::ResponseTooLarge, operation, Some(status));
         error.correction = match operation {
-            "UpdateStack" | "CreateStack" => Some(
+            "UpdateStack" | "CreateStack" | "UpdateDeployment" | "CreateDeployment" => Some(
                 "The configuration may already have been saved. Inspect the definition; never automatically repeat the write.",
             ),
             "DeployStack" | "Deploy" => Some(
@@ -144,7 +144,10 @@ impl AppError {
             _ => None,
         };
         if error.correction.is_some() {
-            error.message = if matches!(operation, "UpdateStack" | "CreateStack") {
+            error.message = if matches!(
+                operation,
+                "UpdateStack" | "CreateStack" | "UpdateDeployment" | "CreateDeployment"
+            ) {
                 "Core configuration response exceeded its input budget."
             } else if matches!(operation, "DeployStack" | "Deploy") {
                 "Core execution acknowledgement exceeded its input budget."
@@ -164,6 +167,10 @@ impl AppError {
             kind,
             message: if kind == ErrorKind::PermissionDenied && operation == "CreateStack" {
                 "Core denied Stack creation; check the enabled user's creation permissions, Core's non-admin creation policy, and Read/Attach on the target and linked Repo. No credential fallback was attempted."
+            } else if kind == ErrorKind::PermissionDenied && operation == "CreateDeployment" {
+                "Core denied Deployment creation; check the enabled user's creation permissions, Core's non-admin creation policy, and Read/Attach on the target and Build. No credential fallback was attempted."
+            } else if kind == ErrorKind::PermissionDenied && operation == "UpdateDeployment" {
+                "Core denied configuration editing; check Write access on this Deployment and Read/Attach on any new target or Build for the same identity. No credential fallback was attempted."
             } else if kind == ErrorKind::PermissionDenied && operation == "UpdateStack" {
                 "Core denied configuration editing; check Write access on this Stack and Read/Attach on any new target or linked Repo for the same identity. No credential fallback was attempted."
             } else if kind == ErrorKind::PermissionDenied
@@ -292,6 +299,7 @@ fn core_2_3_2_missing_message(operation: &str, message: &str) -> bool {
         "GetDeployment" => "Deployment",
         "GetSwarm" => "Swarm",
         "GetRepo" => "Repo",
+        "GetBuild" => "Build",
         _ => return false,
     };
     let prefix = format!("Did not find any {resource} matching ");

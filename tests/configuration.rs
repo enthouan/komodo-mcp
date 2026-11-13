@@ -183,7 +183,7 @@ async fn all_four_profiles_enforce_discovery_and_direct_dispatch_before_any_core
             let tools = session.list_tools(None).await.unwrap().tools;
             assert_eq!(
                 tools.len(),
-                16 + 8 * usize::from(operate) + 4 * usize::from(edit)
+                16 + 8 * usize::from(operate) + 8 * usize::from(edit)
             );
             for name in [
                 "preview_stack_update",
@@ -226,6 +226,10 @@ async fn uncertain_and_denied_responses_are_sanitized_never_retried_and_tokens_s
         WriteReply::Malformed,
         WriteReply::Oversized,
         WriteReply::WrongTarget,
+        WriteReply::WrongName,
+        WriteReply::Template,
+        WriteReply::MissingConfig,
+        WriteReply::MissingRequested,
         WriteReply::Lost,
         WriteReply::Denied,
         WriteReply::WriteDenied,
@@ -828,4 +832,32 @@ async fn malformed_sources_unsupported_clears_and_missing_creation_fields_never_
     process
         .finish_excluding(session, &["secret:token", "touch owned", "not supported"])
         .await;
+}
+
+#[tokio::test]
+async fn unchanged_source_with_enabled_auto_update_reports_no_write_or_trigger() {
+    let core = Core::start().await;
+    core.data.lock().unwrap().stack["config"]["auto_update"] = json!(true);
+    let contents = core.data.lock().unwrap().stack["config"]["file_contents"].clone();
+    let (process, session) = Process::start_profile(&core.address, true, true).await;
+    let input = args(json!({"source":{"kind":"inline","contents":contents}}));
+    let p = preview(&session, &input).await;
+    assert_eq!(p["outcome"], "no_op");
+    assert_eq!(p["definition"]["details"]["before"]["auto_update"], true);
+    assert_eq!(
+        p["definition"]["details"]["core_auto_deploy_possible"],
+        false
+    );
+    assert!(p["effects"].as_array().unwrap().iter().any(|e| {
+        e.as_str()
+            .unwrap()
+            .contains("triggers no Core source-update check")
+    }));
+    assert_eq!(
+        data(call(&session, "apply_stack_update", apply(&input, &p)).await)["outcome"],
+        "no_op"
+    );
+    assert!(core.writes().is_empty());
+    no_executions(&core);
+    process.finish(session).await;
 }

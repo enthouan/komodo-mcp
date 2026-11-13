@@ -146,6 +146,12 @@ Core auto-deploy effects, no-op and uncertain submissions.
 Applying a supplied Stack source requires both local grants because Core can
 auto-deploy; configuration-only access still permits creation and ordinary
 settings/attachment edits.
+Deployment definitions add `preview_deployment_create`/`apply_deployment_create`
+and `preview_deployment_update`/`apply_deployment_update` through the same contract.
+Image/Build updates also require both local grants; Core can inspect registries
+and auto-deploy under its policy. See [Deployment definitions](docs/deployments.md)
+for typed fields, Server/Swarm targets, Build versions, preservation and the
+separate saved/runtime observations.
 
 Use an enabled non-admin Core identity with `Read` on the resources being
 inspected. Deploy, start, stop and restart require Core `Execute` on the selected

@@ -141,6 +141,8 @@ impl CoreClient {
         let operation = match T::req_type() {
             "UpdateStack" => "UpdateStack",
             "CreateStack" => "CreateStack",
+            "CreateDeployment" => "CreateDeployment",
+            "UpdateDeployment" => "UpdateDeployment",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "write", None)),
         };
         crate::configuration::require_edit(self)?;
@@ -156,10 +158,32 @@ impl CoreClient {
                     .iter()
                     .any(|field| parameters["config"].get(field).is_some()),
         )?;
-        tokio::time::timeout(
-            self.0.policy.operation_timeout,
-            self.request_bounded_body(&self.0.write_request, parameters, T::req_type(), operation),
-        )
+        crate::deployment_configuration::require_image_operate(
+            self,
+            operation == "UpdateDeployment" && parameters["config"].get("image").is_some(),
+        )?;
+        let expected_config = parameters
+            .get("config")
+            .and_then(serde_json::Value::as_object)
+            .cloned()
+            .ok_or_else(|| {
+                AppError::arguments(operation, "Use a typed partial configuration object")
+            })?;
+        tokio::time::timeout(self.0.policy.operation_timeout, async {
+            let response: serde_json::Value = self
+                .request_bounded_body(&self.0.write_request, parameters, T::req_type(), operation)
+                .await?;
+            // SDK defaults must not turn an absent echoed field into a verified save.
+            if !response["config"].is_object()
+                || !expected_config
+                    .iter()
+                    .all(|(key, value)| response["config"].get(key) == Some(value))
+            {
+                return Err(AppError::new(ErrorKind::InvalidResponse, operation, None));
+            }
+            serde_json::from_value(response)
+                .map_err(|_| AppError::new(ErrorKind::InvalidResponse, operation, None))
+        })
         .await
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
     }
@@ -220,6 +244,8 @@ impl CoreClient {
             "ListSwarms" => "ListSwarms",
             "GetRepo" => "GetRepo",
             "ListRepos" => "ListRepos",
+            "GetBuild" => "GetBuild",
+            "ListBuilds" => "ListBuilds",
             "GetServerState" => "GetServerState",
             "GetSystemStats" => "GetSystemStats",
             "ListAllStackServices" => "ListAllStackServices",
@@ -363,10 +389,16 @@ impl CoreClient {
 #[cfg(test)]
 mod write_policy_tests {
     use super::*;
-    use komodo_client::{api::write::UpdateStack, entities::stack::PartialStackConfig};
+    use komodo_client::{
+        api::write::{UpdateDeployment, UpdateStack},
+        entities::{
+            deployment::{DeploymentImage, PartialDeploymentConfig},
+            stack::PartialStackConfig,
+        },
+    };
 
     #[tokio::test]
-    async fn shared_transport_denies_source_fields_and_clears_without_both_grants() {
+    async fn shared_transport_denies_implicit_execution_fields_without_both_grants() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         for (operate, edit) in [(false, true), (true, false), (false, false)] {
             let client = CoreClient::new(
@@ -402,6 +434,26 @@ mod write_policy_tests {
                     .write(UpdateStack {
                         id: "000000000000000000000002".into(),
                         config,
+                    })
+                    .await;
+                assert!(matches!(result,Err(e) if e.kind==ErrorKind::CapabilityDisabled));
+            }
+            for image in [
+                DeploymentImage::Image {
+                    image: "busybox:1.37.0".into(),
+                },
+                DeploymentImage::Build {
+                    build_id: "00000000000000000000000b".into(),
+                    version: Default::default(),
+                },
+            ] {
+                let result = client
+                    .write(UpdateDeployment {
+                        id: "000000000000000000000003".into(),
+                        config: PartialDeploymentConfig {
+                            image: Some(image),
+                            ..Default::default()
+                        },
                     })
                     .await;
                 assert!(matches!(result,Err(e) if e.kind==ErrorKind::CapabilityDisabled));

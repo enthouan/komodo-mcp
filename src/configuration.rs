@@ -11,6 +11,7 @@ use std::{
 use komodo_client::{
     api::write::{CreateStack, UpdateStack},
     entities::{
+        resource::Resource,
         stack::{Stack, StackConfig},
         to_docker_compatible_name,
     },
@@ -35,6 +36,71 @@ pub(crate) fn present<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
     d: D,
 ) -> Result<Option<T>, D::Error> {
     T::deserialize(d).map(Some)
+}
+
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Attachment {
+    Server { target: DetailInput },
+    Swarm { target: DetailInput },
+}
+
+pub(crate) fn bound_input(operation: &'static str, input: &impl Serialize) -> Value {
+    json!({"operation":operation,"input":input})
+}
+
+pub(crate) fn bounded_text(client: &CoreClient, value: &str, limit: usize) -> String {
+    let redacted = client.redact(value);
+    if redacted != value {
+        client.redaction_marker().into()
+    } else {
+        value.chars().take(limit).collect()
+    }
+}
+
+fn contains_configured_secret(client: &CoreClient, value: &Value) -> bool {
+    match value {
+        Value::String(s) => client.redact(s) != *s,
+        Value::Array(v) => v.iter().any(|v| contains_configured_secret(client, v)),
+        Value::Object(v) => v.values().any(|v| contains_configured_secret(client, v)),
+        _ => false,
+    }
+}
+
+pub(crate) fn resource_baseline<C: Default + Serialize, I: Default>(
+    kind: &'static str,
+    resource: &Resource<C, I>,
+) -> Value {
+    json!({"kind":kind,"id":resource.id,"name":resource.name,"template":resource.template,"config":resource.config})
+}
+
+pub(crate) fn validate_payload(
+    client: &CoreClient,
+    input: &impl Serialize,
+) -> Result<(), AppError> {
+    let encoded = serde_json::to_string(input).expect("typed configuration input");
+    if encoded.len() > MAX_PATCH_BYTES
+        || encoded.contains(client.redaction_marker())
+        || encoded.contains("[redacted]")
+        || encoded.contains("[hidden]")
+    {
+        return Err(AppError::arguments(
+            OP,
+            "Use at most 16384 JSON bytes and original values or secret references rather than display redaction markers",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn partial_value(partial: &impl Serialize) -> Result<Value, AppError> {
+    let value = serde_json::to_value(partial).expect("typed partial configuration");
+    if value.to_string().len() > MAX_PATCH_BYTES {
+        return Err(AppError::arguments(
+            OP,
+            "The serialized partial configuration must fit within 16384 JSON bytes",
+        ));
+    }
+    Ok(value)
 }
 
 /// Omission preserves a field; null is invalid. Empty environment and an empty
@@ -141,6 +207,12 @@ pub struct FieldChange {
     pub after: Value,
     pub redacted: bool,
     pub before_truncated: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    pub after_truncated: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 #[derive(Clone, Copy, Serialize, JsonSchema)]
@@ -170,15 +242,16 @@ pub struct ConfigurationResult {
 #[serde(tag = "kind", content = "details", rename_all = "snake_case")]
 pub enum DefinitionPreview {
     Stack(crate::stack_configuration::DefinitionPreview),
+    Deployment(crate::deployment_configuration::DefinitionPreview),
 }
 
 // No Debug: these values can contain raw secrets. Nothing here is serialized.
-struct Preview {
-    created: Instant,
-    input: Value,
-    baseline: Value,
-    prepared: Value,
-    result: ConfigurationResult,
+pub(crate) struct Preview {
+    pub created: Instant,
+    pub input: Value,
+    pub baseline: Value,
+    pub prepared: Value,
+    pub result: ConfigurationResult,
 }
 struct Entries {
     nonce: String,
@@ -205,7 +278,7 @@ impl Default for Entries {
 pub(crate) struct PreviewStore(Mutex<Entries>);
 
 impl PreviewStore {
-    fn insert(&self, mut entry: Preview) -> Result<ConfigurationResult, AppError> {
+    pub(crate) fn insert(&self, mut entry: Preview) -> Result<ConfigurationResult, AppError> {
         let mut entries = self.0.lock().map_err(|_| invalid_preview())?;
         entries.values.retain(|_, p| p.created.elapsed() < TTL);
         if entries.values.len() >= MAX_PREVIEWS {
@@ -228,7 +301,7 @@ impl PreviewStore {
         Ok(result)
     }
 
-    fn take(&self, token: &str, input: &Value) -> Result<Preview, AppError> {
+    pub(crate) fn take(&self, token: &str, input: &Value) -> Result<Preview, AppError> {
         let entry = self
             .0
             .lock()
@@ -299,18 +372,19 @@ impl StackPatch {
 }
 
 fn baseline(stack: &Stack) -> Value {
-    json!({"kind":"stack","id":stack.id,"name":stack.name,"template":stack.template,"config":stack.config})
+    resource_baseline("stack", stack)
 }
 
 fn sensitive_locator(value: &Value) -> bool {
     match value {
         Value::String(s) => s.contains(['@', '?', '#']) || s.contains("://"),
         Value::Array(items) => items.iter().any(sensitive_locator),
+        Value::Object(fields) => fields.values().any(sensitive_locator),
         _ => false,
     }
 }
 
-fn changes(client: &CoreClient, config: &Value, patch: &Value) -> Vec<FieldChange> {
+pub(crate) fn changes(client: &CoreClient, config: &Value, patch: &Value) -> Vec<FieldChange> {
     patch
         .as_object()
         .expect("typed patch object")
@@ -319,11 +393,24 @@ fn changes(client: &CoreClient, config: &Value, patch: &Value) -> Vec<FieldChang
         .map(|(key, after)| {
             let sensitive = matches!(
                 key.as_str(),
-                "environment" | "file_contents" | "git_account"
+                "environment"
+                    | "file_contents"
+                    | "git_account"
+                    | "image"
+                    | "image_registry_account"
+                    | "command"
+                    | "volumes"
+                    | "labels"
+                    | "extra_args"
             ) || sensitive_locator(&config[key])
-                || sensitive_locator(after);
+                || sensitive_locator(after)
+                || contains_configured_secret(client, &config[key])
+                || contains_configured_secret(client, after);
             let display = |v: &Value| {
-                if sensitive && !v.is_null() && v.as_str() != Some("") {
+                let empty = v.is_null()
+                    || v.as_str() == Some("")
+                    || v.as_array().is_some_and(Vec::is_empty);
+                if sensitive && !empty {
                     Value::String(client.redaction_marker().into())
                 } else if let Some(items) = v.as_array() {
                     Value::Array(
@@ -354,6 +441,7 @@ fn changes(client: &CoreClient, config: &Value, patch: &Value) -> Vec<FieldChang
                 after: display(after),
                 redacted: sensitive,
                 before_truncated: !sensitive && display(&config[key]) != config[key],
+                after_truncated: !sensitive && display(after) != *after,
             }
         })
         .collect()
@@ -364,14 +452,7 @@ fn prepared_value(prepared: &crate::stack_configuration::Prepared) -> Value {
 }
 
 fn prepared_patch(prepared: &crate::stack_configuration::Prepared) -> Result<Value, AppError> {
-    let value = serde_json::to_value(&prepared.config).expect("typed partial");
-    if value.to_string().len() > MAX_PATCH_BYTES {
-        return Err(AppError::arguments(
-            OP,
-            "The serialized partial configuration must fit within 16384 JSON bytes",
-        ));
-    }
-    Ok(value)
+    partial_value(&prepared.config)
 }
 
 fn result_for_stack(
@@ -397,8 +478,8 @@ fn result_for_stack(
         .iter()
         .any(|k| patch.get(k).is_some());
     let auto_deploy = current.is_some_and(|v| v.auto_update) && source_check && !fields.is_empty();
-    let before = current.map(sc::summary);
-    let after = sc::summary(&after);
+    let before = current.map(|v| sc::summary(client, v));
+    let after = sc::summary(client, &after);
     let target_changed = before.as_ref().is_some_and(|v| {
         serde_json::to_value(&v.attachment).expect("attachment")
             != serde_json::to_value(&after.attachment).expect("attachment")
@@ -409,7 +490,7 @@ fn result_for_stack(
     ];
     if source_check && current.is_some() {
         effects.push("Applying a supplied source requires both local configuration-edit and operate grants, even when auto_update is currently disabled or the source is unchanged, because Core's policy can race. A configuration-only caller can preview but cannot submit it.");
-        effects.push(if auto_deploy {"Submitted source fields trigger Core CheckStackForUpdate. The saved auto_update policy is enabled: Core itself can automatically deploy. Applying this source requires both local operate and configuration-edit grants."} else {"Submitted source fields trigger Core CheckStackForUpdate. The previewed saved auto_update policy is disabled; policy changes after our final read can still race."});
+        effects.push(if fields.is_empty() {"This proposal is unchanged: apply submits no write and triggers no Core source-update check. The saved auto_update policy is shown in the definition separately."} else if current.is_some_and(|v|v.auto_update) {"Submitted source fields trigger Core CheckStackForUpdate. The saved auto_update policy is enabled: Core itself can automatically deploy. Applying this source requires both local operate and configuration-edit grants."} else {"Submitted source fields trigger Core CheckStackForUpdate. The previewed saved auto_update policy is disabled; policy changes after our final read can still race."});
     }
     if target_changed {
         effects.push("The pinned SDK warns about old-target cleanup. The inspected Core 2.3.2 UpdateStack implementation does not tear down the old target; old workloads may remain. It refreshes caches using the new target. Inspect both targets separately.");
@@ -426,7 +507,7 @@ fn result_for_stack(
         resource: ConfigurationTarget {
             kind: "stack",
             id,
-            name: name.chars().take(256).collect(),
+            name: bounded_text(client, name, 256),
         },
         preview_id: None,
         changes: fields,
@@ -447,19 +528,21 @@ fn result_for_stack(
     })
 }
 
-fn finish_save(
+pub(crate) fn finish_save<C: Default + Serialize, I: Default>(
     mut result: ConfigurationResult,
-    response: Result<Stack, AppError>,
+    response: Result<Resource<C, I>, AppError>,
     patch: &Value,
     expected_name: &str,
     expected_id: Option<&str>,
     operation: &'static str,
+    project: impl FnOnce(&mut ConfigurationResult, &C),
 ) -> ConfigurationResult {
     result.preview_id = None;
     result.writes_submitted = 1;
     match response {
         Ok(saved)
             if saved.name == expected_name
+                && !saved.template
                 && saved.id.len() == 24
                 && saved.id.bytes().all(|b| b.is_ascii_hexdigit())
                 && expected_id.is_none_or(|id| id == saved.id) =>
@@ -474,9 +557,7 @@ fn finish_save(
                 result.outcome = ConfigurationOutcome::Saved;
                 result.saved_configuration_verified = true;
                 result.resource.id = Some(saved.id);
-                if let Some(DefinitionPreview::Stack(definition)) = &mut result.definition {
-                    definition.after = crate::stack_configuration::summary(&saved.config);
-                }
+                project(&mut result, &saved.config);
             } else {
                 result.outcome = ConfigurationOutcome::SubmissionUnknown;
                 result.observation_error =
@@ -493,6 +574,16 @@ fn finish_save(
         }
     }
     result
+}
+
+fn saved_stack_projection(
+    client: &CoreClient,
+    result: &mut ConfigurationResult,
+    config: &StackConfig,
+) {
+    if let Some(DefinitionPreview::Stack(definition)) = &mut result.definition {
+        definition.after = crate::stack_configuration::summary(client, config);
+    }
 }
 
 pub async fn preview_stack_update(
@@ -521,7 +612,7 @@ pub async fn preview_stack_update(
     )?;
     client.previews().insert(Preview {
         created: Instant::now(),
-        input: serde_json::to_value(input).expect("typed input"),
+        input: bound_input("stack_update", &input),
         baseline: baseline(&stack),
         prepared: prepared_value(&prepared),
         result,
@@ -539,10 +630,9 @@ pub async fn apply_stack_update(
         target: input.target.clone(),
         patch: input.patch.clone(),
     };
-    let mut entry = client.previews().take(
-        &input.preview_id,
-        &serde_json::to_value(submitted).expect("typed input"),
-    )?;
+    let mut entry = client
+        .previews()
+        .take(&input.preview_id, &bound_input("stack_update", &submitted))?;
     let bounded = client.bounded_evidence();
     let (_, current) = inventory::resolve_stack(&bounded, input.target).await?;
     if baseline(&current) != entry.baseline {
@@ -573,11 +663,13 @@ pub async fn apply_stack_update(
         &current.name,
         Some(&current.id),
         "UpdateStack",
+        |result, config| saved_stack_projection(client, result, config),
     ))
 }
 
 fn create_name(input: &StackCreateInput, client: &CoreClient) -> Result<String, AppError> {
     input.config.validate(client)?;
+    validate_payload(client, &input.name)?;
     let name = to_docker_compatible_name(&input.name);
     if input.name.len() > 256
         || name.is_empty()
@@ -623,7 +715,7 @@ pub async fn preview_stack_create(
     result.effects.push("Creation checks only visible name absence. Core enforces global uniqueness and its creation/Read-Attach permissions; visibility gaps and a concurrent creator can still reject the write. Core can normalize the supplied name, shown in this preview. New definitions are not deployed.");
     client.previews().insert(Preview {
         created: Instant::now(),
-        input: serde_json::to_value(&input).expect("typed input"),
+        input: bound_input("stack_create", &input),
         baseline: json!({"kind":"stack_create","name":name}),
         prepared: prepared_value(&prepared),
         result,
@@ -640,10 +732,9 @@ pub async fn apply_stack_create(
         config: input.config,
     };
     let name = create_name(&submitted, client)?;
-    let entry = client.previews().take(
-        &input.preview_id,
-        &serde_json::to_value(&submitted).expect("typed input"),
-    )?;
+    let entry = client
+        .previews()
+        .take(&input.preview_id, &bound_input("stack_create", &submitted))?;
     if entry.baseline != json!({"kind":"stack_create","name":name}) {
         return Err(invalid_preview());
     }
@@ -667,6 +758,7 @@ pub async fn apply_stack_create(
         &name,
         None,
         "CreateStack",
+        |result, config| saved_stack_projection(client, result, config),
     ))
 }
 

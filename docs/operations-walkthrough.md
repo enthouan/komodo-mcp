@@ -182,3 +182,16 @@ Swarm attachments have deterministic stdio fixture coverage only. See
 The editor also previews a source update and directly attempts apply without the
 operate grant: the local denial performs zero Core reads/writes. Source apply
 requires both grants even when the current auto-update policy is disabled.
+
+The same editor creates and inspects a direct-image Deployment with a port mapping
+and environment reference. A configuration-only image apply is denied with zero
+Core reads/writes. A combined-grant session changes only the image and reads back
+all unrelated saved fields unchanged, including ports/environment/target. It
+separately changes the owned running Deployment's desired image and inspects its
+actual nested-Docker container: ID, running image and running state stay unchanged.
+The desired image is restored. Moving the Deployment to the disabled alternate
+Server and back preserves that same running container. Every definition session
+counts zero MCP execute submissions; no-op image apply adds zero writes. Build
+references and Swarm attachments have deterministic fixture coverage only. See
+[Deployment definitions](deployments.md) for Core registry/auto-deploy effects and
+why Core's reported image can fall back to desired configuration.

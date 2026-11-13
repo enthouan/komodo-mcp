@@ -1,5 +1,10 @@
 # Typed configuration edits
 
+This page describes the shared contract and Stack fields. See also
+[Deployment definitions](deployments.md) for image/Build references, executable
+settings and separate runtime observations. Both resource types share the same
+bounded token store; operation/resource-kind binding prevents cross-type replay.
+
 Set `KOMODO_ALLOW_CONFIGURATION_EDIT=true` in the MCP child environment. The
 default is false. This trusted grant is independent of
 `KOMODO_ALLOW_OPERATE`; Core remains the permission authority. Preview needs
@@ -159,7 +164,9 @@ zero writes. A process holds at most 16 pending previews; each expires after ten
 minutes, can be used only once, and is unavailable after process restart. Prepare
 a new preview after a stale, expired or mismatched one. Display of an existing
 ignore list is capped at 32 names and 128 characters per name, with
-`before_truncated` when clipped. Private baseline comparisons retain every value.
+`before_truncated` when clipped; visible after-values set `after_truncated` when
+needed. Configured credentials are removed before display clipping. Private
+baseline comparisons and submitted values retain every original value.
 
 **Concurrency limit:** Core 2.3.2 UpdateStack has no conditional-write parameter.
 Another writer can change configuration between our final read and submission.

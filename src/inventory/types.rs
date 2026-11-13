@@ -186,6 +186,8 @@ pub struct DeploymentSummary {
     pub template: bool,
     pub state: DeploymentState,
     pub target: Option<DeploymentTarget>,
+    /// Core's cached image, which can fall back to desired configuration when
+    /// runtime cache data is missing. This does not verify the running image.
     pub image: Option<String>,
     pub runtime_name: Option<String>,
     pub update_available: bool,

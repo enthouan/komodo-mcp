@@ -12,12 +12,7 @@ use crate::{
     inventory::{self, DetailInput},
 };
 
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Attachment {
-    Server { target: DetailInput },
-    Swarm { target: DetailInput },
-}
+pub use crate::configuration::Attachment;
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -332,7 +327,7 @@ pub(crate) async fn prepare(
         summaries.push(ReferenceSummary {
             kind,
             id,
-            name: name.chars().take(256).collect(),
+            name: crate::configuration::bounded_text(client, &name, 256),
         });
     }
     if let Some(source) = &patch.source {
@@ -395,7 +390,7 @@ pub(crate) async fn prepare(
                 summaries.push(ReferenceSummary {
                     kind: "repo",
                     id: v.id.clone(),
-                    name: v.name.chars().take(256).collect(),
+                    name: crate::configuration::bounded_text(client, &v.name, 256),
                 });
                 references.push(json!({"kind":"repo","resource":{"id":v.id,"name":v.name,"template":v.template,"config":v.config}}));
                 if old.files_on_host {
@@ -445,25 +440,25 @@ pub(crate) fn proposed(
     serde_json::from_value(value).map_err(|_| invalid())
 }
 
-fn visible(value: &str) -> String {
+fn visible(client: &CoreClient, value: &str) -> String {
     if value.contains(['@', '?', '#']) || value.contains("://") {
         "[redacted]".into()
     } else {
-        value.chars().take(256).collect()
+        crate::configuration::bounded_text(client, value, 256)
     }
 }
 
-pub(crate) fn summary(config: &StackConfig) -> DefinitionSummary {
+pub(crate) fn summary(client: &CoreClient, config: &StackConfig) -> DefinitionSummary {
     let (kind, repo, linked) = if config.files_on_host {
         (SourceKind::Host, None, None)
     } else if !config.linked_repo.is_empty() {
         (
             SourceKind::LinkedRepo,
             None,
-            Some(visible(&config.linked_repo)),
+            Some(visible(client, &config.linked_repo)),
         )
     } else if !config.repo.is_empty() {
-        (SourceKind::Git, Some(visible(&config.repo)), None)
+        (SourceKind::Git, Some(visible(client, &config.repo)), None)
     } else if !config.file_contents.is_empty() {
         (SourceKind::Inline, None, None)
     } else {
@@ -474,15 +469,15 @@ pub(crate) fn summary(config: &StackConfig) -> DefinitionSummary {
         kind,
         repo,
         linked_repo_id: linked,
-        provider: git.then(|| visible(&config.git_provider)),
-        branch: git.then(|| visible(&config.branch)),
-        commit: (git && !config.commit.is_empty()).then(|| visible(&config.commit)),
-        run_directory: visible(&config.run_directory),
+        provider: git.then(|| visible(client, &config.git_provider)),
+        branch: git.then(|| visible(client, &config.branch)),
+        commit: (git && !config.commit.is_empty()).then(|| visible(client, &config.commit)),
+        run_directory: visible(client, &config.run_directory),
         file_paths: config
             .file_paths
             .iter()
             .take(16)
-            .map(|v| visible(v))
+            .map(|v| visible(client, v))
             .collect(),
         inline_content_present: !config.file_contents.is_empty(),
         truncated: config.file_paths.len() > 16
@@ -500,12 +495,12 @@ pub(crate) fn summary(config: &StackConfig) -> DefinitionSummary {
     let attachment = if !config.swarm_id.is_empty() {
         Some(AttachmentSummary {
             kind: "swarm",
-            id: visible(&config.swarm_id),
+            id: visible(client, &config.swarm_id),
         })
     } else if !config.server_id.is_empty() {
         Some(AttachmentSummary {
             kind: "server",
-            id: visible(&config.server_id),
+            id: visible(client, &config.server_id),
         })
     } else {
         None
@@ -513,7 +508,7 @@ pub(crate) fn summary(config: &StackConfig) -> DefinitionSummary {
     DefinitionSummary {
         source,
         attachment,
-        project_name: visible(&config.project_name),
+        project_name: visible(client, &config.project_name),
         auto_pull: config.auto_pull,
         auto_update: config.auto_update,
     }

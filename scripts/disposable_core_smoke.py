@@ -630,6 +630,114 @@ async def exercise_stack_definitions(address, editor, stack_id, server_id, alter
     print('Verified real Core Stack creation, source-preserving edit and old-target reassignment behavior.',flush=True)
 
 
+async def exercise_deployment_definitions(address, editor, deployment_id, server_id, alternate_server_id):
+    """Compare authoritative saved configuration with the owned running container."""
+    api = Api(address, {'x-api-key':editor['key'], 'x-api-secret':editor['secret']})
+
+    def created_containers():
+        return run([*COMPOSE, 'exec', '-T', 'docker', 'docker', 'ps', '-aq',
+                    '--filter', 'name=^/mcp-config-deployment$']).splitlines()
+
+    def running_container():
+        template = '{"id":{{json .Id}},"image":{{json .Config.Image}},"running":{{json .State.Running}}}'
+        return json.loads(run([*COMPOSE, 'exec', '-T', 'docker', 'docker', 'inspect',
+                               '--format', template, 'mcp-smoke-deployment']))
+
+    create = {'name':'mcp-config-deployment','config':{
+        'attachment':{'kind':'server','target':{'id':server_id}},
+        'image':{'kind':'image','reference':'busybox:1.37.0'},
+        'network':'bridge','ports':'19090:8080',
+        'environment':'REFERENCE=[[MCP_DISPOSABLE_REFERENCE]]\n','command':'sleep 600'}}
+    async with LossProxy(address,editor,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,editor,operate=False,configuration_edit=True) as mcp:
+            p = await mcp.tool('preview_deployment_create',create)
+            require(proxy.write_attempts == 0,'Deployment create preview submitted a write')
+            saved = await mcp.tool('apply_deployment_create',{**create,'preview_id':p['preview_id']})
+            require(saved['outcome'] == 'saved' and proxy.write_attempts == 1,'Deployment creation did not save once')
+            created_id = saved['resource']['id']
+            inspected = await mcp.tool('get_deployment',{'id':created_id})
+            require(inspected['id'] == created_id,'new Deployment identity was not inspectable')
+            edit = {'target':{'id':created_id},'patch':{'image':{'kind':'image','reference':'busybox:1.36.1'}}}
+            p = await mcp.tool('preview_deployment_update',edit)
+            require(p['definition']['details']['requires_operate_to_apply'],'image preview omitted operate requirement')
+            reads, writes = dict(proxy.read_operations), proxy.write_attempts
+            denied = await mcp.rpc('tools/call',{'name':'apply_deployment_update','arguments':{
+                **edit,'preview_id':p['preview_id']}})
+            require(denied.get('isError') and denied['structuredContent']['kind'] == 'capability_disabled',
+                    'configuration-only image update bypassed operate policy')
+            require(proxy.read_operations == reads and proxy.write_attempts == writes,
+                    'configuration-only image update reached Core')
+            require(proxy.execute_attempts == 0,'configuration-only creation submitted execution')
+            REPORT['deployment_creation'] = {'id':created_id,'inspected_id':inspected['id'],
+                'preview_writes':0,'apply_writes':1,'image_apply_without_operate_denied_locally':True,
+                'denied_image_apply_core_reads':0,'denied_image_apply_core_writes':0,
+                'execute_attempts':proxy.execute_attempts,'writes':proxy.write_operations}
+
+    async with LossProxy(address,editor,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,editor,operate=True,configuration_edit=True) as mcp:
+            before = await asyncio.to_thread(api.read,'GetDeployment',{'deployment':created_id})
+            p = await mcp.tool('preview_deployment_update',edit)
+            require(proxy.write_attempts == 0,'image preview submitted a write')
+            saved = await mcp.tool('apply_deployment_update',{**edit,'preview_id':p['preview_id']})
+            require(saved['outcome'] == 'saved','one-field image edit did not save')
+            after = await asyncio.to_thread(api.read,'GetDeployment',{'deployment':created_id})
+            preserved = all(v == after['config'][k] for k,v in before['config'].items() if k != 'image')
+            require(preserved,'image edit changed ports, environment, target or other configuration')
+            require(after['config']['image']['params']['image'] == 'busybox:1.36.1','saved image not observed')
+            require(not await asyncio.to_thread(created_containers),'new Deployment definition implicitly created a container')
+            noop = await mcp.tool('preview_deployment_update',edit)
+            require((await mcp.tool('apply_deployment_update',{**edit,'preview_id':noop['preview_id']}))['outcome'] == 'no_op'
+                    and proxy.write_attempts == 1,'unchanged image update submitted another write')
+
+            original = await asyncio.to_thread(api.read,'GetDeployment',{'deployment':deployment_id})
+            require(not original['config']['auto_update'],'owned image-separation fixture must disable auto-update')
+            running_before = await asyncio.to_thread(running_container)
+            require(running_before['running'],'owned Deployment was not running for image-separation proof')
+            edit_running = {'target':{'id':deployment_id},'patch':{'image':{'kind':'image','reference':'busybox:1.36.1'}}}
+            p = await mcp.tool('preview_deployment_update',edit_running)
+            require(not p['definition']['details']['runtime_observation']['running_configuration_verified'],
+                    'configuration preview claimed running configuration was verified')
+            saved = await mcp.tool('apply_deployment_update',{**edit_running,'preview_id':p['preview_id']})
+            require(saved['outcome'] == 'saved','running Deployment desired-image update failed')
+            stored = await asyncio.to_thread(api.read,'GetDeployment',{'deployment':deployment_id})
+            running_after = await asyncio.to_thread(running_container)
+            require(stored['config']['image']['params']['image'] == 'busybox:1.36.1'
+                    and running_after == running_before,'saving desired image replaced or changed running container')
+            require(stored['config']['image']['params']['image'] != running_after['image'],
+                    'fixture did not distinguish saved desired and actual running image')
+            restore = {'target':{'id':deployment_id},'patch':{'image':{
+                'kind':'image','reference':original['config']['image']['params']['image']}}}
+            p = await mcp.tool('preview_deployment_update',restore)
+            require((await mcp.tool('apply_deployment_update',{**restore,'preview_id':p['preview_id']}))['outcome'] == 'saved',
+                    'original desired-image restoration failed')
+            targets = []
+            for target_id in [alternate_server_id,server_id]:
+                target_edit = {'target':{'id':deployment_id},'patch':{
+                    'attachment':{'kind':'server','target':{'id':target_id}}}}
+                p = await mcp.tool('preview_deployment_update',target_edit)
+                require(p['definition']['details']['target_changed'],'Deployment target effect was not identified')
+                require((await mcp.tool('apply_deployment_update',{**target_edit,'preview_id':p['preview_id']}))['outcome'] == 'saved',
+                        'Deployment target reassignment failed')
+                stored = await asyncio.to_thread(api.read,'GetDeployment',{'deployment':deployment_id})
+                require(stored['config']['server_id'] == target_id and
+                        await asyncio.to_thread(running_container) == running_before,
+                        'Deployment reassignment altered or removed the old-target running container')
+                targets.append({'target_id':target_id,'saved':True,'old_target_running_container_preserved':True})
+            require(proxy.execute_attempts == 0,'definition editor submitted lifecycle/pull execution')
+            require(proxy.write_operations == [{'type':'UpdateDeployment','fields':['image']}]*3 +
+                    [{'type':'UpdateDeployment','fields':['server_id']}]*2,
+                    'Deployment edits submitted unrelated fields or operations')
+            REPORT['deployment_definitions'] = {'created_id':created_id,'source':'direct image on Server',
+                'image_only_unrelated_configuration_preserved':preserved,'new_definition_container_count':0,
+                'no_op_writes':0,'saved_desired_image':'busybox:1.36.1',
+                'actual_running_container_before':running_before,'actual_running_container_after_save':running_after,
+                'desired_and_running_image_distinguished':True,'desired_image_restored':True,
+                'target_reassignments':targets,'execute_attempts':proxy.execute_attempts,'writes':proxy.write_operations,
+                'fixture_only_matrix':['Build references with latest/pinned versions','Swarm attachments']}
+    persist()
+    print('Verified real Core Deployment creation, image preservation and separate running-container observations.',flush=True)
+
+
 def exercise_environment():
     addresses = run([*COMPOSE, 'port', 'core', '9120']).splitlines()
     if len(addresses) != 1 or not re.fullmatch(r'127\.0\.0\.1:\d+', addresses[0]):
@@ -707,6 +815,7 @@ def exercise_environment():
     asyncio.run(exercise(address, credentials[0],credentials[1],stack_id,deployment_id))
     asyncio.run(exercise_configuration(address,credentials[2],stack_id))
     asyncio.run(exercise_stack_definitions(address,credentials[2],stack_id,server_id,alternate_server_id))
+    asyncio.run(exercise_deployment_definitions(address,credentials[2],deployment_id,server_id,alternate_server_id))
     services = Api(address, {'x-api-key': credentials[0]['key'], 'x-api-secret': credentials[0]['secret']}).read('ListAllStackServices', {'stacks': [stack_id]})
     REPORT['observed_services'] = [{'service': s['service'], 'state': s['state']} for s in services]
     if not {'web','db'} <= {s['service'] for s in services}:
