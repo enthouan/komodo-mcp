@@ -15,7 +15,10 @@ use axum::{
     routing::post,
 };
 use komodo_client::api::{
-    execute::{Deploy, DeployStack},
+    execute::{
+        Deploy, DeployStack, RestartDeployment, RestartStack, StartDeployment, StartStack,
+        StopDeployment, StopStack,
+    },
     read::{GetDeployment, GetStack, GetUpdate, ListDeployments, ListStacks},
 };
 use komodo_mcp::{
@@ -61,6 +64,8 @@ pub enum Outcome {
     Busy,
     RolloutFailed,
     SecondBusy,
+    Paused,
+    Unavailable,
 }
 #[derive(Clone, Copy, Default)]
 pub enum Ack {
@@ -81,6 +86,9 @@ pub struct Options {
     pub missing: bool,
     pub ambiguous: bool,
     pub no_services: bool,
+    pub no_deployed_services: bool,
+    pub saved_service: Option<String>,
+    pub state: Option<String>,
     pub service: Option<String>,
     pub name: Option<String>,
     pub observation_status: Option<u16>,
@@ -189,6 +197,15 @@ fn record(data: &mut Data, headers: &HeaderMap, path: &'static str, envelope: &V
 fn summary(family: Family, options: &Options) -> Value {
     let mut value = family.summary();
     value["template"] = json!(options.template);
+    if let Some(state) = &options.state {
+        value["info"]["state"] = json!(
+            if matches!(family, Family::Deployment) && state == "stopped" {
+                "exited"
+            } else {
+                state
+            }
+        );
+    }
     if let Some(name) = &options.name {
         value["name"] = json!(name);
     }
@@ -224,7 +241,15 @@ fn detail(family: Family, options: &Options) -> Value {
         } else {
             json!([{"service_name":service,"container_name":"fixture-web"},{"service_name":"db","container_name":"fixture-db"}])
         };
-        value["info"]["deployed_services"] = value["info"]["latest_services"].clone();
+        value["info"]["deployed_services"] = if options.no_deployed_services {
+            Value::Null
+        } else {
+            value["info"]["latest_services"].clone()
+        };
+        if let Some(saved) = &options.saved_service {
+            value["info"]["latest_services"] =
+                json!([{"service_name":saved,"container_name":"new-saved-container"}]);
+        }
         value["config"]["pre_deploy"] =
             json!({"command":"echo saved-pre-hook","path":".","shell_mode":true});
         value["config"]["post_deploy"] =
@@ -369,6 +394,78 @@ async fn execute(
                 vec![],
             )
         }
+        "StartStack" => {
+            let r: StartStack = serde_json::from_value(envelope["params"].clone()).unwrap();
+            assert_eq!(r.stack, STACK);
+
+            (
+                json!({"type":"Stack","id":r.stack}),
+                if r.services.is_empty() {
+                    "StartStack"
+                } else {
+                    "StartStackService"
+                },
+                r.services,
+            )
+        }
+        "StartDeployment" => {
+            let r: StartDeployment = serde_json::from_value(envelope["params"].clone()).unwrap();
+            assert_eq!(r.deployment, DEPLOYMENT);
+
+            (
+                json!({"type":"Deployment","id":r.deployment}),
+                "StartDeployment",
+                vec![],
+            )
+        }
+        "StopStack" => {
+            let r: StopStack = serde_json::from_value(envelope["params"].clone()).unwrap();
+            assert_eq!(r.stack, STACK);
+            assert!(r.stop_time.is_none());
+            (
+                json!({"type":"Stack","id":r.stack}),
+                if r.services.is_empty() {
+                    "StopStack"
+                } else {
+                    "StopStackService"
+                },
+                r.services,
+            )
+        }
+        "StopDeployment" => {
+            let r: StopDeployment = serde_json::from_value(envelope["params"].clone()).unwrap();
+            assert_eq!(r.deployment, DEPLOYMENT);
+            assert!(r.signal.is_none() && r.time.is_none());
+            (
+                json!({"type":"Deployment","id":r.deployment}),
+                "StopDeployment",
+                vec![],
+            )
+        }
+        "RestartStack" => {
+            let r: RestartStack = serde_json::from_value(envelope["params"].clone()).unwrap();
+            assert_eq!(r.stack, STACK);
+
+            (
+                json!({"type":"Stack","id":r.stack}),
+                if r.services.is_empty() {
+                    "RestartStack"
+                } else {
+                    "RestartStackService"
+                },
+                r.services,
+            )
+        }
+        "RestartDeployment" => {
+            let r: RestartDeployment = serde_json::from_value(envelope["params"].clone()).unwrap();
+            assert_eq!(r.deployment, DEPLOYMENT);
+
+            (
+                json!({"type":"Deployment","id":r.deployment}),
+                "RestartDeployment",
+                vec![],
+            )
+        }
         _ => panic!("unexpected execution"),
     };
     if let Ack::Reject(status) = data.options.ack {
@@ -405,9 +502,15 @@ async fn execute(
                 "User does not have required permissions on this Stack. Must have at least Execute permissions"
             }
             Outcome::Busy => "Stack is busy; cannot run another action",
+            Outcome::Paused => "Container is paused; the requested action failed",
+            Outcome::Unavailable => "Periphery unavailable; the requested action failed",
             _ => "Compose rollout failed",
         };
-        update["logs"] = if matches!(outcome, Outcome::Succeeded) {
+        update["logs"] = if matches!(outcome, Outcome::Succeeded)
+            && !operation.starts_with("Deploy")
+        {
+            json!([{"stage":"Compose Command","success":true,"start_ts":1,"end_ts":2,"stdout":format!("requested {operation} {services:?}"),"stderr":"","command":"sensitive-compose-marker"}])
+        } else if matches!(outcome, Outcome::Succeeded) {
             json!([
             {"stage":"Pre Deploy","success":true,"start_ts":1,"end_ts":2,"stdout":"saved hook ran outside the selected service","stderr":"","command":"sensitive-stored-file-marker"},
             {"stage":"Compose Up","success":true,"start_ts":2,"end_ts":3,"stdout":format!("requested {services:?}; dependency db started"),"stderr":"","command":"sensitive-compose-marker"},

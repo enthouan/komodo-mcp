@@ -140,8 +140,8 @@ controls which resources and history that identity can read. Configuration editi
 belongs to a later milestone; its grant currently exposes no production tools.
 
 Use an enabled non-admin Core identity with `Read` on the resources being
-inspected. Workload operations require Core `Execute` on the selected Stack or
-Deployment; granting the local operate capability is insufficient. Core's
+inspected. Deploy, start, stop and restart require Core `Execute` on the selected
+Stack or Deployment; granting the local operate capability is insufficient. Core's
 `Write` level includes execution upstream, but does not override the independent
 local grants. Admin or create permissions are unnecessary for operating an
 existing definition. Diagnostic reads still need their relevant Core permissions
@@ -320,6 +320,15 @@ permissions are an enabled Core identity and `Read` access to the requested
 Server, Stack, or Deployment. Lists contain only visible resources and may be
 empty. Details preserve explicit authentication/permission errors, while absent
 or permission-filtered targets return safe `not_found` guidance.
+
+## Workload operations
+
+With `KOMODO_ALLOW_OPERATE=true`, deploy one existing Stack or Deployment, or
+start, stop and restart its existing Server-backed containers. Stack calls
+require explicit whole-stack or exact service scope; Swarm supports whole deploy
+only. Each call submits once and returns an update receipt. Starting/restarting
+does not apply edited configuration or pull changed images. Read the
+[supported targets, dependency behavior and recovery walkthrough](docs/operations.md).
 
 ## Fleet health
 

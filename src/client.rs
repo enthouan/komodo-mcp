@@ -128,6 +128,12 @@ impl CoreClient {
         let operation = match T::req_type() {
             "DeployStack" => "DeployStack",
             "Deploy" => "Deploy",
+            "StartStack" => "StartStack",
+            "StopStack" => "StopStack",
+            "RestartStack" => "RestartStack",
+            "StartDeployment" => "StartDeployment",
+            "StopDeployment" => "StopDeployment",
+            "RestartDeployment" => "RestartDeployment",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "execute", None)),
         };
         if !self.capabilities().allows(Capability::Operate) {

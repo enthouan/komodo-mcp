@@ -3,7 +3,10 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use komodo_client::{
-    api::execute::{Deploy, DeployStack, KomodoExecuteRequest},
+    api::execute::{
+        Deploy, DeployStack, KomodoExecuteRequest, RestartDeployment, RestartStack,
+        StartDeployment, StartStack, StopDeployment, StopStack,
+    },
     entities::{Operation, ResourceTarget, stack::Stack, update::Update},
 };
 use rmcp::schemars::{self, JsonSchema};
@@ -73,6 +76,9 @@ pub enum RequestedScope {
 #[serde(rename_all = "snake_case")]
 pub enum WorkloadOperation {
     Deploy,
+    Start,
+    Stop,
+    Restart,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
@@ -94,7 +100,7 @@ pub struct SubmissionWindow {
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConfiguredEffects {
-    /// Observed saved settings, not proof that hooks ran or dependencies changed.
+    /// Settings used by this operation, not proof that hooks ran or dependencies changed.
     pub pre_deploy_hook: bool,
     pub post_deploy_hook: bool,
     pub auto_pull: Option<bool>,
@@ -103,6 +109,17 @@ pub struct ConfiguredEffects {
     /// Named-service targeting is not an isolation guarantee. Saved hooks, flags,
     /// wrappers, Compose dependencies or project changes may affect more resources.
     pub broader_effects_possible: bool,
+    /// Lifecycle uses the deployed Compose project; deploy uses saved sources.
+    pub compose_dependencies: Option<ComposeDependencies>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ComposeDependencies {
+    DeploySavedDefinition,
+    StartExistingWithDependencies,
+    StopSelectedOnly,
+    RestartWithConfiguredDependents,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -206,6 +223,7 @@ fn check_target(
 fn validate_stack_scope(
     stack: &Stack,
     scope: &StackScope,
+    action: WorkloadOperation,
     operation: &'static str,
 ) -> Result<(), AppError> {
     check_target(
@@ -214,18 +232,25 @@ fn validate_stack_scope(
         &stack.config.swarm_id,
         operation,
     )?;
+    if action != WorkloadOperation::Deploy && !stack.config.swarm_id.is_empty() {
+        return Err(unsupported(operation));
+    }
     if let StackScope::Service { service } = scope {
         if !stack.config.swarm_id.is_empty() {
             return Err(unsupported(operation));
         }
-        // Latest names come from Core's cache of the saved definition, not its
-        // possibly older deployed/display list. Never silently execute without
-        // a resolvable service name. Remote files can still change after this read.
-        let names = &stack.info.latest_services;
+        // Deploy uses saved sources; lifecycle uses the existing deployed project.
+        // Never select newly saved services for a lifecycle action or fall back
+        // from an absent deployed inventory to a whole-stack execution.
+        let names = if action == WorkloadOperation::Deploy {
+            stack.info.latest_services.as_slice()
+        } else {
+            stack.info.deployed_services.as_deref().unwrap_or_default()
+        };
         if names.is_empty() || names.len() > MAX_SERVICES {
             return Err(AppError::arguments(
                 operation,
-                "Core has no bounded latest service inventory; refresh/inspect the saved stack in Core before selecting a service",
+                "Core has no bounded service inventory for this action; inspect the saved definition for deploy or deployed project for lifecycle before selecting a service",
             ));
         }
         if names
@@ -236,7 +261,7 @@ fn validate_stack_scope(
         {
             return Err(AppError::arguments(
                 operation,
-                "The exact service is absent or ambiguous in Core's latest saved-definition service inventory; inspect the stack. No execution was submitted",
+                "The exact service is absent or ambiguous in Core's service inventory for this action; inspect the stack. No execution was submitted",
             ));
         }
     }
@@ -260,85 +285,241 @@ pub async fn deploy_stack(
     client: &CoreClient,
     input: StackOperationInput,
 ) -> Result<SubmissionReceipt, AppError> {
-    require_operate(client, "DeployStack")?;
-    input.scope.validate("DeployStack")?;
-    let (_, stack) = inventory::resolve_stack(&client.bounded_evidence(), input.target).await?;
-    validate_stack_scope(&stack, &input.scope, "DeployStack")?;
-    let core_operation = match &input.scope {
-        StackScope::WholeStack {} => Operation::DeployStack,
-        StackScope::Service { .. } => Operation::DeployStackService,
+    stack_operation(client, input, WorkloadOperation::Deploy).await
+}
+
+pub async fn stack_operation(
+    client: &CoreClient,
+    input: StackOperationInput,
+    action: WorkloadOperation,
+) -> Result<SubmissionReceipt, AppError> {
+    let (operation, whole, service) = match action {
+        WorkloadOperation::Deploy => (
+            "DeployStack",
+            Operation::DeployStack,
+            Operation::DeployStackService,
+        ),
+        WorkloadOperation::Start => (
+            "StartStack",
+            Operation::StartStack,
+            Operation::StartStackService,
+        ),
+        WorkloadOperation::Stop => (
+            "StopStack",
+            Operation::StopStack,
+            Operation::StopStackService,
+        ),
+        WorkloadOperation::Restart => (
+            "RestartStack",
+            Operation::RestartStack,
+            Operation::RestartStackService,
+        ),
     };
+    require_operate(client, operation)?;
+    input.scope.validate(operation)?;
+    let (_, stack) = inventory::resolve_stack(&client.bounded_evidence(), input.target).await?;
+    validate_stack_scope(&stack, &input.scope, action, operation)?;
+    let core_operation = match &input.scope {
+        StackScope::WholeStack {} => whole,
+        StackScope::Service { .. } => service,
+    };
+    let deploy = action == WorkloadOperation::Deploy;
     let effects = ConfiguredEffects {
-        pre_deploy_hook: !stack.config.pre_deploy.is_none(),
-        post_deploy_hook: !stack.config.post_deploy.is_none(),
-        auto_pull: Some(stack.config.auto_pull),
-        saved_extra_args: !stack.config.extra_args.is_empty(),
-        saved_command_wrapper: !stack.config.compose_cmd_wrapper.is_empty(),
+        pre_deploy_hook: deploy && !stack.config.pre_deploy.is_none(),
+        post_deploy_hook: deploy && !stack.config.post_deploy.is_none(),
+        auto_pull: deploy.then_some(stack.config.auto_pull),
+        saved_extra_args: deploy && !stack.config.extra_args.is_empty(),
+        saved_command_wrapper: deploy && !stack.config.compose_cmd_wrapper.is_empty(),
         broader_effects_possible: true,
+        compose_dependencies: stack.config.swarm_id.is_empty().then_some(match action {
+            WorkloadOperation::Deploy => ComposeDependencies::DeploySavedDefinition,
+            WorkloadOperation::Start => ComposeDependencies::StartExistingWithDependencies,
+            WorkloadOperation::Stop => ComposeDependencies::StopSelectedOnly,
+            WorkloadOperation::Restart => ComposeDependencies::RestartWithConfiguredDependents,
+        }),
     };
     let target = resource(client, WorkloadKind::Stack, stack.id.clone(), &stack.name);
-    let request = DeployStack {
-        stack: stack.id,
-        services: input.scope.services(),
-        stop_time: None,
-    };
-    submit(
-        client,
-        target,
-        input.scope.requested(),
-        core_operation,
-        effects,
-        request,
-    )
-    .await
+    let scope = input.scope.requested();
+    let services = input.scope.services();
+    let id = stack.id;
+    match action {
+        WorkloadOperation::Deploy => {
+            submit(
+                client,
+                target,
+                scope,
+                action,
+                core_operation,
+                effects,
+                DeployStack {
+                    stack: id,
+                    services,
+                    stop_time: None,
+                },
+            )
+            .await
+        }
+        WorkloadOperation::Start => {
+            submit(
+                client,
+                target,
+                scope,
+                action,
+                core_operation,
+                effects,
+                StartStack {
+                    stack: id,
+                    services,
+                },
+            )
+            .await
+        }
+        WorkloadOperation::Stop => {
+            submit(
+                client,
+                target,
+                scope,
+                action,
+                core_operation,
+                effects,
+                StopStack {
+                    stack: id,
+                    services,
+                    stop_time: None,
+                },
+            )
+            .await
+        }
+        WorkloadOperation::Restart => {
+            submit(
+                client,
+                target,
+                scope,
+                action,
+                core_operation,
+                effects,
+                RestartStack {
+                    stack: id,
+                    services,
+                },
+            )
+            .await
+        }
+    }
 }
 
 pub async fn deploy_deployment(
     client: &CoreClient,
     input: DetailInput,
 ) -> Result<SubmissionReceipt, AppError> {
-    require_operate(client, "Deploy")?;
+    deployment_operation(client, input, WorkloadOperation::Deploy).await
+}
+
+pub async fn deployment_operation(
+    client: &CoreClient,
+    input: DetailInput,
+    action: WorkloadOperation,
+) -> Result<SubmissionReceipt, AppError> {
+    let (operation, core_operation) = match action {
+        WorkloadOperation::Deploy => ("Deploy", Operation::Deploy),
+        WorkloadOperation::Start => ("StartDeployment", Operation::StartDeployment),
+        WorkloadOperation::Stop => ("StopDeployment", Operation::StopDeployment),
+        WorkloadOperation::Restart => ("RestartDeployment", Operation::RestartDeployment),
+    };
+    require_operate(client, operation)?;
     let (_, deployment) = inventory::resolve_deployment(&client.bounded_evidence(), input).await?;
     check_target(
         deployment.template,
         &deployment.config.server_id,
         &deployment.config.swarm_id,
-        "Deploy",
+        operation,
     )?;
+    if action != WorkloadOperation::Deploy && !deployment.config.swarm_id.is_empty() {
+        return Err(unsupported(operation));
+    }
     let target = resource(
         client,
         WorkloadKind::Deployment,
         deployment.id.clone(),
         &deployment.name,
     );
-    let request = Deploy {
-        deployment: deployment.id,
-        stop_signal: None,
-        stop_time: None,
-    };
     let effects = ConfiguredEffects {
         pre_deploy_hook: false,
         post_deploy_hook: false,
         auto_pull: None,
-        saved_extra_args: !deployment.config.extra_args.is_empty(),
+        saved_extra_args: action == WorkloadOperation::Deploy
+            && !deployment.config.extra_args.is_empty(),
         saved_command_wrapper: false,
-        broader_effects_possible: true,
+        broader_effects_possible: action == WorkloadOperation::Deploy,
+        compose_dependencies: None,
     };
-    submit(
-        client,
-        target,
-        RequestedScope::WholeDeployment {},
-        Operation::Deploy,
-        effects,
-        request,
-    )
-    .await
+    let scope = RequestedScope::WholeDeployment {};
+    let id = deployment.id;
+    match action {
+        WorkloadOperation::Deploy => {
+            submit(
+                client,
+                target,
+                scope,
+                action,
+                core_operation,
+                effects,
+                Deploy {
+                    deployment: id,
+                    stop_signal: None,
+                    stop_time: None,
+                },
+            )
+            .await
+        }
+        WorkloadOperation::Start => {
+            submit(
+                client,
+                target,
+                scope,
+                action,
+                core_operation,
+                effects,
+                StartDeployment { deployment: id },
+            )
+            .await
+        }
+        WorkloadOperation::Stop => {
+            submit(
+                client,
+                target,
+                scope,
+                action,
+                core_operation,
+                effects,
+                StopDeployment {
+                    deployment: id,
+                    signal: None,
+                    time: None,
+                },
+            )
+            .await
+        }
+        WorkloadOperation::Restart => {
+            submit(
+                client,
+                target,
+                scope,
+                action,
+                core_operation,
+                effects,
+                RestartDeployment { deployment: id },
+            )
+            .await
+        }
+    }
 }
 
 async fn submit<T>(
     client: &CoreClient,
     resource: OperationResource,
     requested_scope: RequestedScope,
+    operation: WorkloadOperation,
     core_operation: Operation,
     configured_effects: ConfiguredEffects,
     request: T,
@@ -351,7 +532,7 @@ where
     let mut receipt = SubmissionReceipt {
         resource,
         requested_scope,
-        operation: WorkloadOperation::Deploy,
+        operation,
         core_operation: core_operation.to_string(),
         submission: SubmissionState::Unknown,
         submission_window: SubmissionWindow {

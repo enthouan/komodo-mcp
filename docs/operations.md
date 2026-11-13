@@ -7,14 +7,14 @@ enabled non-admin Core identity with Read visibility and Execute permission on
 the selected Stack or Deployment. Core remains authoritative; local grants never
 change credentials or supply missing upstream permissions.
 
-## Supported deploy targets
+## Supported targets
 
-| Resource / target | Whole workload | One named service |
+| Resource / target | Deploy | Start / stop / restart |
 | --- | --- | --- |
-| Stack on Server (Compose) | Supported | Supported, exact Compose service |
-| Stack on Swarm | Supported | Rejected before execution: Core 2.3.2 ignores this filter |
-| Deployment on Server (container) | Supported | Not a Deployment input |
-| Deployment on Swarm (service) | Supported | Not a Deployment input |
+| Stack on Server (Compose) | Whole stack or exact saved service | Whole stack or exact deployed service |
+| Stack on Swarm | Whole stack only; service filter rejected | Rejected before execution |
+| Deployment on Server (container) | Whole container | Whole existing container |
+| Deployment on Swarm (service) | Whole service | Rejected before execution |
 | Template or unassigned resource | Rejected | Rejected |
 
 This matrix follows the pinned Core **2.3.2** implementation. An operation uses
@@ -49,7 +49,8 @@ configured identity. Stack calls require an explicit scope:
 A Stack service is one exact 1–128-byte identifier using ASCII letters, digits,
 underscores, dots and hyphens, without a leading hyphen. Blank values, whitespace,
 wildcards, arrays, shell syntax and unknown fields are rejected. The identifier
-must occur exactly once in Core's raw **latest saved-definition service inventory**;
+must occur exactly once in Core's raw **latest saved-definition service inventory**
+for deploy, or **deployed service inventory** for start/stop/restart;
 an absent, ambiguous or unavailable inventory requires inspection/cache refresh
 in Core. Never copy a clipped or redacted display name as an execution selector.
 The server submits the exact validated raw service and resolved stable resource
@@ -81,6 +82,51 @@ presence and possible broader effects. It never exposes hook commands or claims
 that service targeting isolates dependencies/hooks, or that configured hooks
 actually ran. Use update stages and subsequent health observations for evidence.
 
+## Start, stop and restart existing containers
+
+Use `start_stack`, `stop_stack`, `restart_stack` with the same explicit Stack
+input, or `start_deployment`, `stop_deployment`, `restart_deployment` with the
+same Deployment selector. For example:
+
+```json
+{"name":"stop_stack","arguments":{"target":{"id":"000000000000000000000002"},"scope":{"kind":"service","service":"web"}}}
+```
+
+```json
+{"name":"start_stack","arguments":{"target":{"id":"000000000000000000000002"},"scope":{"kind":"service","service":"web"}}}
+```
+
+```json
+{"name":"restart_deployment","arguments":{"id":"000000000000000000000003"}}
+```
+
+Core 2.3.2 uses the deployed Compose project and existing containers for these
+actions. It does not write the saved Compose file, pull images, run deployment
+hooks or apply deployment extra arguments/wrappers. Editing saved sources does
+not create a new service that lifecycle can start; deploy it first. A stale cache
+can still race with remote changes and Core may reject the selected service.
+
+Dependency behavior depends on the action and the Periphery's installed Compose
+version. Core submits the requested service list without a `--no-deps` override:
+
+| Action | Existing Compose project behavior |
+| --- | --- |
+| Start | Starts existing selected containers and may start their existing dependencies, in dependency order. Does not create missing containers. |
+| Stop | Stops the selected existing services without removing containers; whole-stack stop uses reverse dependency order. Does not expand a named selection to its dependencies. |
+| Restart | Restarts existing containers; dependency relations configured with `depends_on.restart` can restart additional dependents. Does not apply edited configuration or a newly pulled image. |
+
+The receipt's `compose_dependencies` identifies the action-specific behavior;
+its hook/pull/extra-argument fields describe settings used by the requested action,
+so deployment-only settings are false/null for lifecycle. This is intended behavior,
+not evidence that dependencies changed; inspect update stages and runtime health.
+
+Runtime state is not a reason to change the requested action. The MCP server sends
+the exact start, stop or restart even if inventory reports running, stopped,
+paused or unavailable. Core/Docker can fail or do nothing in those states. No
+unpause, deploy, retry queue or other substitute follows a failure. Deployment
+stop retains Core's saved termination signal/timeout because no override is sent.
+A new explicit call creates a new operation, including after busy/conflict.
+
 ## Submission receipt and immediate observation
 
 Each explicit call makes **at most one** typed Core execution through the shared
@@ -106,7 +152,9 @@ credentials are omitted.
 Core 2.3.2 creates an update before background execution finishes, and permission
 or busy-target denial can appear as a subsequently failed update. A named Stack
 service uses Core's `DeployStackService` update variant; whole-stack deploy uses
-`DeployStack`, and a Deployment uses `Deploy`.
+`DeployStack`, and a Deployment uses `Deploy`. Lifecycle uses `StartStack`,
+`StopStack`, `RestartStack` (with a `Service` suffix for named selections) or
+`StartDeployment`, `StopDeployment`, `RestartDeployment`.
 
 After acknowledgement, the tool makes **one** update lookup with a 2-second
 observation budget. It does not poll or wait for rollout. On failed/slow lookup,
@@ -155,4 +203,9 @@ Sources: pinned [Core acknowledgement](https://github.com/moghtech/komodo/blob/v
 [Stack requests](https://github.com/moghtech/komodo/blob/v2.3.2/client/core/rs/src/api/execute/stack.rs),
 [Deployment requests](https://github.com/moghtech/komodo/blob/v2.3.2/client/core/rs/src/api/execute/deployment.rs),
 [Periphery Compose execution](https://github.com/moghtech/komodo/blob/v2.3.2/bin/periphery/src/api/compose.rs),
-and [Docker Compose up](https://docs.docker.com/reference/cli/docker/compose/up/).
+[Core Stack lifecycle](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/stack/execute.rs),
+[Core Deployment lifecycle](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/execute/deployment.rs),
+[Docker Compose up](https://docs.docker.com/reference/cli/docker/compose/up/),
+[start](https://docs.docker.com/reference/cli/docker/compose/start/),
+[stop](https://docs.docker.com/reference/cli/docker/compose/stop/), and
+[restart](https://docs.docker.com/reference/cli/docker/compose/restart/).
