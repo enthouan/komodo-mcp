@@ -8,6 +8,12 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Add read-only bounded waiting and cross-session resume by Core update ID,
+  with cancellation, total/request/polling limits, retained latest evidence and
+  explicit incomplete observation. Keep Core execution outcome separate from
+  workload health and never resubmit execution while waiting or resuming.
+  ([#14](https://github.com/enthouan/komodo-mcp/issues/14))
+
 - Add start, stop and restart for existing Server-backed Stacks and Deployments,
   including exact deployed Compose service scope. Reuse single-submission receipts,
   preserve Core failures and busy outcomes, reject Swarm lifecycle actions, and

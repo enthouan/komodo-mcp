@@ -440,6 +440,7 @@ async fn production_keeps_all_reads_and_recovery_history_for_every_policy() {
                 core_version,
             };
             assert!(handler.get_tool("get_update").is_some());
+            assert!(handler.get_tool("wait_for_update").is_some());
             assert!(handler.get_tool("list_updates").is_some());
             let (session, task) = session(handler).await;
             let tools = timeout(DEADLINE, session.list_tools(None))
@@ -447,7 +448,7 @@ async fn production_keeps_all_reads_and_recovery_history_for_every_policy() {
                 .unwrap()
                 .unwrap()
                 .tools;
-            assert_eq!(tools.len(), 14 + 8 * usize::from(operate));
+            assert_eq!(tools.len(), 15 + 8 * usize::from(operate));
             for tool in tools {
                 let mutation = ["deploy_", "start_", "stop_", "restart_"]
                     .iter()

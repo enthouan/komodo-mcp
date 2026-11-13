@@ -7,6 +7,7 @@ Core client and safe application errors; resource IDs come from visible inventor
 | --- | --- |
 | `fleet_health` | `page` and `page_size` per Server, Stack, and Deployment family; default 30, maximum 100. Follow `next_page` with the same size until exhausted. |
 | `list_alerts`, `list_updates` | Optional `{target:{kind,id},page}`; fixed Core pages of at most 100 records. Follow `next_page` unchanged with the same target. |
+| `wait_for_update` | Known update `id`, optional `timeout_seconds` (1–30; default 10); at most ten read lookups, at least one second between unfinished responses. [Wait/resume semantics](operations.md#wait-and-resume-by-update-id). |
 | `get_update` | Stable update `id`; at most 20 stages, failures first with original indices. Stage names: 128 UTF-8 bytes; sanitized stderr: 1024 bytes each. |
 | `get_container_logs` | Stable `server_id`, exact `container` name or ID. |
 | `get_deployment_logs` | Stable Deployment `id`. |

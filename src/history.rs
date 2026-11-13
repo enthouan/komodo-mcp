@@ -105,6 +105,18 @@ pub struct UpdateInput {
     pub id: String,
 }
 
+impl UpdateInput {
+    pub(crate) fn validate(self, operation: &'static str) -> Result<String, AppError> {
+        if !object_id(&self.id) {
+            return Err(AppError::arguments(
+                operation,
+                "Provide one 24-character hexadecimal update id",
+            ));
+        }
+        Ok(self.id.to_ascii_lowercase())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HistoryPage<T> {
@@ -427,13 +439,7 @@ fn project_stage(client: &CoreClient, index: usize, log: &Log) -> UpdateStage {
 }
 
 pub async fn get_update(client: &CoreClient, input: UpdateInput) -> Result<UpdateDetail, AppError> {
-    if !object_id(&input.id) {
-        return Err(AppError::arguments(
-            "GetUpdate",
-            "Provide one 24-character hexadecimal update id",
-        ));
-    }
-    let id = input.id.to_ascii_lowercase();
+    let id = input.validate("GetUpdate")?;
     let update = client.read(GetUpdate { id: id.clone() }).await?;
     if update.id != id {
         return Err(invalid("GetUpdate"));

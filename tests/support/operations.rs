@@ -76,6 +76,12 @@ pub enum Ack {
     Reject(u16),
     WrongTarget,
 }
+#[derive(Clone)]
+pub enum UpdateRead {
+    Value(Value),
+    Status(u16),
+    Delay(Duration),
+}
 #[derive(Clone, Default)]
 pub struct Options {
     pub outcome: Outcome,
@@ -92,6 +98,7 @@ pub struct Options {
     pub service: Option<String>,
     pub name: Option<String>,
     pub observation_status: Option<u16>,
+    pub update_reads: Vec<UpdateRead>,
     pub observation_delay: Duration,
     pub chunked: bool,
     pub changed_identity: bool,
@@ -107,6 +114,7 @@ struct Data {
     options: Options,
     requests: Vec<Request>,
     updates: BTreeMap<String, Value>,
+    update_reads: BTreeMap<String, usize>,
     executions: usize,
     bad_credentials: bool,
 }
@@ -129,6 +137,7 @@ impl Core {
             options,
             requests: vec![],
             updates: BTreeMap::new(),
+            update_reads: BTreeMap::new(),
             executions: 0,
             bad_credentials: false,
         }));
@@ -159,6 +168,10 @@ impl Core {
     }
     pub fn requests(&self) -> Vec<Request> {
         self.data.lock().unwrap().requests.clone()
+    }
+    pub fn insert_update(&self, value: Value) {
+        let id = value["_id"]["$oid"].as_str().unwrap().to_owned();
+        self.data.lock().unwrap().updates.insert(id, value);
     }
     pub fn executions(&self) -> usize {
         self.data.lock().unwrap().executions
@@ -292,21 +305,34 @@ async fn read(
         return json_response(200, json!({"version":"2.3.2"}), false);
     }
     if operation == "GetUpdate" {
-        let _: GetUpdate = serde_json::from_value(params.clone()).unwrap();
-        tokio::time::sleep(options.observation_delay).await;
-        if let Some(status) = options.observation_status {
+        let request: GetUpdate = serde_json::from_value(params).unwrap();
+        let (mut value, step) = {
+            let mut data = data.lock().unwrap();
+            let index = data.update_reads.entry(request.id.clone()).or_default();
+            let step = options
+                .update_reads
+                .get(*index)
+                .or_else(|| options.update_reads.last())
+                .cloned();
+            *index += 1;
+            (data.updates.get(&request.id).cloned(), step)
+        };
+        let mut status = options.observation_status;
+        let mut delay = options.observation_delay;
+        match step {
+            Some(UpdateRead::Value(reply)) => value = Some(reply),
+            Some(UpdateRead::Status(code)) => status = Some(code),
+            Some(UpdateRead::Delay(duration)) => delay = duration,
+            None => (),
+        }
+        tokio::time::sleep(delay).await;
+        if let Some(status) = status {
             return json_response(
                 status,
                 json!({"error":format!("denied {KEY} {SECRET}")}),
                 options.chunked,
             );
         }
-        let value = data
-            .lock()
-            .unwrap()
-            .updates
-            .get(params["id"].as_str().unwrap())
-            .cloned();
         return json_response(
             if value.is_some() { 200 } else { 500 },
             value.unwrap_or(json!({"error":"no update exists with given id"})),
@@ -578,9 +604,12 @@ pub struct Process {
 }
 impl Process {
     pub async fn start(core: &Core, operate: bool) -> (Self, Session) {
+        Self::start_address(&core.address, operate).await
+    }
+    pub async fn start_address(address: &str, operate: bool) -> (Self, Session) {
         let mut child = Command::new(env!("CARGO_BIN_EXE_komodo-mcp"))
             .env_clear()
-            .env("KOMODO_ADDRESS", &core.address)
+            .env("KOMODO_ADDRESS", address)
             .env("KOMODO_API_KEY", KEY)
             .env("KOMODO_API_SECRET", SECRET)
             .env(
@@ -631,6 +660,19 @@ impl Process {
             },
             session,
         )
+    }
+    /// Simulate loss of the observing MCP process; always kill and reap it.
+    pub async fn interrupt(mut self, mut session: Session) {
+        self.child.start_kill().unwrap();
+        let status = timeout(SHUTDOWN, self.child.wait()).await.unwrap().unwrap();
+        let _ = timeout(SHUTDOWN, session.close()).await.unwrap();
+        timeout(SHUTDOWN, &mut self._reader.0)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!status.success());
+        assert!(self.child.id().is_none());
+        super::assert_safe(std::str::from_utf8(&self.stderr.lock().unwrap()).unwrap());
     }
     pub async fn finish(mut self, mut session: Session) {
         let result = timeout(SHUTDOWN, session.close()).await;
