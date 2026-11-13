@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import datetime
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -16,19 +17,20 @@ import re
 import secrets
 import shutil
 import signal
+import socket
 import tempfile
+import threading
 import tomllib
 import uuid
 import subprocess
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 
 WORKSPACE = Path(__file__).resolve().parents[1]
 CORE_VERSION = '2.3.2'
 MAX_BODY = 2 * 1024 * 1024
 MAX_COMMAND_OUTPUT = 8 * 1024 * 1024
+HTTP_TIMEOUT = 10.0
 SECRETS = []
 REPORT = {}
 ROOT = None
@@ -47,7 +49,7 @@ def require(condition, message):
 
 
 def run(args, timeout=60):
-    """Bound a noninteractive command and reap its process group on failure."""
+    """Bound a noninteractive command and terminate its owned process group."""
     env = os.environ.copy()
     for key in ['CARGO_TARGET_DIR', 'CARGO_BUILD_TARGET', 'DOCKER_HOST']:
         env.pop(key, None)
@@ -68,11 +70,12 @@ def run(args, timeout=60):
                 raise Failure('command output exceeded bound')
             return result.decode(errors='replace').strip()
         finally:
-            if process.poll() is None:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+            # The leader can exit while descendants still own this session's
+            # group. Terminate the owned group on every exit, then reap leader.
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             process.wait(timeout=5)
 
 def safe(value):
@@ -94,11 +97,6 @@ def identity(value):
         raise Failure('Core response lacks a stable identity')
     return result
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *_args, **_kwargs):
-        return None
-
-
 class Api:
     def __init__(self, address, headers=None):
         parsed = urllib.parse.urlsplit(address)
@@ -106,31 +104,69 @@ class Api:
                 or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment):
             raise Failure('API target must be the disposable loopback Core endpoint')
         self.address, self.headers = address, headers or {}
-        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        self.port = parsed.port
 
     def request(self, endpoint, operation=None, params=None):
         headers = {'content-type': 'application/json', **self.headers}
         data = None if operation is None else json.dumps({'type': operation, 'params': params or {}}).encode()
-        request = urllib.request.Request(self.address + endpoint, data=data, headers=headers)
-        deadline = time.monotonic() + 10
+        # Direct loopback HTTP never follows redirects or consults proxy env.
+        # A watchdog shuts down the actual socket, including during slow header
+        # reads; cancelling a to_thread waiter alone cannot stop that I/O.
+        deadline = time.monotonic() + HTTP_TIMEOUT
+        expired = threading.Event()
+        connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=HTTP_TIMEOUT)
+        transport = timer = None
+
+        def abort():
+            expired.set()
+            try:
+                transport.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
         try:
-            with self.opener.open(request, timeout=10) as response:
+            connection.connect()
+            transport = connection.sock
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Failure('Core request deadline exceeded')
+            transport.settimeout(remaining)
+            timer = threading.Timer(remaining, abort)
+            timer.daemon = True
+            timer.start()
+            connection.request('GET' if data is None else 'POST', endpoint, body=data, headers=headers)
+            with connection.getresponse() as response:
+                if not 200 <= response.status < 300:
+                    raise Failure(f'{operation or endpoint}: Core HTTP {response.status}')
                 body = bytearray()
                 while True:
-                    if time.monotonic() >= deadline:
-                        raise Failure('Core response deadline exceeded')
+                    if expired.is_set() or time.monotonic() >= deadline:
+                        raise Failure('Core request deadline exceeded')
                     block = response.read1(min(65536, MAX_BODY + 1 - len(body)))
                     body.extend(block)
                     if len(body) > MAX_BODY:
                         raise Failure('bounded Core response exceeded')
                     if not block:
                         break
-                return json.loads(body)
-        except urllib.error.HTTPError as error:
-            # Never format an upstream error body, authentication value or URL query.
-            raise Failure(f'{operation or endpoint}: Core HTTP {error.code}') from None
-        except (OSError, ValueError):
+                value = json.loads(body)
+                require(not expired.is_set() and time.monotonic() < deadline,
+                        'Core request deadline exceeded')
+                return value
+        except (OSError, ValueError, http.client.HTTPException):
+            if expired.is_set() or time.monotonic() >= deadline:
+                raise Failure('Core request deadline exceeded') from None
             raise Failure(f'{operation or endpoint}: unavailable or invalid Core response') from None
+        finally:
+            if timer is not None:
+                timer.cancel()
+                timer.join(timeout=1)
+            if transport is not None:
+                try:
+                    transport.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                transport.close()
+            connection.close()
 
     def read(self, operation, params=None):
         return self.request('/read', operation, params)
@@ -261,8 +297,11 @@ def containers():
     return {service: {'id': identity, 'state': state, 'started': started} for identity,service,state,started in (line.split() for line in lines)}
 
 class LossProxy:
-    def __init__(self, address, credentials):
+    def __init__(self, address, credentials, lose_reply=True):
         self.api = Api(address, {'x-api-key': credentials['key'], 'x-api-secret': credentials['secret']})
+        self.lose_reply = lose_reply
+        self.execute_attempts = 0
+        self.read_operations = {}
         self.ids = []
         self.connections = set()
         self.failures = []
@@ -290,13 +329,19 @@ class LossProxy:
             fields = {k.lower():v.strip() for k,v in (line.split(':',1) for line in lines[1:] if ':' in line)}
             if method != 'POST' or endpoint not in ['/read','/execute']: raise Failure('proxy unexpected endpoint')
             if any(fields.get(k) != v for k,v in self.api.headers.items()): raise Failure('proxy unexpected identity')
+            if endpoint == '/execute':
+                self.execute_attempts += 1  # Count attempts before parsing/forwarding/acknowledgement.
             size = int(fields['content-length'])
             if not 0 <= size <= MAX_BODY: raise Failure('proxy body exceeded bound')
             request = json.loads(await asyncio.wait_for(reader.readexactly(size), 5))
+            if endpoint == '/read':
+                operation = request['type']
+                self.read_operations[operation] = self.read_operations.get(operation,0) + 1
             reply = await asyncio.wait_for(asyncio.to_thread(self.api.request, endpoint, request['type'], request['params']), 12)
             if endpoint == '/execute':
                 self.ids.append(identity(reply))
-                return  # Core accepted; deliberately lose only its acknowledgement.
+                if self.lose_reply:
+                    return  # Core accepted; deliberately lose only its acknowledgement.
             body = json.dumps(reply).encode()
             if len(body) > MAX_BODY: raise Failure('proxy reply exceeded bound')
             writer.write(b'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ' + str(len(body)).encode() + b'\r\n\r\n' + body)
@@ -373,15 +418,17 @@ async def exercise(address, operator, reader, stack_id, deployment_id):
         REPORT['denied_lifecycle'] = {'update_id':receipt['update_id'], 'submission':receipt['submission'], 'outcome':update['outcome'],'permission_denial_observed':True}
         persist()
 
-    async with LossProxy(address,operator) as proxy:
+    async with LossProxy(address,operator) as proxy, LossProxy(address,reader,lose_reply=False) as observer_proxy:
         args = {'target':{'id':stack_id},'scope':{'kind':'service','service':'web'}}
         async with await Mcp.start(proxy.address,operator) as first:
             r = await first.tool('restart_stack',args)
             require(r['submission'] == 'unknown' and r['update_id'] is None, 'lost ACK must retain unknown submission and no known update ID')
-        require(len(proxy.ids) == 1, 'lost ACK original call must execute exactly once')
+        require(proxy.execute_attempts == len(proxy.ids) == 1, 'lost ACK original call must execute exactly once')
         context = {'target':{'kind':'stack','id':stack_id},'requested_scope':r['requested_scope'],'operation':r['operation'],'submission_window':r['submission_window']}
-        async with await Mcp.start(address,reader,False) as fresh:
+        async with await Mcp.start(observer_proxy.address,reader,False) as fresh:
             recovered = await fresh.tool('reconcile_operation',context)
+            require(observer_proxy.read_operations.get('ListUpdates',0) > 0,
+                    'reconciliation history reads must pass through the observed Read identity')
             require(recovered['original_submission'] == 'unknown' and recovered['attribution'] == 'unconfirmed', 'recovery must retain unknown acceptance and unconfirmed attribution')
             require(not recovered['automatic_resubmission'] and 'selected_update_id' not in recovered, 'recovery must neither select an update nor resubmit execution')
             REPORT['initial_reconciliation'] = recovered
@@ -393,15 +440,19 @@ async def exercise(address, operator, reader, stack_id, deployment_id):
             persist()
             candidates = recovered['candidates']
             require(any(c['update']['id'] == proxy.ids[0] and c['scope_evidence'] == 'named_service_matches' for c in candidates), 'completed service update must corroborate the requested service')
-        require(len(proxy.ids) == 1, 'reconciliation must add no execution requests')
-        REPORT['lost_ack_recovery'] = {'tool':'restart_stack','scope':r['requested_scope'],'original_submission':recovered['original_submission'],'attribution':recovered['attribution'],'candidate_count':len(candidates),'service_scope_evidence':'named_service_matches','accepted_execute_requests':len(proxy.ids),'recovery_execute_requests':0,'read_only_identity':True,'known_instrumented_update_final':'succeeded'}
+        require(proxy.execute_attempts == len(proxy.ids) == 1 and observer_proxy.execute_attempts == 0,
+                'reconciliation must add no execution requests')
+        REPORT['lost_ack_recovery'] = {'tool':'restart_stack','scope':r['requested_scope'],'original_submission':recovered['original_submission'],'attribution':recovered['attribution'],'candidate_count':len(candidates),'service_scope_evidence':'named_service_matches','accepted_execute_requests':len(proxy.ids),'submission_execute_attempts':proxy.execute_attempts,'recovery_execute_requests':observer_proxy.execute_attempts,'recovery_read_requests':dict(observer_proxy.read_operations),'read_only_identity':True,'known_instrumented_update_final':'succeeded'}
         async with await Mcp.start(proxy.address,operator) as one, await Mcp.start(proxy.address,operator) as two:
             a,b = await asyncio.gather(one.tool('deploy_stack',args),two.tool('deploy_stack',args))
             require(a['submission'] == b['submission'] == 'unknown', 'independent lost-ACK calls must both retain uncertainty')
-        require(len(proxy.ids) == 3 and len(set(proxy.ids)) == 3, 'two independent calls must produce exactly two distinct updates')
+        require(proxy.execute_attempts == len(proxy.ids) == 3 and len(set(proxy.ids)) == 3, 'two independent calls must produce exactly two distinct updates')
         context.update(operation='deploy',submission_window={'started_ts':min(a['submission_window']['started_ts'],b['submission_window']['started_ts']),'ended_ts':max(a['submission_window']['ended_ts'],b['submission_window']['ended_ts'])})
-        async with await Mcp.start(address,reader,False) as fresh:
+        history_before = observer_proxy.read_operations.get('ListUpdates',0)
+        async with await Mcp.start(observer_proxy.address,reader,False) as fresh:
             recovered = await fresh.tool('reconcile_operation',context)
+            require(observer_proxy.read_operations.get('ListUpdates',0) > history_before,
+                    'new-session reconciliation reads must be instrumented')
             require(recovered['original_submission'] == 'unknown' and recovered['attribution'] == 'unconfirmed', 'independent-call recovery must retain uncertainty')
             require('selected_update_id' not in recovered and not recovered['automatic_resubmission'], 'independent-call recovery must not select or resubmit')
             found = {c['update']['id'] for c in recovered['candidates']}
@@ -421,8 +472,9 @@ async def exercise(address, operator, reader, stack_id, deployment_id):
                             'overlapping service deploy failed without the expected Core busy evidence')
                     busy_failure = True
             require('succeeded' in outcomes,'an independent service deploy must succeed')
-        require(len(proxy.ids) == 3, 'independent-call reconciliation must add no execution requests')
-        REPORT['independent_lost_ack_callers'] = {'explicit_calls':2,'accepted_execute_requests':2,'distinct_updates':2,'original_submission':'unknown','attribution':'unconfirmed','candidate_count':len(found),'instrumented_outcomes':outcomes,'busy_failure_observed':busy_failure,'recovery_execute_requests':0}
+        require(proxy.execute_attempts == len(proxy.ids) == 3 and observer_proxy.execute_attempts == 0,
+                'independent-call reconciliation must add no execution requests')
+        REPORT['independent_lost_ack_callers'] = {'explicit_calls':2,'accepted_execute_requests':2,'submission_execute_attempts':proxy.execute_attempts-1,'distinct_updates':2,'original_submission':'unknown','attribution':'unconfirmed','candidate_count':len(found),'instrumented_outcomes':outcomes,'busy_failure_observed':busy_failure,'recovery_execute_requests':observer_proxy.execute_attempts,'recovery_read_requests':dict(observer_proxy.read_operations)}
     async with await Mcp.start(address,reader,False) as observer:
         tools = (await observer.rpc('tools/list',{}))['tools']
         names = {tool['name'] for tool in tools}

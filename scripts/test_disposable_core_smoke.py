@@ -4,7 +4,10 @@ import asyncio
 import contextlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
+import signal
+import socket
 import sys
 import tempfile
 import threading
@@ -220,8 +223,114 @@ class ScopeTests(unittest.TestCase):
             with self.assertRaisesRegex(smoke.Failure, 'output'):
                 smoke.run([sys.executable, '-c', 'print("x"*1024)'])
 
+    def test_exited_command_leader_cannot_leave_a_live_descendant(self):
+        child = '''import json,os,socket,sys,time
+from pathlib import Path
+listener=socket.socket()
+listener.bind(('127.0.0.1',0))
+listener.listen()
+Path(sys.argv[1]).write_text(json.dumps({'pid':os.getpid(),'group':os.getpgrp(),'port':listener.getsockname()[1]}))
+time.sleep(30)
+'''
+        parent = '''import subprocess,sys,time
+from pathlib import Path
+subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2]])
+for _ in range(500):
+    if Path(sys.argv[2]).exists(): break
+    time.sleep(.01)
+raise SystemExit(int(sys.argv[3]))
+'''
+        for status in [0, 1]:
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
+                marker = Path(directory)/'descendant.json'
+                try:
+                    command = [sys.executable,'-c',parent,child,str(marker),str(status)]
+                    if status:
+                        with self.assertRaises(smoke.Failure):
+                            smoke.run(command,timeout=10)
+                    else:
+                        smoke.run(command,timeout=10)
+                    info = json.loads(marker.read_text())
+                    end = time.monotonic() + 2
+                    while time.monotonic() < end:
+                        try:
+                            connection = socket.create_connection(('127.0.0.1',info['port']),timeout=.1)
+                            connection.close()
+                        except OSError:
+                            break
+                        time.sleep(.02)
+                    else:
+                        self.fail('descendant survived its exited command leader')
+                finally:
+                    if marker.exists():
+                        try:
+                            os.killpg(json.loads(marker.read_text())['group'],signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+
+    def test_absolute_http_deadline_interrupts_trickled_headers_and_body(self):
+        for phase in ['headers','body']:
+            finished = threading.Event()
+
+            class SlowCore(BaseHTTPRequestHandler):
+                def do_POST(self):
+                    try:
+                        self.wfile.write(b'HTTP/1.1 200 OK\r\n')
+                        if phase == 'body':
+                            self.wfile.write(b'Content-Length: 10000\r\n\r\n')
+                        for _ in range(100):
+                            self.wfile.write(b'X-Trickle: yes\r\n' if phase == 'headers' else b' ')
+                            self.wfile.flush()
+                            time.sleep(.04)
+                    except OSError:
+                        pass
+                    finally:
+                        finished.set()
+
+                def log_message(self, *_args):
+                    pass
+
+            with self.subTest(phase=phase), http_server(SlowCore) as address, \
+                    patch.object(smoke,'HTTP_TIMEOUT',.25):
+                started = time.monotonic()
+                with self.assertRaisesRegex(smoke.Failure,'deadline'):
+                    smoke.Api(address).read('GetVersion')
+                self.assertLess(time.monotonic()-started,2)
+                self.assertTrue(finished.wait(2),'deadline did not terminate the underlying connection')
+
 
 class ObservationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_read_identity_proxy_measures_unexpected_execute_before_ack(self):
+        received = []
+
+        class Core(BaseHTTPRequestHandler):
+            def do_POST(self):
+                request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                received.append((self.path,self.headers['x-api-key'],request['type']))
+                value = {'updates':[],'next_page':None} if self.path == '/read' else {
+                    '_id':{'$oid':'100000000000000000000001'},'status':'InProgress','success':False}
+                body = json.dumps(value).encode()
+                self.send_response(200)
+                self.send_header('Content-Length',str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        credentials = {'key':'synthetic-reader-key','secret':'synthetic-reader-secret'}
+        with http_server(Core) as address:
+            async with smoke.LossProxy(address,credentials,lose_reply=False) as proxy:
+                api = smoke.Api(proxy.address,{'x-api-key':credentials['key'],'x-api-secret':credentials['secret']})
+                await asyncio.to_thread(api.read,'ListUpdates')
+                self.assertEqual(proxy.read_operations,{'ListUpdates':1})
+                self.assertEqual(proxy.execute_attempts,0)
+                await asyncio.to_thread(api.request,'/execute','RestartStack',{'stack':'synthetic-stack'})
+                self.assertEqual(proxy.execute_attempts,1)
+                self.assertEqual(proxy.ids,['100000000000000000000001'])
+        self.assertEqual(received,[('/read',credentials['key'],'ListUpdates'),
+                                   ('/execute',credentials['key'],'RestartStack')])
+
     async def test_wait_resumes_same_id_after_poll_limit_and_stops_on_read_failure(self):
         class Observer:
             def __init__(self, failed=False):

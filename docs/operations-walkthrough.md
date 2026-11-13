@@ -144,6 +144,9 @@ bounded wait/resume. Lost-ACK service operations and two independent callers
 remain unknown/unconfirmed after a new read-only session; the fault proxy records
 acknowledged IDs only as test instrumentation. It finishes with read-only
 `stack_diagnose` and `fleet_health`, independently of execution outcomes.
+Both recovery sessions use a separately authenticated Read proxy that counts
+execute attempts before forwarding. The evidence records those measured counters
+and history-request counts; a zero is asserted only after observed recovery reads.
 
 The sanitized JSON records the built commit, executable hash, package/MCP and
 Core/Periphery/Compose/Docker versions, scoped resource/identity IDs, operation
