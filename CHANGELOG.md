@@ -8,6 +8,14 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Add deliberate single-resource Stack/Deployment/Server deletion through the
+  shared private preview store, requiring both local grants for apply. Revalidate
+  deployed identities, runtime and visible references; separate definition
+  removal, fresh known-container observations, cleanup errors and detachment.
+  Disclose hidden effects, Server workloads and legacy Builder cleanup limits;
+  retain uncertain submissions without retries or exposing archived definitions.
+  ([#21](https://github.com/enthouan/komodo-mcp/issues/21))
+
 - Add typed Server creation and partial connection/alerting updates through the
   shared preview/apply contract. Preserve omitted settings and accepted trust,
   require explicit pinned keys for enabled saves, disable automatic pruning/key

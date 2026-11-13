@@ -4,6 +4,9 @@ This walkthrough uses the production stdio server and the supported Core 2.3.2
 API. It covers existing Server-backed Stacks/Deployments and exact Compose service
 scope. See the [target/action matrix](operations.md#supported-targets)
 for whole-workload Swarm deploy and the rejected Swarm filters/lifecycle actions.
+For deletion, use the separate [deliberate preview/apply workflow](deletion.md):
+Core can perform teardown inside a definition write, and removal is observed
+separately from cleanup. Both local grants and Core Write are required.
 
 ## Inspect, act, follow and check health
 

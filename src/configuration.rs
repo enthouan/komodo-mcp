@@ -247,17 +247,33 @@ pub enum DefinitionPreview {
 }
 
 // No Debug: these values can contain raw secrets. Nothing here is serialized.
-pub(crate) struct Preview {
+pub(crate) struct Preview<R = ConfigurationResult> {
     pub created: Instant,
     pub input: Value,
     pub baseline: Value,
     pub prepared: Value,
-    pub result: ConfigurationResult,
+    pub result: R,
+}
+impl<R> Preview<R> {
+    fn map<S>(self, map: impl FnOnce(R) -> S) -> Preview<S> {
+        Preview {
+            created: self.created,
+            input: self.input,
+            baseline: self.baseline,
+            prepared: self.prepared,
+            result: map(self.result),
+        }
+    }
+}
+// All mutation families share the same capacity, expiry and single-use space.
+enum StoredResult {
+    Configuration(Box<ConfigurationResult>),
+    Destructive(Box<crate::deletion::DeletionResult>),
 }
 struct Entries {
     nonce: String,
     next: u64,
-    values: BTreeMap<String, Preview>,
+    values: BTreeMap<String, Preview<StoredResult>>,
 }
 impl Default for Entries {
     fn default() -> Self {
@@ -279,7 +295,7 @@ impl Default for Entries {
 pub(crate) struct PreviewStore(Mutex<Entries>);
 
 impl PreviewStore {
-    pub(crate) fn insert(&self, mut entry: Preview) -> Result<ConfigurationResult, AppError> {
+    fn put(&self, entry: Preview<StoredResult>) -> Result<String, AppError> {
         let mut entries = self.0.lock().map_err(|_| invalid_preview())?;
         entries.values.retain(|_, p| p.created.elapsed() < TTL);
         if entries.values.len() >= MAX_PREVIEWS {
@@ -290,19 +306,33 @@ impl PreviewStore {
         }
         entries.next = entries.next.checked_add(1).ok_or_else(invalid_preview)?;
         let token = format!("configuration-{}-{}", entries.nonce, entries.next);
-        entry.result.preview_id = Some(token.clone());
-        // Result is an allowlisted projection; only the private entry has secrets.
+        entries.values.insert(token.clone(), entry);
+        Ok(token)
+    }
+
+    pub(crate) fn insert(&self, entry: Preview) -> Result<ConfigurationResult, AppError> {
+        // Return only the allowlisted projection; raw baselines stay private.
         let mut result = entry.result.clone();
-        result.outcome = if entry.result.changes.is_empty() {
+        result.outcome = if result.changes.is_empty() {
             ConfigurationOutcome::NoOp
         } else {
             ConfigurationOutcome::Preview
         };
-        entries.values.insert(token, entry);
+        result.preview_id =
+            Some(self.put(entry.map(|r| StoredResult::Configuration(Box::new(r))))?);
         Ok(result)
     }
 
-    pub(crate) fn take(&self, token: &str, input: &Value) -> Result<Preview, AppError> {
+    pub(crate) fn insert_destructive(
+        &self,
+        entry: Preview<crate::deletion::DeletionResult>,
+    ) -> Result<crate::deletion::DeletionResult, AppError> {
+        let mut result = entry.result.clone();
+        result.preview_id = Some(self.put(entry.map(|r| StoredResult::Destructive(Box::new(r))))?);
+        Ok(result)
+    }
+
+    fn take_entry(&self, token: &str, input: &Value) -> Result<Preview<StoredResult>, AppError> {
         let entry = self
             .0
             .lock()
@@ -314,6 +344,38 @@ impl PreviewStore {
             return Err(invalid_preview());
         }
         Ok(entry)
+    }
+
+    pub(crate) fn take(&self, token: &str, input: &Value) -> Result<Preview, AppError> {
+        let entry = self.take_entry(token, input)?;
+        let StoredResult::Configuration(result) = entry.result else {
+            return Err(invalid_preview());
+        };
+        Ok(Preview {
+            created: entry.created,
+            input: entry.input,
+            baseline: entry.baseline,
+            prepared: entry.prepared,
+            result: *result,
+        })
+    }
+
+    pub(crate) fn take_destructive(
+        &self,
+        token: &str,
+        input: &Value,
+    ) -> Result<Preview<crate::deletion::DeletionResult>, AppError> {
+        let entry = self.take_entry(token, input)?;
+        let StoredResult::Destructive(result) = entry.result else {
+            return Err(invalid_preview());
+        };
+        Ok(Preview {
+            created: entry.created,
+            input: entry.input,
+            baseline: entry.baseline,
+            prepared: entry.prepared,
+            result: *result,
+        })
     }
 }
 
