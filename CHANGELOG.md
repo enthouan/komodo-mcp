@@ -8,6 +8,13 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Verify the complete production stdio inspection/operation/receipt/wait/health
+  workflow, independent callers and interrupted recovery with deterministic CI
+  scenarios. Add a reproducible operator walkthrough and opt-in disposable
+  Core/Periphery 2.3.2 smoke with scoped non-admin identities, dependency/hook
+  checks, bounded observers and verified ownership-scoped cleanup.
+  ([#74](https://github.com/enthouan/komodo-mcp/issues/74))
+
 - Add read-only interrupted-submission reconciliation with bounded resource
   history/service evidence, explicit unknown acceptance and unconfirmed candidate
   attribution. Verify accepted disconnects, timeouts, malformed/oversized replies,

@@ -1,5 +1,9 @@
 # Interactive stdio walkthrough
 
+For workload operations and recovery, use the [operator walkthrough](operations-walkthrough.md).
+The standalone mock below implements inventory reads; compiled operation tests
+use separate deterministic fixtures, and the opt-in smoke provisions disposable Core/Periphery.
+
 Run these commands from the repository root after the README's production and
 example builds. Every credential below is synthetic. The executable reads its
 **process environment**; it does not load an `.env` file.

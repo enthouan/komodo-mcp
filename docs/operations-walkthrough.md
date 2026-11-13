@@ -1,0 +1,159 @@
+# Workload operation walkthrough
+
+This walkthrough uses the production stdio server and the supported Core 2.3.2
+API. It covers existing Server-backed Stacks/Deployments and exact Compose service
+scope. See the [target/action matrix](operations.md#supported-targets)
+for whole-workload Swarm deploy and the rejected Swarm filters/lifecycle actions.
+
+## Inspect, act, follow and check health
+
+Use an enabled API identity with **Execute** on the selected Stack/Deployment,
+**Read** on its Server, and the Read/Inspect/Logs access needed for history and
+diagnosis. The MCP process needs no provisioning/admin credentials. Core remains
+the permission authority, including a denial recorded after acknowledgement.
+
+1. Configure the stdio child with `KOMODO_ADDRESS`, `KOMODO_API_KEY`,
+   `KOMODO_API_SECRET`, `KOMODO_ALLOW_OPERATE=true` and
+   `KOMODO_ALLOW_CONFIGURATION_EDIT=false`. These are process environment values;
+   `.env` files are not loaded. Restart the child after changing capabilities.
+   With both optional grants disabled, discovery contains sixteen read tools.
+   Operate adds eight tools; configuration editing is independent and adds no
+   production tools in this milestone. See [client configuration](../README.md#local-capabilities-and-core-permissions).
+2. Initialize your stdio client and call `tools/list`. Resolve an exact workload
+   name with `get_stack` / `get_deployment`, then save the returned stable ID.
+   Inspect `stack_diagnose` or `fleet_health` before choosing an action.
+3. Retain the target ID, requested scope/action and local UTC start time in your
+   client **before** execution, so this context survives process loss. For a named
+   service, inspect the original exact service name: deploy validates the latest
+   saved service inventory; lifecycle validates the deployed inventory.
+4. Submit one operation. These are `tools/call` parameters; replace the example
+   stable IDs with the IDs you just resolved, and select the intended scope:
+
+   ```json
+   {"name":"deploy_stack","arguments":{"target":{"id":"000000000000000000000002"},"scope":{"kind":"service","service":"web"}}}
+   ```
+
+   Whole-Stack scope is explicitly `{"kind":"whole_stack"}`. For an existing
+   Deployment, a lifecycle call is:
+
+   ```json
+   {"name":"restart_deployment","arguments":{"id":"000000000000000000000003"}}
+   ```
+
+   Deploy applies the saved definition. Stack deploy follows saved `auto_pull`,
+   Compose/build flags and wrappers; Server Deployment deploy pulls the selected
+   image/build and recreates the container. Restart uses existing containers and
+   does not apply changed configuration/images or run deploy hooks. Start/stop
+   perform those actions; they never substitute unpause or redeploy.
+
+   Service selection is not isolation: deploy can start dependencies and runs
+   saved deployment hooks; start can start existing dependencies; restart can
+   restart configured dependents. Stop selects the requested service, whose
+   absence can still affect dependent applications. Read the receipt's requested
+   scope and configured effects separately. Invalid/unsupported selection never
+   expands to the whole workload.
+5. Save the receipt and its `update_id`. `accepted` establishes acknowledgement,
+   not final success. Busy, permission and rollout failures can appear in that
+   accepted update. Each explicit operation is a new non-idempotent submission.
+6. Inspect `get_update` and wait on that exact ID:
+
+   ```json
+   {"name":"wait_for_update","arguments":{"id":"100000000000000000000001","timeout_seconds":30}}
+   ```
+
+   Each wait is bounded by time and ten reads. `poll_limit` can arrive before
+   thirty seconds; `deadline` is incomplete observation. Repeat the **read-only
+   wait**, with the same saved ID, in this or a new default read-only session.
+   Permission loss/read failure retains the ID/latest observation. Cancelling
+   local observation does not cancel Core's operation.
+
+   If the submission reply was lost and no ID is known, retain uncertainty and
+   use [bounded reconciliation](operations.md#recover-an-interrupted-submission-without-repeating-execution)
+   with the saved context. Zero candidates never proves non-acceptance; one or
+   several candidates never establishes attribution automatically. Another caller
+   can issue an identical operation. Recovery never executes again. A new
+   explicit operation can repeat effects; there is no upstream invocation key or
+   exactly-once guarantee across client retries.
+7. End with an independent health observation, including after a successful Core
+   update:
+
+   ```json
+   {"name":"stack_diagnose","arguments":{"id":"000000000000000000000002"}}
+   {"name":"fleet_health","arguments":{}}
+   ```
+
+   Inspect the Stack's service evidence, Deployment health and source gaps.
+   Complete/succeeded execution and healthy workload are separate conclusions;
+   failed recent updates can also remain diagnosis evidence.
+
+## Deterministic stdio validation
+
+From the repository root:
+
+```sh
+cargo test --locked --test operations_stdio --test incident_stdio --test quickstart
+```
+
+Cargo builds and launches the production binary with synthetic loopback Core
+fixtures and the official rmcp client. No live Core, Docker, inherited Core
+credentials or network service is needed. The integrated transcript covers all
+four actions on Stack/Deployment and whole/named scope, read-only defaults,
+asynchronous denied/busy/rollout failures, local timeout/resume, successful
+execution with unhealthy service evidence, configured hooks/dependencies,
+invalid selectors/Swarm filters, and independent callers with process loss and
+read-only reconciliation. Existing incident and quickstart workflows remain
+part of the command. Request counts prove no execution from observation/recovery.
+The standalone [inventory mock](mock-stdio.md) serves reads only.
+
+## Opt-in disposable Core/Periphery smoke
+
+Use Python 3.11+, the pinned Rust toolchain, Docker and Compose on a local Unix
+socket context that can run a privileged nested Docker daemon. Commit the
+candidate and use a clean checkout. Select the context explicitly and choose an
+unused project name; the runner refuses to adopt an existing project:
+
+```sh
+python3 scripts/disposable_core_smoke.py \
+  --docker-context desktop-linux \
+  --project komodo-mcp-smoke-v030 \
+  --evidence target/disposable-core-v030.json
+```
+
+Replace `desktop-linux` with your intended local context (for example `default`
+on Linux). Choose a new evidence path on subsequent runs; existing evidence is
+preserved. The runner builds the actual Cargo-reported release executable from
+the clean commit and verifies its MCP identity/current package version. It uses
+the checked-in [Compose fixture](../tests/fixtures/disposable-core/README.md),
+Core/Periphery **2.3.2**, Mongo **7.0.16**, Docker **27.5.1-dind**, and a two-service
+BusyBox **1.37.0** workload. Versions observed inside the environment are recorded.
+This Server-backed smoke makes no live Swarm or multi-version claim.
+
+Only the disposable Core gets a dynamically allocated `127.0.0.1` port. Periphery
+uses the private nested daemon, without the host Docker socket or host workload
+mounts. Provisioning uses a separate temporary admin; MCP children receive only
+scoped enabled non-admin Execute/Read identities. Keys expire after one hour.
+API calls disable redirects/proxies, MCP stderr is drained/bounded, and commands,
+RPCs, responses, waits and shutdowns have bounds. Private files use a private
+temporary directory and mode 0600. No real-Core address or credential input is
+accepted by this runner.
+
+The smoke deploys the Stack/Deployment, exercises whole and named lifecycle,
+checks saved deploy-hook stages and existing-container dependency effects,
+observes a denied caller's accepted failed update, and uses `get_update` plus
+bounded wait/resume. Lost-ACK service operations and two independent callers
+remain unknown/unconfirmed after a new read-only session; the fault proxy records
+acknowledged IDs only as test instrumentation. It finishes with read-only
+`stack_diagnose` and `fleet_health`, independently of execution outcomes.
+Both recovery sessions use a separately authenticated Read proxy that counts
+execute attempts before forwarding. The evidence records those measured counters
+and history-request counts; a zero is asserted only after observed recovery reads.
+
+The sanitized JSON records the built commit, executable hash, package/MCP and
+Core/Periphery/Compose/Docker versions, scoped resource/identity IDs, operation
+outcomes, recovery counts, final health and cleanup. Before `compose down -v`,
+the runner verifies this invocation's ownership labels on every project
+container, network and volume; afterwards it requires zero remaining project
+resources and removes temporary credentials/config. Cached third-party images
+are retained. A failure exits nonzero and retains evidence. If cleanup fails,
+the report identifies the private directory and owner label for targeted
+recovery; it never prunes other projects or silently adopts their resources.

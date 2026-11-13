@@ -1,0 +1,163 @@
+{
+  "services": {
+    "mongo": {
+      "image": "mongo:7.0.16",
+      "command": [
+        "--quiet",
+        "--wiredTigerCacheSizeGB",
+        "0.25"
+      ],
+      "environment": {
+        "MONGO_INITDB_ROOT_USERNAME": "smoke",
+        "MONGO_INITDB_ROOT_PASSWORD": "__DATABASE_PASSWORD__"
+      },
+      "volumes": [
+        "mongo-data:/data/db",
+        "mongo-config:/data/configdb"
+      ],
+      "labels": {
+        "komodo-mcp.test.session": "__OWNER__",
+        "komodo-mcp.test.scope": "disposable-stdio-smoke"
+      }
+    },
+    "docker": {
+      "image": "docker:27.5.1-dind",
+      "privileged": true,
+      "environment": {
+        "DOCKER_TLS_CERTDIR": ""
+      },
+      "volumes": [
+        "dind-data:/var/lib/docker",
+        "dind-socket:/var/run"
+      ],
+      "labels": {
+        "komodo-mcp.test.session": "__OWNER__",
+        "komodo-mcp.test.scope": "disposable-stdio-smoke"
+      }
+    },
+    "core": {
+      "image": "ghcr.io/moghtech/komodo-core:2.3.2",
+      "init": true,
+      "depends_on": [
+        "mongo"
+      ],
+      "restart": "on-failure",
+      "environment": {
+        "KOMODO_DATABASE_ADDRESS": "mongo:27017",
+        "KOMODO_DATABASE_USERNAME": "smoke",
+        "KOMODO_DATABASE_PASSWORD": "__DATABASE_PASSWORD__",
+        "KOMODO_HOST": "http://core:9120",
+        "KOMODO_LOCAL_AUTH": "true",
+        "KOMODO_INIT_ADMIN_USERNAME": "smoke-provisioner",
+        "KOMODO_INIT_ADMIN_PASSWORD": "__ADMIN_PASSWORD__",
+        "KOMODO_JWT_SECRET": "__JWT_SECRET__",
+        "KOMODO_PERIPHERY_PUBLIC_KEY": "file:/config/keys/periphery.pub",
+        "KOMODO_FIRST_SERVER_NAME": "mcp-smoke-server",
+        "KOMODO_DISABLE_INIT_RESOURCES": "true",
+        "KOMODO_DISABLE_USER_REGISTRATION": "true",
+        "KOMODO_DISABLE_NON_ADMIN_CREATE": "true",
+        "KOMODO_ENABLE_NEW_USERS": "false",
+        "KOMODO_TRANSPARENT_MODE": "false",
+        "KOMODO_MONITORING_INTERVAL": "1-sec",
+        "KOMODO_LOGGING_PRETTY": "false",
+        "KOMODO_PRETTY_STARTUP_CONFIG": "false"
+      },
+      "ports": [
+        {
+          "target": 9120,
+          "published": "0",
+          "host_ip": "127.0.0.1"
+        }
+      ],
+      "volumes": [
+        "keys:/config/keys",
+        "backups:/backups"
+      ],
+      "labels": {
+        "komodo-mcp.test.session": "__OWNER__",
+        "komodo-mcp.test.scope": "disposable-stdio-smoke"
+      }
+    },
+    "periphery": {
+      "image": "ghcr.io/moghtech/komodo-periphery:2.3.2",
+      "init": true,
+      "depends_on": [
+        "core",
+        "docker"
+      ],
+      "restart": "on-failure",
+      "environment": {
+        "PERIPHERY_CORE_ADDRESS": "ws://core:9120",
+        "PERIPHERY_CONNECT_AS": "mcp-smoke-server",
+        "PERIPHERY_CORE_PUBLIC_KEYS": "file:/config/keys/core.pub",
+        "PERIPHERY_ROOT_DIRECTORY": "/etc/komodo",
+        "PERIPHERY_DISABLE_TERMINALS": "true",
+        "PERIPHERY_DISABLE_CONTAINER_TERMINALS": "true",
+        "PERIPHERY_LOGGING_PRETTY": "false",
+        "PERIPHERY_PRETTY_STARTUP_CONFIG": "false",
+        "DOCKER_HOST": "unix:///var/run/docker.sock"
+      },
+      "volumes": [
+        "keys:/config/keys",
+        "dind-socket:/var/run",
+        "periphery-root:/etc/komodo"
+      ],
+      "labels": {
+        "komodo-mcp.test.session": "__OWNER__",
+        "komodo-mcp.test.scope": "disposable-stdio-smoke"
+      }
+    }
+  },
+  "volumes": {
+    "mongo-data": {
+      "labels": {
+        "komodo-mcp.test.session": "__OWNER__",
+        "komodo-mcp.test.scope": "disposable-stdio-smoke"
+      }
+    },
+    "mongo-config": {
+      "labels": {
+        "komodo-mcp.test.session": "__OWNER__",
+        "komodo-mcp.test.scope": "disposable-stdio-smoke"
+      }
+    },
+    "dind-data": {
+      "labels": {
+        "komodo-mcp.test.session": "__OWNER__",
+        "komodo-mcp.test.scope": "disposable-stdio-smoke"
+      }
+    },
+    "dind-socket": {
+      "labels": {
+        "komodo-mcp.test.session": "__OWNER__",
+        "komodo-mcp.test.scope": "disposable-stdio-smoke"
+      }
+    },
+    "keys": {
+      "labels": {
+        "komodo-mcp.test.session": "__OWNER__",
+        "komodo-mcp.test.scope": "disposable-stdio-smoke"
+      }
+    },
+    "backups": {
+      "labels": {
+        "komodo-mcp.test.session": "__OWNER__",
+        "komodo-mcp.test.scope": "disposable-stdio-smoke"
+      }
+    },
+    "periphery-root": {
+      "labels": {
+        "komodo-mcp.test.session": "__OWNER__",
+        "komodo-mcp.test.scope": "disposable-stdio-smoke"
+      }
+    }
+  },
+  "networks": {
+    "default": {
+      "labels": {
+        "komodo-mcp.test.session": "__OWNER__",
+        "komodo-mcp.test.scope": "disposable-stdio-smoke"
+      }
+    }
+  }
+}
