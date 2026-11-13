@@ -301,7 +301,7 @@ async fn raw_secrets_cleanup_identity_runtime_trust_and_reference_changes_invali
         {
             let mut d = core.data.lock().unwrap();
             match change {
-                0 => d.stack["config"]["environment"] = json!("PASSWORD=changed-private-secret"),
+                0 => d.stack["config"]["environment"] = json!("PASSWORD=changed-private-secret\n"),
                 1 => d.stack["info"]["deployed_project_name"] = json!("other-running-project"),
                 2 => {
                     d.containers.get_mut(&"11".repeat(32)).unwrap()["State"]["Status"] =

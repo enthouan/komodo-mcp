@@ -301,11 +301,10 @@ async fn select(client: &CoreClient, t: &Target) -> Result<Selected, AppError> {
     // Preserve complete raw configuration rather than filling omitted echoed
     // fields from SDK defaults during preview or acknowledgement verification.
     if signature(raw_definition(client, t).await?, t.kind)? != definition {
-        return Err(AppError::new(
-            ErrorKind::StalePreview,
-            "resource_delete",
-            None,
-        ));
+        return Err(AppError {
+            field: Some("definition"),
+            ..AppError::new(ErrorKind::StalePreview, "resource_delete", None)
+        });
     }
     if t.kind != ResourceKind::Server && (runtime_name.is_empty() || runtime_name.len() > 256) {
         return Err(AppError::arguments(
