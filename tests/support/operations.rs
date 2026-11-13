@@ -19,7 +19,10 @@ use komodo_client::api::{
         Deploy, DeployStack, RestartDeployment, RestartStack, StartDeployment, StartStack,
         StopDeployment, StopStack,
     },
-    read::{GetDeployment, GetStack, GetUpdate, ListDeployments, ListStacks, ListUpdates},
+    read::{
+        GetDeployment, GetDeploymentLog, GetServerState, GetStack, GetStackLog, GetSystemStats,
+        GetUpdate, ListAlerts, ListAllStackServices, ListDeployments, ListStacks, ListUpdates,
+    },
 };
 use komodo_mcp::{
     capabilities::CapabilityPolicy,
@@ -313,6 +316,48 @@ async fn read(
     };
     if operation == "GetVersion" {
         return json_response(200, json!({"version":"2.3.2"}), false);
+    }
+    // Share actual incident wire shapes for an integrated operation -> health
+    // transcript. Execution outcome deliberately does not change health.
+    let evidence = super::incident::wire();
+    let health = match operation.as_str() {
+        "ListAllStackServices" => {
+            let request: ListAllStackServices = serde_json::from_value(params.clone()).unwrap();
+            assert_eq!(request.stacks, [STACK]);
+            Some(evidence["services"].clone())
+        }
+        "GetServerState" => {
+            let _: GetServerState = serde_json::from_value(params.clone()).unwrap();
+            Some(evidence["server_state"].clone())
+        }
+        "GetSystemStats" => {
+            let _: GetSystemStats = serde_json::from_value(params.clone()).unwrap();
+            Some(evidence["stats"].clone())
+        }
+        "ListAlerts" => {
+            let _: ListAlerts = serde_json::from_value(params.clone()).unwrap();
+            Some(json!({"alerts":[],"next_page":null}))
+        }
+        "GetStackLog" | "GetDeploymentLog" => {
+            if operation == "GetStackLog" {
+                let _: GetStackLog = serde_json::from_value(params.clone()).unwrap();
+            } else {
+                let _: GetDeploymentLog = serde_json::from_value(params.clone()).unwrap();
+            }
+            assert!(
+                params["tail"]
+                    .as_u64()
+                    .is_some_and(|n| (1..=500).contains(&n))
+            );
+            let mut log = evidence["log"].clone();
+            log["stdout"] = json!("web | unhealthy after a successful command\n");
+            log["stderr"] = json!("");
+            Some(log)
+        }
+        _ => None,
+    };
+    if let Some(value) = health {
+        return json_response(200, value, options.chunked);
     }
     if operation == "ListUpdates" {
         let _: ListUpdates = serde_json::from_value(params.clone()).unwrap();

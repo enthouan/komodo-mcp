@@ -368,6 +368,11 @@ available time window. It returns possible candidates with **unconfirmed**
 attribution, including when only one matches. It never resubmits execution; see
 [interrupted-submission recovery](docs/operations.md#recover-an-interrupted-submission-without-repeating-execution).
 
+Follow the [operator walkthrough](docs/operations-walkthrough.md) for inspection,
+an explicit operation, update wait/resume and a final independent health check.
+It includes deterministic compiled-stdio tests and an opt-in disposable
+Core/Periphery 2.3.2 smoke runner with scoped non-admin identities and verified cleanup.
+
 `stack_diagnose` combines inventory, service state, history, alerts and a bounded
 log excerpt. It returns `healthy`, `unhealthy`, or `inconclusive`, with supporting
 IDs and explicit source gaps. See [diagnosis bounds and evidence](docs/diagnostics.md#stack-diagnosis). The
