@@ -8,6 +8,11 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+## v0.3.0
+
+Operate existing workloads with explicit scope, single-submission receipts and
+recoverable observation.
+
 - Verify the complete production stdio inspection/operation/receipt/wait/health
   workflow, independent callers and interrupted recovery with deterministic CI
   scenarios. Add a reproducible operator walkthrough and opt-in disposable
@@ -45,6 +50,65 @@ New changes go under `Unreleased` until the next release is prepared.
   Preserve read-only recovery history and Core's permission authority, including
   denial recorded after execution acknowledgement.
   ([#11](https://github.com/enthouan/komodo-mcp/issues/11))
+
+### Operations and compatibility
+
+Operations are opt-in through `KOMODO_ALLOW_OPERATE=true`; default discovery and
+dispatch remain read-only. Local grants do not replace Core permissions. An
+enabled identity needs the selected workload's Execute permission and the Read,
+Inspect and Logs access used for observation. Configuration editing remains
+future scope, with an independent local grant.
+
+Server-backed Stacks support deploy/start/stop/restart for the whole Stack or one
+exact Compose service; Server-backed Deployments support all four actions for
+the whole workload. Swarm supports whole-Stack/Deployment deploy only. Swarm
+service filters and lifecycle operations are rejected before execution. Invalid
+or unresolved selection never widens to a whole workload.
+
+Deploy applies saved configuration and image policy. Server Deployment deploy
+pulls the selected image/build and recreates its container; Stack deploy follows
+saved auto-pull, build, Compose flags and wrappers. Lifecycle uses existing
+containers and does not apply changed configuration/images or run deploy hooks.
+Service deploy can start dependencies and runs saved pre/post hooks; start can
+start existing dependencies, restart can propagate to configured dependents,
+and stopping a selected service can affect dependent applications. Requested
+service scope is not an isolation guarantee.
+
+Each explicit call submits at most one typed Core execution. Acknowledgement
+establishes acceptance; later permission, busy or rollout failure stays attached
+to that update. Successful execution and workload health are observed separately.
+Lost replies and untrustworthy acknowledgements retain unknown acceptance.
+Known update IDs resume through bounded read-only observation from a new session;
+local wait timeout/cancellation does not cancel the remote operation. Missing-ID
+history searches return unconfirmed candidates, including when only one matches.
+Clock differences, delayed visibility and permissions can hide an accepted
+request. Recovery never automatically resubmits; independent explicit calls can
+repeat effects, with no upstream idempotency or exactly-once guarantee.
+
+See the [operator walkthrough](https://github.com/enthouan/komodo-mcp/blob/4f8d3f8860bb0adffb368753e8b0db7a87f5a373/docs/operations-walkthrough.md)
+for configuration, supported targets, observation bounds and recovery steps.
+
+### Evidence and distribution limits
+
+The supported API/fixture baseline is **Core 2.3.2**. The integrated implementation
+was verified through compiled production stdio and a disposable **Core/Periphery
+2.3.2** Server-backed smoke using scoped non-admin identities, separate
+provisioning credentials and verified cleanup. Live evidence used Compose
+**5.4.0** and isolated Docker **27.5.1**; Swarm contracts are fixture-tested, with
+no live multi-version/Swarm certification claim. The [implementation acceptance
+and live evidence](https://github.com/enthouan/komodo-mcp/issues/74#issuecomment-6844295403)
+retain the exact tested commit, executable identity, measured recovery traffic
+and final independent health observations. Application, MCP protocol and
+Core/SDK versions are independent identities.
+
+Archived benchmark reports retain their actual pre-release source, executable
+and application-version identities. This version/changelog cut does not claim
+new performance measurements or a general performance ranking.
+
+Release artifacts remain an annotated source tag and GitHub Release notes.
+Build the stdio executable from source using the
+[installation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/README.md#fresh-checkout-demo-synthetic-core).
+No container images or native binary packages are distributed in this release.
 
 ## v0.2.0
 
