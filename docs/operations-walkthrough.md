@@ -169,3 +169,13 @@ reads/writes. A separate configuration-only process previews and applies one
 `auto_pull` field, reads back all unrelated saved fields unchanged, measures a
 zero-write no-op and restores the fixture policy. Its proxy captures write field
 names and counts zero execution attempts. Provisioning remains a separate admin.
+
+The configuration-only identity also creates and inspects an inline Stack,
+changes one setting with authoritative source/unrelated-field preservation, and
+verifies that the new definition has no containers. The fixture explicitly enables
+Core's non-admin resource creation policy and grants its Write editor Read/Attach
+on two pre-provisioned Servers. It moves the owned running Stack to a disabled
+Server and back, verifying that Core 2.3.2 preserves the old-target container IDs
+and submits no MCP execution requests. Direct Git, linked Repo, host files and
+Swarm attachments have deterministic stdio fixture coverage only. See
+[configuration effects](configuration.md#runtime-effects).

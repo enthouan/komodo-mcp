@@ -556,6 +556,67 @@ async def exercise_configuration(address, operator, stack_id):
     print('Verified real Core configuration preview/apply and same-identity local permission boundary.',flush=True)
 
 
+async def exercise_stack_definitions(address, editor, stack_id, server_id, alternate_server_id):
+    """Create through MCP, preserve sources, and observe actual reassignment effects."""
+    api = Api(address, {'x-api-key':editor['key'], 'x-api-secret':editor['secret']})
+
+    def containers(project):
+        return run([*COMPOSE, 'exec', '-T', 'docker', 'docker', 'ps', '-aq',
+                    '--filter', 'label=com.docker.compose.project='+project]).splitlines()
+
+    async with LossProxy(address,editor,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,editor,operate=False,configuration_edit=True) as mcp:
+            create = {'name':'mcp-config-created','config':{
+                'attachment':{'kind':'server','target':{'id':server_id}},
+                'source':{'kind':'inline','contents':'services:\n  app:\n    image: busybox:1.37.0\n    command: ["sleep", "600"]\n'},
+                'auto_pull':False}}
+            p = await mcp.tool('preview_stack_create',create)
+            require(proxy.write_attempts == 0 and p['resource']['id'] is None,'creation preview submitted a write')
+            saved = await mcp.tool('apply_stack_create',{**create,'preview_id':p['preview_id']})
+            require(saved['outcome'] == 'saved' and proxy.write_attempts == 1,'creation was not saved once')
+            created_id = saved['resource']['id']
+            inspected = await mcp.tool('get_stack',{'id':created_id})
+            before = await asyncio.to_thread(api.read,'GetStack',{'stack':created_id})
+            edit = {'target':{'id':created_id},'patch':{'auto_pull':True}}
+            p = await mcp.tool('preview_stack_update',edit)
+            require(p['definition']['details']['before']['source']['kind'] == 'inline','inline source was not identified')
+            changed = await mcp.tool('apply_stack_update',{**edit,'preview_id':p['preview_id']})
+            require(changed['outcome'] == 'saved','created Stack partial update failed')
+            after = await asyncio.to_thread(api.read,'GetStack',{'stack':created_id})
+            preserved = all(v == after['config'][k] for k,v in before['config'].items() if k != 'auto_pull')
+            require(preserved and after['config']['auto_pull'],'one-field update changed the saved source or unrelated configuration')
+            require(not await asyncio.to_thread(containers,'mcp-config-created'),'saving the new definition deployed a workload')
+
+            old_containers = await asyncio.to_thread(containers,'mcp-smoke-stack')
+            require(len(old_containers) == 2,'owned running Stack containers were not available for reassignment proof')
+            target_changes = []
+            for target_id in [alternate_server_id,server_id]:
+                edit = {'target':{'id':stack_id},'patch':{
+                    'attachment':{'kind':'server','target':{'id':target_id}}}}
+                p = await mcp.tool('preview_stack_update',edit)
+                require(p['definition']['details']['target_changed'],'target reassignment effect was not identified')
+                changed = await mcp.tool('apply_stack_update',{**edit,'preview_id':p['preview_id']})
+                require(changed['outcome'] == 'saved','target reassignment was not saved')
+                readback = await asyncio.to_thread(api.read,'GetStack',{'stack':stack_id})
+                require(readback['config']['server_id'] == target_id,'saved target was not observed')
+                require(set(await asyncio.to_thread(containers,'mcp-smoke-stack')) == set(old_containers),
+                        'Core reassignment unexpectedly removed or replaced old-target containers')
+                target_changes.append({'target_id':target_id,'saved':True,'old_target_container_ids_preserved':True})
+            require(proxy.execute_attempts == 0,'definition editor submitted execution')
+            require([w['type'] for w in proxy.write_operations] == ['CreateStack','UpdateStack','UpdateStack','UpdateStack'],
+                    'definition editor submitted an unrelated write')
+            require(proxy.write_operations[1]['fields'] == ['auto_pull'],'one-field update sent unrelated fields')
+            REPORT['stack_definitions'] = {'created_id':created_id,'inspected_id':inspected['id'],
+                'creation_preview_writes':0,'creation_apply_writes':1,
+                'one_field_source_and_unrelated_configuration_preserved':preserved,
+                'new_definition_workload_count':0,'target_reassignments':target_changes,
+                'configuration_only_execute_attempts':proxy.execute_attempts,'writes':proxy.write_operations,
+                'live_matrix':['inline Compose on Server','Server target reassignment and restoration'],
+                'fixture_only_matrix':['direct Git','linked Repo','host files','Swarm attachment']}
+    persist()
+    print('Verified real Core Stack creation, source-preserving edit and old-target reassignment behavior.',flush=True)
+
+
 def exercise_environment():
     addresses = run([*COMPOSE, 'port', 'core', '9120']).splitlines()
     if len(addresses) != 1 or not re.fullmatch(r'127\.0\.0\.1:\d+', addresses[0]):
@@ -578,13 +639,18 @@ def exercise_environment():
     if len(matches) != 1:
         raise Failure('exact disposable Server was not provisioned')
     server_id = identity(matches[0])
+    alternate = admin.write('CreateServer', {'name':'mcp-smoke-alternate','config':{
+        'address':'http://unreachable.invalid:8120','enabled':False}})
+    alternate_server_id = identity(alternate)
     poll(lambda: admin.read('GetServerState', {'server': server_id})['status'] == 'Ok', 'private Periphery/daemon readiness')
     periphery = admin.read('GetPeripheryInformation', {'server': server_id})
     if periphery['version'] != CORE_VERSION:
         raise Failure('disposable Periphery version mismatch')
     REPORT['periphery_version'] = periphery['version']
     REPORT['docker_version'] = poll(lambda: run([*COMPOSE, 'exec', '-T', 'docker', 'docker', 'version', '--format', '{{.Server.Version}}']), 'isolated Docker daemon readiness')
-    REPORT['scope'] = {'server_id': server_id, 'non_admin_identities': [], 'host_docker_socket_mounted': False}
+    REPORT['scope'] = {'server_id': server_id, 'alternate_server_id':alternate_server_id,
+        'non_admin_identities': [], 'host_docker_socket_mounted': False,
+        'core_non_admin_creation_enabled_for_fixture':True}
     stack = admin.write('CreateStack', {'name': 'mcp-smoke-stack', 'config': {
         'server_id': server_id, 'project_name': 'mcp-smoke-stack', 'auto_pull': False,
         'file_contents': 'services:\n  db:\n    image: busybox:1.37.0\n    command: ["sh", "-c", "sleep 600"]\n  web:\n    image: busybox:1.37.0\n    command: ["sh", "-c", "sleep 600"]\n    depends_on:\n      db:\n        condition: service_started\n        restart: true\n',
@@ -606,7 +672,12 @@ def exercise_environment():
         admin.write('UpdateUserBasePermissions', {'user_id': user_id, 'enabled': True, 'create_servers': False, 'create_builds': False})
         for kind, resource_id, grant in [('Server', server_id, 'Read'), ('Stack', stack_id, level), ('Deployment', deployment_id, level)]:
             admin.write('UpdatePermissionOnTarget', {'user_target': {'type': 'User', 'id': user_id},
-                'resource_target': {'type': kind, 'id': resource_id}, 'permission': {'level': grant, 'specific': ['Inspect', 'Logs']}})
+                'resource_target': {'type': kind, 'id': resource_id}, 'permission': {'level': grant,
+                'specific': ['Attach'] if kind == 'Server' and level == 'Write' else ['Inspect', 'Logs']}})
+        if level == 'Write':
+            admin.write('UpdatePermissionOnTarget', {'user_target': {'type':'User','id':user_id},
+                'resource_target':{'type':'Server','id':alternate_server_id},
+                'permission':{'level':'Read','specific':['Attach']}})
         keys = admin.write('CreateApiKeyForServiceUser', {'user_id': user_id, 'name': 'disposable-mcp-smoke', 'expires': int(time.time()*1000)+3600000})
         SECRETS.extend([keys['key'], keys['secret']])
         caller = Api(address, {'x-api-key': keys['key'], 'x-api-secret': keys['secret']}).request('/user')
@@ -622,6 +693,7 @@ def exercise_environment():
     REPORT['compose_version'] = run([*COMPOSE, 'exec', '-T', 'periphery', 'docker', 'compose', 'version', '--short'])
     asyncio.run(exercise(address, credentials[0],credentials[1],stack_id,deployment_id))
     asyncio.run(exercise_configuration(address,credentials[2],stack_id))
+    asyncio.run(exercise_stack_definitions(address,credentials[2],stack_id,server_id,alternate_server_id))
     services = Api(address, {'x-api-key': credentials[0]['key'], 'x-api-secret': credentials[0]['secret']}).read('ListAllStackServices', {'stacks': [stack_id]})
     REPORT['observed_services'] = [{'service': s['service'], 'state': s['state']} for s in services]
     if not {'web','db'} <= {s['service'] for s in services}:

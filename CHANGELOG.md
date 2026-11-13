@@ -8,6 +8,13 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Extend the shared typed Stack preview/apply flow with creation, inline/Git/
+  linked-Repo/host source declarations and existing Server/Swarm attachments.
+  Preserve omitted source fields, bind raw referenced definitions, separate
+  desired configuration from runtime observations, and disclose Core auto-deploy
+  and old-target workload effects. Definition saves submit no execution or file
+  mutation requests. ([#17](https://github.com/enthouan/komodo-mcp/issues/17))
+
 - Add trusted typed Stack configuration preview/apply with private authoritative
   baselines, explicit omission/clear/no-op behavior, redacted field changes,
   single-use previews and bounded single-submission uncertainty. Preserve

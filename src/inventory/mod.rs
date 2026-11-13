@@ -4,13 +4,18 @@ mod types;
 pub use types::*;
 
 use komodo_client::{
-    api::read::{GetDeployment, GetServer, GetStack, ListDeployments, ListServers, ListStacks},
+    api::read::{
+        GetDeployment, GetRepo, GetServer, GetStack, GetSwarm, ListDeployments, ListRepos,
+        ListServers, ListStacks, ListSwarms,
+    },
     entities::{
         ResourceTargetVariant,
         deployment::{Deployment, DeploymentListItem, DeploymentState as CoreDeploymentState},
+        repo::{Repo, RepoListItem},
         resource::ResourceListItem,
-        server::{ServerListItem, ServerState as CoreServerState},
+        server::{Server, ServerListItem, ServerState as CoreServerState},
         stack::{Stack, StackListItem, StackState as CoreStackState},
+        swarm::{Swarm, SwarmListItem},
     },
 };
 use rmcp::model::{CallToolResult, JsonObject};
@@ -293,6 +298,8 @@ macro_rules! reader {
 reader!(servers, ListServers, ServerListItem, Server);
 reader!(stacks, ListStacks, StackListItem, Stack);
 reader!(deployments, ListDeployments, DeploymentListItem, Deployment);
+reader!(swarms, ListSwarms, SwarmListItem, Swarm);
+reader!(repos, ListRepos, RepoListItem, Repo);
 
 fn nonempty(value: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_owned())
@@ -466,6 +473,17 @@ pub async fn list_deployments(
 }
 
 pub async fn get_server(client: &CoreClient, input: DetailInput) -> Result<ServerDetail, AppError> {
+    let (summary, full) = resolve_server(client, input).await?;
+    Ok(ServerDetail {
+        summary: server_summary(summary),
+        enabled: full.config.enabled,
+    })
+}
+
+pub(crate) async fn resolve_server(
+    client: &CoreClient,
+    input: DetailInput,
+) -> Result<(ServerListItem, Server), AppError> {
     let selector = input.validate("GetServer")?;
     let summary = resolve(client, &selector, "ListServers", |search, page, limit| {
         servers(client, search, page, limit)
@@ -477,10 +495,43 @@ pub async fn get_server(client: &CoreClient, input: DetailInput) -> Result<Serve
         })
         .await?;
     check_identity(&summary, &full.id, &full.name, full.template, "GetServer")?;
-    Ok(ServerDetail {
-        summary: server_summary(summary),
-        enabled: full.config.enabled,
+    Ok((summary, full))
+}
+
+pub(crate) async fn resolve_swarm(
+    client: &CoreClient,
+    input: DetailInput,
+) -> Result<(SwarmListItem, Swarm), AppError> {
+    let selector = input.validate("GetSwarm")?;
+    let summary = resolve(client, &selector, "ListSwarms", |search, page, limit| {
+        swarms(client, search, page, limit)
     })
+    .await?;
+    let full = client
+        .read(GetSwarm {
+            swarm: summary.id.clone(),
+        })
+        .await?;
+    check_identity(&summary, &full.id, &full.name, full.template, "GetSwarm")?;
+    Ok((summary, full))
+}
+
+pub(crate) async fn resolve_repo(
+    client: &CoreClient,
+    input: DetailInput,
+) -> Result<(RepoListItem, Repo), AppError> {
+    let selector = input.validate("GetRepo")?;
+    let summary = resolve(client, &selector, "ListRepos", |search, page, limit| {
+        repos(client, search, page, limit)
+    })
+    .await?;
+    let full = client
+        .read(GetRepo {
+            repo: summary.id.clone(),
+        })
+        .await?;
+    check_identity(&summary, &full.id, &full.name, full.template, "GetRepo")?;
+    Ok((summary, full))
 }
 pub async fn get_stack(client: &CoreClient, input: DetailInput) -> Result<StackDetail, AppError> {
     get_stack_observation(client, input, 0)

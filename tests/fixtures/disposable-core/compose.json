@@ -55,7 +55,7 @@
         "KOMODO_FIRST_SERVER_NAME": "mcp-smoke-server",
         "KOMODO_DISABLE_INIT_RESOURCES": "true",
         "KOMODO_DISABLE_USER_REGISTRATION": "true",
-        "KOMODO_DISABLE_NON_ADMIN_CREATE": "true",
+        "KOMODO_DISABLE_NON_ADMIN_CREATE": "false",
         "KOMODO_ENABLE_NEW_USERS": "false",
         "KOMODO_TRANSPARENT_MODE": "false",
         "KOMODO_MONITORING_INTERVAL": "1-sec",

@@ -140,6 +140,7 @@ impl CoreClient {
     {
         let operation = match T::req_type() {
             "UpdateStack" => "UpdateStack",
+            "CreateStack" => "CreateStack",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "write", None)),
         };
         crate::configuration::require_edit(self)?;
@@ -203,6 +204,10 @@ impl CoreClient {
             "GetStack" => "GetStack",
             "ListDeployments" => "ListDeployments",
             "GetDeployment" => "GetDeployment",
+            "GetSwarm" => "GetSwarm",
+            "ListSwarms" => "ListSwarms",
+            "GetRepo" => "GetRepo",
+            "ListRepos" => "ListRepos",
             "GetServerState" => "GetServerState",
             "GetSystemStats" => "GetSystemStats",
             "ListAllStackServices" => "ListAllStackServices",
