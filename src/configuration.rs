@@ -42,6 +42,8 @@ pub(crate) fn present<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
 #[derive(Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StackPatch {
+    /// Applying a supplied source needs both local operate and configuration-edit
+    /// grants, regardless of Core's current auto_update policy. Creation is separate.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -252,6 +254,22 @@ pub(crate) fn require_edit(client: &CoreClient) -> Result<(), AppError> {
     Ok(())
 }
 
+pub(crate) fn require_source_operate(
+    client: &CoreClient,
+    source_submitted: bool,
+) -> Result<(), AppError> {
+    if source_submitted && !client.capabilities().allows(Capability::Operate) {
+        return Err(AppError {
+            field: Some("KOMODO_ALLOW_OPERATE"),
+            correction: Some(
+                "Stack source updates require both operate and configuration-edit grants because Core can auto-deploy. The saved auto_update value can race; no request was submitted.",
+            ),
+            ..AppError::new(ErrorKind::CapabilityDisabled, "UpdateStack", None)
+        });
+    }
+    Ok(())
+}
+
 impl StackPatch {
     fn validate(&self, client: &CoreClient) -> Result<(), AppError> {
         let value = serde_json::to_value(self).expect("typed patch");
@@ -390,7 +408,8 @@ fn result_for_stack(
         "Apply consumes the ten-minute process-local preview, rechecks authoritative configuration and references, and submits at most once. Core has no conditional write or invocation idempotency: another writer can race after the final reads.",
     ];
     if source_check && current.is_some() {
-        effects.push(if auto_deploy {"Submitted source fields trigger Core CheckStackForUpdate. The saved auto_update policy is enabled: Core itself can automatically deploy, even when the MCP operate grant is disabled."} else {"Submitted source fields trigger Core CheckStackForUpdate. The previewed saved auto_update policy is disabled; policy changes after our final read can still race."});
+        effects.push("Applying a supplied source requires both local configuration-edit and operate grants, even when auto_update is currently disabled or the source is unchanged, because Core's policy can race. A configuration-only caller can preview but cannot submit it.");
+        effects.push(if auto_deploy {"Submitted source fields trigger Core CheckStackForUpdate. The saved auto_update policy is enabled: Core itself can automatically deploy. Applying this source requires both local operate and configuration-edit grants."} else {"Submitted source fields trigger Core CheckStackForUpdate. The previewed saved auto_update policy is disabled; policy changes after our final read can still race."});
     }
     if target_changed {
         effects.push("The pinned SDK warns about old-target cleanup. The inspected Core 2.3.2 UpdateStack implementation does not tear down the old target; old workloads may remain. It refreshes caches using the new target. Inspect both targets separately.");
@@ -421,6 +440,7 @@ fn result_for_stack(
             resolved_references: prepared.reference_summaries.clone(),
             observed_runtime_state: runtime,
             core_auto_deploy_possible: auto_deploy,
+            requires_operate_to_apply: source_check && current.is_some(),
             target_changed,
             old_target_cleanup: "not_performed_by_inspected_core_2_3_2_update_path",
         })),
@@ -513,6 +533,7 @@ pub async fn apply_stack_update(
     input: StackApplyInput,
 ) -> Result<ConfigurationResult, AppError> {
     require_edit(client)?;
+    require_source_operate(client, input.patch.source.is_some())?;
     input.patch.validate(client)?;
     let submitted = StackPreviewInput {
         target: input.target.clone(),

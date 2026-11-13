@@ -143,6 +143,9 @@ creation permission for new Stacks, and Read/Attach on new Server/Swarm/Repo
 references remain required. See the [configuration workflow](docs/configuration.md)
 for inline/Git/host sources, partial fields, secret handling, stale previews,
 Core auto-deploy effects, no-op and uncertain submissions.
+Applying a supplied Stack source requires both local grants because Core can
+auto-deploy; configuration-only access still permits creation and ordinary
+settings/attachment edits.
 
 Use an enabled non-admin Core identity with `Read` on the resources being
 inspected. Deploy, start, stop and restart require Core `Execute` on the selected

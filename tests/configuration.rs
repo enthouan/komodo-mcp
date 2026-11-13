@@ -383,6 +383,53 @@ fn no_executions(core: &Core) {
 }
 
 #[tokio::test]
+async fn source_updates_require_both_grants_before_reads_even_with_disabled_or_racing_auto_update()
+{
+    for auto_update in [false, true] {
+        let core = Core::start().await;
+        let (process, session) = Process::start_profile(&core.address, false, true).await;
+        let tools = session.list_tools(None).await.unwrap().tools;
+        let apply_tool = tools
+            .iter()
+            .find(|t| t.name == "apply_stack_update")
+            .unwrap();
+        assert!(
+            apply_tool
+                .description
+                .as_ref()
+                .unwrap()
+                .contains("BOTH operate and configuration-edit")
+        );
+        for source in [
+            json!({"kind":"inline","contents":"services: {}"}),
+            json!({"kind":"git","repo":"fixtures/compose"}),
+            json!({"kind":"linked_repo","target":{"id":fixture::REPO}}),
+            json!({"kind":"host","run_directory":"/owned/compose","file_paths":[]}),
+        ] {
+            core.data.lock().unwrap().stack["config"]["auto_update"] = json!(auto_update);
+            let input = args(json!({"source":source}));
+            let p = preview(&session, &input).await;
+            assert_eq!(
+                p["definition"]["details"]["requires_operate_to_apply"],
+                true
+            );
+            // Another writer can enable auto-update after a false preview.
+            core.data.lock().unwrap().stack["config"]["auto_update"] = json!(true);
+            let before = core.data.lock().unwrap().requests.len();
+            let denied = call(&session, "apply_stack_update", apply(&input, &p)).await;
+            assert_eq!(
+                denied.structured_content.unwrap()["kind"],
+                "capability_disabled"
+            );
+            assert_eq!(core.data.lock().unwrap().requests.len(), before);
+            assert!(core.writes().is_empty());
+        }
+        no_executions(&core);
+        process.finish(session).await;
+    }
+}
+
+#[tokio::test]
 async fn create_inspect_patch_one_field_preserves_compose_source_and_runtime_observation() {
     let core = Core::start().await;
     let (process, session) = Process::start_profile(&core.address, false, true).await;
@@ -495,7 +542,7 @@ async fn every_declared_source_and_target_is_typed_and_settings_patch_preserves_
 #[tokio::test]
 async fn source_switches_disclose_effects_preserve_omitted_credentials_and_never_write_files() {
     let core = Core::start().await;
-    let (process, session) = Process::start_profile(&core.address, false, true).await;
+    let (process, session) = Process::start_profile(&core.address, true, true).await;
     let before = core.data.lock().unwrap().stack.clone();
     let source = json!({"kind":"git","repo":"fixtures/compose","branch":"release"});
     let input = args(json!({"source":source}));
@@ -557,7 +604,7 @@ async fn source_switches_disclose_effects_preserve_omitted_credentials_and_never
 async fn source_auto_update_and_target_reassignment_effects_are_separate_from_mcp_execution() {
     let core = Core::start().await;
     core.data.lock().unwrap().stack["config"]["auto_update"] = json!(true);
-    let (process, session) = Process::start_profile(&core.address, false, true).await;
+    let (process, session) = Process::start_profile(&core.address, true, true).await;
     let input = args(
         json!({"source":{"kind":"inline","contents":"services: {}"},"attachment":{"kind":"swarm","target":{"name":"fixture-swarm"}}}),
     );
@@ -638,7 +685,7 @@ async fn create_name_races_reference_changes_and_altered_creation_payloads_do_no
 #[tokio::test]
 async fn attached_reference_raw_changes_invalidate_update_and_source_secrets_stay_redacted() {
     let core = Core::start().await;
-    let (process, session) = Process::start_profile(&core.address, false, true).await;
+    let (process, session) = Process::start_profile(&core.address, true, true).await;
     for (index, patch) in [
         json!({"attachment":{"kind":"server","target":{"id":fixture::SERVER}}}),
         json!({"source":{"kind":"linked_repo","target":{"id":fixture::REPO}}}),

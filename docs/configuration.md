@@ -10,6 +10,16 @@ non-admin user needs non-admin creation enabled). Local configuration access alo
 grants none of these permissions. Use the same credentials throughout; no
 permission or credential fallback occurs.
 
+Applying a supplied Stack `source` also requires `KOMODO_ALLOW_OPERATE=true`,
+because Core can auto-deploy after source writes. This requirement applies even
+when the preview observed `auto_update:false` or the supplied source is unchanged:
+that policy can race. Discovery describes the requirement, source previews set
+`requires_operate_to_apply`, and direct source apply is denied locally before any
+Core read/write without both grants. The shared write transport enforces it too.
+Configuration-only callers can still create a definition, preview sources and
+save ordinary settings or attachments. Creation uses a separate Core path with
+no update-triggered auto-deploy and this surface does not enable auto-update.
+
 Resolve the Stack with `get_stack`, then preview with the real stable ID:
 
 ```json
@@ -123,9 +133,10 @@ The MCP editor submits no deployment, lifecycle, host-file-write or Git-commit
 request. Core 2.3.2 refreshes Stack/target caches on definition writes. UpdateStack
 also launches `CheckStackForUpdate` when `repo`, `linked_repo`, `file_contents` or
 `files_on_host` is submitted. If the saved `auto_update` policy is enabled, **Core
-itself can deploy**, including when the MCP operate grant is disabled. Preview
-and result disclose that policy and possibility; they do not promise that saving
-is free of runtime effects. Policy changes after the final read can race.
+itself can deploy**. Therefore source apply requires both local grants,
+independently of the last observed policy. Preview and result disclose that policy
+and possibility; they do not promise that saving is free of runtime effects.
+Policy changes after the final read can race.
 
 The pinned SDK warns that changing the attached Server can clean up the old
 Stack. The inspected **Core 2.3.2 UpdateStack implementation does not perform
@@ -191,7 +202,8 @@ denial, malformed/oversized/lost responses and process restart. The opt-in
 [disposable-Core runner](operations-walkthrough.md#opt-in-disposable-coreperiphery-smoke)
 adds real Core/Periphery 2.3.2 Server-backed inline Compose creation, inspection,
 one-setting source preservation, zero execution submissions and same-identity
-restart/edit permission evidence. It also reassigns an owned running Stack to a
+restart/edit permission evidence. It denies a direct configuration-only source
+update with measured zero Core reads/writes. It also reassigns an owned running Stack to a
 disabled pre-provisioned Server and back, observing unchanged old-target container
 IDs. Direct Git, linked Repo, host-file sources and Swarm attachments have
 deterministic production-stdio fixture coverage; they are not claimed as live

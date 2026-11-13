@@ -20,6 +20,9 @@ Both Servers are provisioned separately. The editor creates an inline Stack,
 patches one field, and moves the running original Stack to the alternate Server
 and back while observing old-target containers. No live Git/host/Swarm claim is
 made.
+The configuration-only editor can save ordinary settings but its direct source
+update is denied locally with zero Core reads/writes, preserving the independent
+operate boundary against Core auto-deploy.
 All are enabled non-admin users; API keys expire in
 one hour. Provisioning credentials never enter an MCP child. The test workload
 uses BusyBox **1.37.0** and `depends_on.restart: true`; only deploy has saved hooks.

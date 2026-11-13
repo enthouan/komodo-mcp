@@ -179,3 +179,6 @@ Server and back, verifying that Core 2.3.2 preserves the old-target container ID
 and submits no MCP execution requests. Direct Git, linked Repo, host files and
 Swarm attachments have deterministic stdio fixture coverage only. See
 [configuration effects](configuration.md#runtime-effects).
+The editor also previews a source update and directly attempts apply without the
+operate grant: the local denial performs zero Core reads/writes. Source apply
+requires both grants even when the current auto-update policy is disabled.

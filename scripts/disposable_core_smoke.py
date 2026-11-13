@@ -606,11 +606,24 @@ async def exercise_stack_definitions(address, editor, stack_id, server_id, alter
             require([w['type'] for w in proxy.write_operations] == ['CreateStack','UpdateStack','UpdateStack','UpdateStack'],
                     'definition editor submitted an unrelated write')
             require(proxy.write_operations[1]['fields'] == ['auto_pull'],'one-field update sent unrelated fields')
+            source_edit = {'target':{'id':created_id},'patch':{
+                'source':{'kind':'inline','contents':'services: {}'}}}
+            p = await mcp.tool('preview_stack_update',source_edit)
+            require(p['definition']['details']['requires_operate_to_apply'],'source preview omitted the operate requirement')
+            reads, writes = dict(proxy.read_operations), proxy.write_attempts
+            denied = await mcp.rpc('tools/call',{'name':'apply_stack_update','arguments':{
+                **source_edit,'preview_id':p['preview_id']}})
+            require(denied.get('isError') and denied['structuredContent']['kind'] == 'capability_disabled',
+                    'configuration-only source update bypassed the operate grant')
+            require(proxy.read_operations == reads and proxy.write_attempts == writes,
+                    'configuration-only source update reached Core')
             REPORT['stack_definitions'] = {'created_id':created_id,'inspected_id':inspected['id'],
                 'creation_preview_writes':0,'creation_apply_writes':1,
                 'one_field_source_and_unrelated_configuration_preserved':preserved,
                 'new_definition_workload_count':0,'target_reassignments':target_changes,
                 'configuration_only_execute_attempts':proxy.execute_attempts,'writes':proxy.write_operations,
+                'source_update_without_operate_denied_locally':True,
+                'denied_source_update_core_reads':0,'denied_source_update_core_writes':0,
                 'live_matrix':['inline Compose on Server','Server target reassignment and restoration'],
                 'fixture_only_matrix':['direct Git','linked Repo','host files','Swarm attachment']}
     persist()

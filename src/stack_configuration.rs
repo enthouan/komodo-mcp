@@ -172,6 +172,7 @@ pub struct DefinitionPreview {
     /// Observation at preview time, never inferred from a successful save.
     pub observed_runtime_state: Option<String>,
     pub core_auto_deploy_possible: bool,
+    pub requires_operate_to_apply: bool,
     pub target_changed: bool,
     pub old_target_cleanup: &'static str,
 }
