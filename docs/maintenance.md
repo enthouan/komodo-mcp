@@ -17,9 +17,13 @@ Before merging a Core SDK update, inspect that version's authoritative read API,
 update compatibility/permission fixtures, and rerun the real stdio tests. An MCP
 SDK change also needs lifecycle, tool-schema, and subprocess verification.
 
-`dtolnay/rust-toolchain` updates are separate because the workflow compiler,
-`rust-toolchain.toml`, and documented compiler must stay aligned. A 0.x minor
-dependency update can change compatibility and still requires review.
+`dtolnay/rust-toolchain` updates are separate. Both workflows pin an action
+commit from its input-capable `master` branch and explicitly select Rust 1.99.1
+with `toolchain`. Version-named action revisions hard-code their compiler and
+can name Rust versions that have not been released. Review action implementation
+updates independently; deliberate compiler updates must keep both workflows,
+`rust-toolchain.toml`, `.tool-versions`, and the documented compiler aligned.
+A 0.x minor dependency update can change compatibility and still requires review.
 
 The benchmark reference is an external checkout pinned in
 [`benchmarks/bench.py`](../benchmarks/bench.py), not a local npm dependency.

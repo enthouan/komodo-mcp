@@ -8,6 +8,10 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Pin the Rust setup action by commit and explicitly retain compiler 1.99.1 in
+  CI and benchmarks, so action updates do not select an unavailable compiler.
+  ([#66](https://github.com/enthouan/komodo-mcp/pull/66))
+
 ## v0.3.0
 
 Operate existing workloads with explicit scope, single-submission receipts and
