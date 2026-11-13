@@ -121,7 +121,7 @@ The process reads two independent optional grants at startup:
 | Variable | Default | Enables |
 | --- | --- | --- |
 | `KOMODO_ALLOW_OPERATE` | `false` | Single-workload deployment tools |
-| `KOMODO_ALLOW_CONFIGURATION_EDIT` | `false` | Configuration-edit tools as they become available |
+| `KOMODO_ALLOW_CONFIGURATION_EDIT` | `false` | Typed configuration preview/apply tools |
 
 Each value must be exactly `true` or `false`. An unset variable means `false`;
 an empty, misspelled, whitespace-padded, or non-Unicode value fails startup with
@@ -134,10 +134,12 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All fourteen existing read tools remain locally available in every grant
+All sixteen existing read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
-belongs to a later milestone; its grant currently exposes no production tools.
+adds `preview_stack_update` and `apply_stack_update`; Core `Write` on that Stack
+is required to save. See the [configuration workflow](docs/configuration.md) for
+partial fields, secret handling, stale previews, no-op and uncertain submissions.
 
 Use an enabled non-admin Core identity with `Read` on the resources being
 inspected. Deploy, start, stop and restart require Core `Execute` on the selected

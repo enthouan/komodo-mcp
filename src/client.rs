@@ -5,6 +5,7 @@ use komodo_client::{
     api::{
         execute::KomodoExecuteRequest,
         read::{GetVersion, KomodoReadRequest},
+        write::KomodoWriteRequest,
     },
 };
 use reqwest::{Client, redirect::Policy};
@@ -42,6 +43,8 @@ struct Inner {
     sdk: KomodoClient,
     bounded_request: reqwest::RequestBuilder,
     execute_request: reqwest::RequestBuilder,
+    write_request: reqwest::RequestBuilder,
+    previews: crate::configuration::PreviewStore,
     policy: RequestPolicy,
     redactor: Redactor,
     capabilities: CapabilityPolicy,
@@ -100,12 +103,18 @@ impl CoreClient {
             .post(format!("{}/execute", config.address))
             .header("x-api-key", &config.key)
             .header("x-api-secret", &config.secret);
+        let write_request = http
+            .post(format!("{}/write", config.address))
+            .header("x-api-key", &config.key)
+            .header("x-api-secret", &config.secret);
         let sdk = KomodoClient::new(config.address, config.key, config.secret).set_reqwest(http);
         Ok(Self(
             Arc::new(Inner {
                 sdk,
                 bounded_request,
                 execute_request,
+                write_request,
+                previews: Default::default(),
                 policy,
                 redactor,
                 capabilities,
@@ -116,6 +125,30 @@ impl CoreClient {
 
     pub fn capabilities(&self) -> CapabilityPolicy {
         self.0.capabilities
+    }
+
+    pub(crate) fn previews(&self) -> &crate::configuration::PreviewStore {
+        &self.0.previews
+    }
+
+    /// One typed configuration submission. No redirects, mutation retries or
+    /// credential fallback; the same deadlines and streaming body cap apply.
+    pub(crate) async fn write<T>(&self, request: T) -> Result<T::Response, AppError>
+    where
+        T: Serialize + KomodoWriteRequest,
+        T::Response: DeserializeOwned,
+    {
+        let operation = match T::req_type() {
+            "UpdateStack" => "UpdateStack",
+            _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "write", None)),
+        };
+        crate::configuration::require_edit(self)?;
+        tokio::time::timeout(
+            self.0.policy.operation_timeout,
+            self.request_bounded_body(&self.0.write_request, request, T::req_type(), operation),
+        )
+        .await
+        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
     }
 
     /// One explicit typed submission, over the existing authenticated pool.

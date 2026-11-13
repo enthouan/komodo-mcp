@@ -23,6 +23,8 @@ pub enum ErrorKind {
     ResponseTooLarge,
     CapabilityDisabled,
     UnsupportedTarget,
+    StalePreview,
+    InvalidPreview,
 }
 
 impl ErrorKind {
@@ -42,6 +44,8 @@ impl ErrorKind {
             Self::ResponseTooLarge => "response_too_large",
             Self::CapabilityDisabled => "capability_disabled",
             Self::UnsupportedTarget => "unsupported_target",
+            Self::StalePreview => "stale_preview",
+            Self::InvalidPreview => "invalid_preview",
         }
     }
 
@@ -83,6 +87,12 @@ impl ErrorKind {
             Self::UnsupportedTarget => {
                 "This workload or requested scope is unsupported; inspect the supported target matrix. No execution was submitted."
             }
+            Self::StalePreview => {
+                "The authoritative definition changed. Inspect it and prepare a new preview; no write was submitted."
+            }
+            Self::InvalidPreview => {
+                "The preview is missing, expired, consumed, or does not match this target and patch. Prepare a new preview; no write was submitted."
+            }
         }
     }
 }
@@ -116,6 +126,9 @@ impl AppError {
     pub(crate) fn response_too_large(operation: &'static str, status: StatusCode) -> Self {
         let mut error = Self::new(ErrorKind::ResponseTooLarge, operation, Some(status));
         error.correction = match operation {
+            "UpdateStack" => Some(
+                "The configuration may already have been saved. Inspect the definition; never automatically repeat the write.",
+            ),
             "DeployStack" | "Deploy" => Some(
                 "Submission may have been accepted. Inspect update history; never automatically repeat execution.",
             ),
@@ -131,7 +144,9 @@ impl AppError {
             _ => None,
         };
         if error.correction.is_some() {
-            error.message = if matches!(operation, "DeployStack" | "Deploy") {
+            error.message = if operation == "UpdateStack" {
+                "Core configuration response exceeded its input budget."
+            } else if matches!(operation, "DeployStack" | "Deploy") {
                 "Core execution acknowledgement exceeded its input budget."
             } else {
                 "Core incident data exceeded its input budget."
@@ -147,7 +162,9 @@ impl AppError {
     ) -> Self {
         Self {
             kind,
-            message: if kind == ErrorKind::PermissionDenied
+            message: if kind == ErrorKind::PermissionDenied && operation == "UpdateStack" {
+                "Core denied configuration editing; check Write access on this Stack for the same identity. No credential fallback was attempted."
+            } else if kind == ErrorKind::PermissionDenied
                 && matches!(operation, "DeployStack" | "Deploy")
             {
                 "Core denied execution; check Execute access on the selected workload for this identity."
@@ -303,8 +320,10 @@ fn core_2_3_2_permission_message(message: &str) -> bool {
         "Alerter",
     ];
     RESOURCE_TYPES.iter().any(|resource| {
-            message == format!("User does not have required permissions on this {resource}. Must have at least Read permissions")
+        ["Read", "Write", "Execute"].iter().any(|level| {
+            message == format!("User does not have required permissions on this {resource}. Must have at least {level} permissions")
         })
+    })
 }
 
 impl fmt::Display for AppError {

@@ -328,8 +328,13 @@ class ObservationTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.to_thread(api.request,'/execute','RestartStack',{'stack':'synthetic-stack'})
                 self.assertEqual(proxy.execute_attempts,1)
                 self.assertEqual(proxy.ids,['100000000000000000000001'])
+                await asyncio.to_thread(api.write,'UpdateStack',{'id':'synthetic-stack','config':{'environment':'private-fixture-value'}})
+                self.assertEqual(proxy.write_attempts,1)
+                self.assertEqual(proxy.write_operations,[{'type':'UpdateStack','fields':['environment']}])
+                self.assertNotIn('private-fixture-value',json.dumps(proxy.write_operations))
         self.assertEqual(received,[('/read',credentials['key'],'ListUpdates'),
-                                   ('/execute',credentials['key'],'RestartStack')])
+                                   ('/execute',credentials['key'],'RestartStack'),
+                                   ('/write',credentials['key'],'UpdateStack')])
 
     async def test_wait_resumes_same_id_after_poll_limit_and_stops_on_read_failure(self):
         class Observer:

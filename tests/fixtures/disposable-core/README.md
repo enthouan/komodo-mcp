@@ -12,8 +12,9 @@ and Docker **27.5.1-dind** provide disposable persistence/runtime only. The nest
 daemon is privileged, with private named volumes and no host Docker socket/binds.
 The only published endpoint is Core on an ephemeral loopback port.
 
-The provisioner creates one Server-backed Stack/Deployment, an Execute operator
-and a Read-only identity. Both are enabled non-admin users; API keys expire in
+The provisioner creates one Server-backed Stack/Deployment, an Execute operator,
+a Read-only identity and a Write editor for the configuration permission proof.
+All are enabled non-admin users; API keys expire in
 one hour. Provisioning credentials never enter an MCP child. The test workload
 uses BusyBox **1.37.0** and `depends_on.restart: true`; only deploy has saved hooks.
 

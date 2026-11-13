@@ -194,12 +194,13 @@ class Mcp:
         await self.close()
 
     @classmethod
-    async def start(cls, address, credentials, operate=True):
+    async def start(cls, address, credentials, operate=True, configuration_edit=False):
         self = cls()
         self.next_id, self.stderr = 0, bytearray()
         env = {'PATH': os.environ.get('PATH', ''), 'KOMODO_ADDRESS': address,
                'KOMODO_API_KEY': credentials['key'], 'KOMODO_API_SECRET': credentials['secret'],
-               'KOMODO_ALLOW_OPERATE': str(operate).lower(), 'RUST_LOG': 'info'}
+               'KOMODO_ALLOW_OPERATE': str(operate).lower(),
+               'KOMODO_ALLOW_CONFIGURATION_EDIT': str(configuration_edit).lower(), 'RUST_LOG': 'info'}
         self.process = await asyncio.create_subprocess_exec(str(BINARY), env=env,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE, limit=MAX_BODY)
@@ -227,7 +228,7 @@ class Mcp:
         self.process.stdin.write(json.dumps(message).encode() + b'\n')
         await asyncio.wait_for(self.process.stdin.drain(), 5)
 
-    async def rpc(self, method, params):
+    async def rpc(self, method, params, allow_error=False):
         self.next_id += 1
         expected = self.next_id
         await self.send({'jsonrpc': '2.0', 'id': expected, 'method': method, 'params': params})
@@ -244,6 +245,8 @@ class Mcp:
                     continue
                 raise Failure('MCP response ID mismatch')
             if 'error' in response:
+                if allow_error:
+                    return {'protocol_error': response['error']['code']}
                 raise Failure('MCP protocol error during ' + method)
             return response['result']
 
@@ -301,6 +304,8 @@ class LossProxy:
         self.api = Api(address, {'x-api-key': credentials['key'], 'x-api-secret': credentials['secret']})
         self.lose_reply = lose_reply
         self.execute_attempts = 0
+        self.write_attempts = 0
+        self.write_operations = []
         self.read_operations = {}
         self.ids = []
         self.connections = set()
@@ -327,13 +332,18 @@ class LossProxy:
             lines = headers.decode('ascii').split('\r\n')
             method, endpoint, _ = lines[0].split(' ')
             fields = {k.lower():v.strip() for k,v in (line.split(':',1) for line in lines[1:] if ':' in line)}
-            if method != 'POST' or endpoint not in ['/read','/execute']: raise Failure('proxy unexpected endpoint')
+            if method != 'POST' or endpoint not in ['/read','/execute','/write']: raise Failure('proxy unexpected endpoint')
             if any(fields.get(k) != v for k,v in self.api.headers.items()): raise Failure('proxy unexpected identity')
             if endpoint == '/execute':
                 self.execute_attempts += 1  # Count attempts before parsing/forwarding/acknowledgement.
+            if endpoint == '/write':
+                self.write_attempts += 1
             size = int(fields['content-length'])
             if not 0 <= size <= MAX_BODY: raise Failure('proxy body exceeded bound')
             request = json.loads(await asyncio.wait_for(reader.readexactly(size), 5))
+            if endpoint == '/write':
+                # Record field names only; configuration values can be secret.
+                self.write_operations.append({'type': request['type'], 'fields': sorted(request['params'].get('config',{}))})
             if endpoint == '/read':
                 operation = request['type']
                 self.read_operations[operation] = self.read_operations.get(operation,0) + 1
@@ -491,6 +501,61 @@ async def exercise(address, operator, reader, stack_id, deployment_id):
     persist()
     print('Verified production stdio operations, recovery and independent health observation.',flush=True)
 
+async def exercise_configuration(address, operator, stack_id):
+    """Same non-admin Write identity, with independent local startup grants."""
+    api = Api(address, {'x-api-key':operator['key'], 'x-api-secret':operator['secret']})
+    async with LossProxy(address,operator,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,operator,operate=True,configuration_edit=False) as mcp:
+            names = {t['name'] for t in (await mcp.rpc('tools/list',{}))['tools']}
+            require('restart_stack' in names and 'apply_stack_update' not in names,
+                    'operate-only discovery must exclude actual configuration editor')
+            receipt = await mcp.tool('restart_stack',{'target':{'id':stack_id},'scope':{'kind':'whole_stack'}})
+            update = await observe(mcp,receipt['update_id'])
+            require(update['outcome'] == 'succeeded','same-identity staging restart failed')
+            reads = dict(proxy.read_operations)
+            denied = await mcp.rpc('tools/call',{'name':'apply_stack_update','arguments':{
+                'target':{'id':stack_id},'patch':{'auto_pull':True},'preview_id':'disabled-direct-call'}},allow_error=True)
+            require('protocol_error' in denied,'direct configuration invocation was not rejected locally')
+            require(proxy.write_attempts == 0 and proxy.read_operations == reads,
+                    'disabled direct editor reached Core')
+            REPORT['configuration_permission_boundary'] = {
+                'same_non_admin_identity':True,'core_workload_permission':'Write',
+                'operate_enabled':True,'configuration_edit_enabled':False,
+                'restart_update_id':receipt['update_id'],'restart_outcome':update['outcome'],
+                'actual_edit_tool':'apply_stack_update','direct_edit_denied_locally':True,
+                'direct_edit_core_reads':0,'configuration_write_attempts':proxy.write_attempts}
+    before = await asyncio.to_thread(api.read,'GetStack',{'stack':stack_id})
+    async with LossProxy(address,operator,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,operator,operate=False,configuration_edit=True) as mcp:
+            input = {'target':{'id':stack_id},'patch':{'auto_pull':not before['config']['auto_pull']}}
+            preview = await mcp.tool('preview_stack_update',input)
+            require(preview['writes_submitted'] == 0 and proxy.write_attempts == 0,'preview submitted a write')
+            saved = await mcp.tool('apply_stack_update',{**input,'preview_id':preview['preview_id']})
+            require(saved['outcome'] == 'saved' and proxy.write_attempts == 1,'typed edit did not save once')
+            after = await asyncio.to_thread(api.read,'GetStack',{'stack':stack_id})
+            require(after['config']['auto_pull'] == input['patch']['auto_pull'],'saved setting not observed')
+            preserved = all(before['config'][key] == after['config'][key] for key in before['config'] if key != 'auto_pull')
+            require(preserved,'partial edit changed unrelated authoritative fields')
+            noop = await mcp.tool('preview_stack_update',input)
+            applied = await mcp.tool('apply_stack_update',{**input,'preview_id':noop['preview_id']})
+            require(noop['outcome'] == applied['outcome'] == 'no_op' and proxy.write_attempts == 1,
+                    'unchanged edit must perform zero additional writes')
+            # Restore the owned fixture's original saved policy through the same editor.
+            restore = {'target':{'id':stack_id},'patch':{'auto_pull':before['config']['auto_pull']}}
+            p = await mcp.tool('preview_stack_update',restore)
+            require((await mcp.tool('apply_stack_update',{**restore,'preview_id':p['preview_id']}))['outcome']=='saved',
+                    'fixture setting restoration failed')
+            require(proxy.execute_attempts == 0,'configuration-only session submitted execution')
+            require(proxy.write_operations == [{'type':'UpdateStack','fields':['auto_pull']}]*2,
+                    'one-field patch included unrelated fields')
+            REPORT['configuration_edits'] = {'preview_writes':0,'apply_writes':1,'no_op_writes':0,
+                'restoration_writes':1,'writes':proxy.write_operations,'unrelated_fields_preserved':preserved,
+                'configuration_only_execute_attempts':proxy.execute_attempts,
+                'saved_configuration_verified':True,'source_target':'inline_compose_on_server'}
+    persist()
+    print('Verified real Core configuration preview/apply and same-identity local permission boundary.',flush=True)
+
+
 def exercise_environment():
     addresses = run([*COMPOSE, 'port', 'core', '9120']).splitlines()
     if len(addresses) != 1 or not re.fullmatch(r'127\.0\.0\.1:\d+', addresses[0]):
@@ -532,7 +597,8 @@ def exercise_environment():
     deployment_id = identity(deployment)
     REPORT['scope'].update(stack_id=stack_id, deployment_id=deployment_id)
     credentials = []
-    for username, level in [('mcp-smoke-operator', 'Execute'), ('mcp-smoke-reader', 'Read')]:
+    for username, level in [('mcp-smoke-operator', 'Execute'), ('mcp-smoke-reader', 'Read'),
+                            ('mcp-smoke-editor', 'Write')]:
         user = admin.write('CreateServiceUser', {'username': username, 'description': 'Disposable komodo-mcp acceptance identity'})
         user_id = identity(user)
         if user['admin'] or user['super_admin']:
@@ -550,11 +616,12 @@ def exercise_environment():
         REPORT['scope']['non_admin_identities'].append({'id': user_id, 'username': username, 'workload_permission': level})
     fd = os.open(ROOT/'test-identities.json', os.O_CREAT|os.O_EXCL|os.O_WRONLY, 0o600)
     with os.fdopen(fd,'w') as output:
-        json.dump({'operator': credentials[0], 'reader': credentials[1]}, output)
+        json.dump({'operator': credentials[0], 'reader': credentials[1], 'editor':credentials[2]}, output)
     poll(lambda: {'web','db'} <= {s['service_name'] for s in admin.read('GetStack', {'stack': stack_id})['info']['latest_services']}, 'latest saved Compose services')
     persist()
     REPORT['compose_version'] = run([*COMPOSE, 'exec', '-T', 'periphery', 'docker', 'compose', 'version', '--short'])
-    asyncio.run(exercise(address, *credentials, stack_id, deployment_id))
+    asyncio.run(exercise(address, credentials[0],credentials[1],stack_id,deployment_id))
+    asyncio.run(exercise_configuration(address,credentials[2],stack_id))
     services = Api(address, {'x-api-key': credentials[0]['key'], 'x-api-secret': credentials[0]['secret']}).read('ListAllStackServices', {'stacks': [stack_id]})
     REPORT['observed_services'] = [{'service': s['service'], 'state': s['state']} for s in services]
     if not {'web','db'} <= {s['service'] for s in services}:

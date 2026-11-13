@@ -17,8 +17,9 @@ the permission authority, including a denial recorded after acknowledgement.
    `KOMODO_ALLOW_CONFIGURATION_EDIT=false`. These are process environment values;
    `.env` files are not loaded. Restart the child after changing capabilities.
    With both optional grants disabled, discovery contains sixteen read tools.
-   Operate adds eight tools; configuration editing is independent and adds no
-   production tools in this milestone. See [client configuration](../README.md#local-capabilities-and-core-permissions).
+   Operate adds eight tools; configuration editing independently adds typed
+   preview/apply tools. See [client configuration](../README.md#local-capabilities-and-core-permissions)
+   and the [configuration workflow](configuration.md).
 2. Initialize your stdio client and call `tools/list`. Resolve an exact workload
    name with `get_stack` / `get_deployment`, then save the returned stable ID.
    Inspect `stack_diagnose` or `fleet_health` before choosing an action.
@@ -131,7 +132,9 @@ This Server-backed smoke makes no live Swarm or multi-version claim.
 Only the disposable Core gets a dynamically allocated `127.0.0.1` port. Periphery
 uses the private nested daemon, without the host Docker socket or host workload
 mounts. Provisioning uses a separate temporary admin; MCP children receive only
-scoped enabled non-admin Execute/Read identities. Keys expire after one hour.
+scoped enabled non-admin Execute, Read and Write identities. Write includes
+upstream Execute; local operate/edit grants remain independent. Keys expire after
+one hour.
 API calls disable redirects/proxies, MCP stderr is drained/bounded, and commands,
 RPCs, responses, waits and shutdowns have bounds. Private files use a private
 temporary directory and mode 0600. No real-Core address or credential input is
@@ -157,3 +160,12 @@ resources and removes temporary credentials/config. Cached third-party images
 are retained. A failure exits nonzero and retains evidence. If cleanup fails,
 the report identifies the private directory and owner label for targeted
 recovery; it never prunes other projects or silently adopts their resources.
+
+The current runner also proves the configuration boundary using the **same
+non-admin Core Write identity**, which includes upstream Execute. With operate
+enabled and configuration editing disabled, a production MCP Stack restart
+succeeds while direct `apply_stack_update` is rejected locally with zero Core
+reads/writes. A separate configuration-only process previews and applies one
+`auto_pull` field, reads back all unrelated saved fields unchanged, measures a
+zero-write no-op and restores the fixture policy. Its proxy captures write field
+names and counts zero execution attempts. Provisioning remains a separate admin.
