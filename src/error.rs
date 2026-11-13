@@ -126,11 +126,12 @@ impl AppError {
     pub(crate) fn response_too_large(operation: &'static str, status: StatusCode) -> Self {
         let mut error = Self::new(ErrorKind::ResponseTooLarge, operation, Some(status));
         error.correction = match operation {
-            "DeleteStack" | "DeleteDeployment" | "DeleteServer" => Some(
-                "Deletion or runtime cleanup may already have occurred. Inspect the exact resource ID and runtime separately; never automatically repeat deletion.",
+            "DeleteStack" | "DeleteDeployment" | "DeleteServer" | "DeleteTag" => Some(
+                "Deletion or cleanup may already have occurred. Inspect the exact resource/tag ID and runtime or assignment effects separately; never automatically repeat deletion.",
             ),
             "UpdateStack" | "CreateStack" | "UpdateDeployment" | "CreateDeployment"
-            | "CreateServer" | "UpdateServer" => Some(
+            | "CreateServer" | "UpdateServer" | "CreateTag" | "RenameTag"
+            | "UpdateResourceMeta" => Some(
                 "The configuration may already have been saved. Inspect the definition; never automatically repeat the write.",
             ),
             "DeployStack" | "Deploy" => Some(
@@ -179,7 +180,15 @@ impl AppError {
     ) -> Self {
         Self {
             kind,
-            message: if kind == ErrorKind::PermissionDenied && operation == "CreateStack" {
+            message: if kind == ErrorKind::PermissionDenied
+                && matches!(operation, "RenameTag" | "DeleteTag")
+            {
+                "Core denied this tag change; rename/delete requires this tag's owner or an admin. Keep the same identity; no retry or credential fallback was attempted."
+            } else if kind == ErrorKind::PermissionDenied && operation == "CreateTag" {
+                "Core denied tag creation; check the enabled caller and Core's non-admin creation policy. No retry or credential fallback was attempted."
+            } else if kind == ErrorKind::PermissionDenied && operation == "UpdateResourceMeta" {
+                "Core denied assignment; check Write on the exact resource for the same enabled identity. No retry or credential fallback was attempted."
+            } else if kind == ErrorKind::PermissionDenied && operation == "CreateStack" {
                 "Core denied Stack creation; check the enabled user's creation permissions, Core's non-admin creation policy, and Read/Attach on the target and linked Repo. No credential fallback was attempted."
             } else if kind == ErrorKind::PermissionDenied
                 && matches!(
@@ -381,6 +390,9 @@ fn core_2_3_2_permission_denial(error: &anyhow::Error) -> bool {
 }
 
 fn core_2_3_2_permission_message(message: &str) -> bool {
+    if message == "user must be tag owner or admin" {
+        return true;
+    }
     const RESOURCE_TYPES: &[&str] = &[
         "Server",
         "Swarm",

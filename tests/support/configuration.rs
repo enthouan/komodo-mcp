@@ -37,6 +37,10 @@ use std::{
 use tokio::net::TcpListener;
 
 #[derive(Clone, Copy, Default)]
+#[allow(
+    dead_code,
+    reason = "Shared reply fixture; each integration binary selects its applicable failure shapes"
+)]
 pub enum WriteReply {
     #[default]
     Valid,
@@ -63,6 +67,12 @@ pub enum WriteReply {
     WriteDenied,
     AttachDenied,
     Delayed,
+    #[allow(dead_code, reason = "Tag-specific required acknowledgement fields")]
+    MissingTagOwner,
+    #[allow(dead_code, reason = "Tag-specific required acknowledgement fields")]
+    WrongTagOwner,
+    #[allow(dead_code, reason = "Tag-specific required acknowledgement fields")]
+    MissingTagColor,
 }
 pub const SERVER: &str = "000000000000000000000001";
 pub const SWARM: &str = "000000000000000000000009";
@@ -79,6 +89,12 @@ pub struct Data {
     pub created_servers: BTreeMap<String, Value>,
     pub post_write_read_status: Option<u16>,
     pub deletion_enabled: bool,
+    pub tags_enabled: bool,
+    pub tags: BTreeMap<String, Value>,
+    pub tag_owner_denied: bool,
+    pub tag_partial_cleanup_error: bool,
+    pub tag_drop_on_assign: bool,
+    pub tag_change_metadata: bool,
     pub containers: BTreeMap<String, Value>,
     pub extra_references: BTreeMap<String, Vec<Value>>,
     pub deletion_updates: Vec<Value>,
@@ -151,6 +167,12 @@ impl Core {
             created_servers: BTreeMap::new(),
             post_write_read_status: None,
             deletion_enabled: false,
+            tags_enabled: false,
+            tags: BTreeMap::new(),
+            tag_owner_denied: false,
+            tag_partial_cleanup_error: false,
+            tag_drop_on_assign: false,
+            tag_change_metadata: false,
             containers: BTreeMap::new(),
             extra_references: BTreeMap::new(),
             deletion_updates: vec![],
@@ -231,6 +253,32 @@ impl Core {
         }
         core
     }
+    #[allow(dead_code, reason = "Specialized tag scenarios share this fixture")]
+    pub async fn start_tags() -> Self {
+        let core = Self::start_deletion().await;
+        {
+            let mut d = core.data.lock().unwrap();
+            d.tags_enabled = true;
+            for (id, name) in [
+                ("000000000000000000007001", "keep"),
+                ("000000000000000000007002", "old-tag"),
+            ] {
+                d.tags.insert(
+                    id.into(),
+                    json!({"_id":{"$oid":id},"name":name,"owner":"fixture-owner","color":"Slate"}),
+                );
+            }
+            d.stack["tags"] = json!(["000000000000000000007001"]);
+            for (family, id) in [
+                ("procedure", "00000000000000000000000e"),
+                ("action", "00000000000000000000000f"),
+                ("resource_sync", "000000000000000000000010"),
+            ] {
+                d.extra_references.insert(family.into(),vec![json!({"_id":{"$oid":id},"name":format!("dependent-{family}"),"template":false,"description":"","tags":[],"config":{},"info":{}})]);
+            }
+        }
+        core
+    }
 }
 fn record(data: &mut Data, headers: &HeaderMap, path: &'static str, value: &Value) {
     data.bad_credentials |= headers.get("x-api-key").and_then(|s| s.to_str().ok()) != Some(KEY)
@@ -263,6 +311,11 @@ async fn read(
             .into_response();
     }
     let operation = value["type"].as_str().unwrap();
+    if data.tags_enabled
+        && let Some(response) = tag_read(&data, &value)
+    {
+        return response;
+    }
     if data.deletion_enabled
         && let Some(response) = deletion_read(&data, &value)
     {
@@ -310,6 +363,7 @@ async fn read(
         let names=query["names"].as_array().unwrap();
         (names.is_empty() || names.iter().any(|n|n==&v["name"] || n==resource_id(v)))
             && query["terms"].as_array().unwrap().iter().all(|term|v["name"].as_str().unwrap().contains(term.as_str().unwrap()))
+            && query["tags"].as_array().unwrap().iter().all(|tag|v["tags"].as_array().is_some_and(|tags|tags.contains(tag)))
     }).map(|v| {
         let mut result=match operation {
             "ListStacks"=>Family::Stack.summary(),
@@ -319,7 +373,7 @@ async fn read(
             "ListSwarms"=>json!({"type":"Swarm","tags":[],"template":false,"info":SwarmListItemInfo::default()}),
             _=>json!({"type":"Repo","tags":[],"template":false,"info":RepoListItemInfo::default()}),
         };
-        result["id"]=resource_id(v).clone();result["name"]=v["name"].clone();
+        result["id"]=resource_id(v).clone();result["name"]=v["name"].clone();if let Some(tags)=v.get("tags"){result["tags"]=tags.clone();}
         if operation=="ListServers" {
             result["info"]["region"]=v["config"]["region"].clone();
             if data.deletion_enabled {result["info"]["state"]=json!(if v["config"]["enabled"]==false {"Disabled"}else if data.runtime_unreachable {"NotOk"}else{"Ok"});}
@@ -373,7 +427,7 @@ async fn write(
     headers: HeaderMap,
     Json(value): Json<Value>,
 ) -> Response {
-    let (reply, saved) = {
+    let (reply, saved, tag_owner_denied, tag_cleanup_error) = {
         let mut data = data.lock().unwrap();
         record(&mut data, &headers, "write", &value);
         let may_save = !matches!(
@@ -383,7 +437,13 @@ async fn write(
                 | WriteReply::AttachDenied
                 | WriteReply::Redirect
         );
+        let tag_owner_denied = data.tags_enabled
+            && data.tag_owner_denied
+            && matches!(value["type"].as_str(), Some("RenameTag" | "DeleteTag"));
         let saved = match value["type"].as_str().unwrap() {
+            "CreateTag" | "RenameTag" | "DeleteTag" | "UpdateResourceMeta" => {
+                tag_write(&mut data, &value, may_save && !tag_owner_denied)
+            }
             "DeleteStack" | "DeleteDeployment" | "DeleteServer" => {
                 deletion_write(&mut data, &value, may_save)
             }
@@ -488,9 +548,23 @@ async fn write(
             }
             other => panic!("unexpected write {other}"),
         };
-        (data.reply, saved)
+        (
+            data.reply,
+            saved,
+            tag_owner_denied,
+            data.tags_enabled && data.tag_partial_cleanup_error && value["type"] == "DeleteTag",
+        )
     };
+    if tag_owner_denied {
+        return (StatusCode::INTERNAL_SERVER_ERROR,Json(json!({"error":"user must be tag owner or admin","trace":[format!("{KEY} {SECRET}")]}))).into_response();
+    }
+    if tag_cleanup_error {
+        return (StatusCode::INTERNAL_SERVER_ERROR,Json(json!({"error":"failed to remove tag from resources","trace":[format!("{KEY} {SECRET} tag-private-cleanup-error")]}))).into_response();
+    }
     match reply {
+        WriteReply::MissingTagOwner=>{let mut s=saved;s.as_object_mut().unwrap().remove("owner");Json(s).into_response()},
+        WriteReply::WrongTagOwner=>{let mut s=saved;s["owner"]=json!("other-owner");Json(s).into_response()},
+        WriteReply::MissingTagColor=>{let mut s=saved;s.as_object_mut().unwrap().remove("color");Json(s).into_response()},
         WriteReply::Valid => Json(saved).into_response(),
         WriteReply::WriteDenied => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":format!("User does not have required permissions on this {}. Must have at least Write permissions",if value["type"].as_str().unwrap().ends_with("Deployment"){"Deployment"}else if value["type"].as_str().unwrap().ends_with("Server"){"Server"}else{"Stack"}),"trace":[format!("{KEY} {SECRET}")]}))).into_response(),
         WriteReply::AttachDenied => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"User does not have required permissions on this Server. Must have at least Read permissions, as well as these specific permissions: [Attach]","trace":[format!("{KEY} {SECRET}")]}))).into_response(),
@@ -547,6 +621,11 @@ fn reference_rows(d: &Data, family: &str) -> Vec<Value> {
             .chain(d.created_deployments.values().cloned())
             .collect(),
         "repo" => vec![d.repo.clone()],
+        "server" => std::iter::once(d.server.clone())
+            .chain(d.created_servers.values().cloned())
+            .collect(),
+        "swarm" => vec![d.swarm.clone()],
+        "build" => vec![d.build.clone()],
         _ => vec![],
     };
     result.extend(
@@ -563,6 +642,184 @@ fn reference_rows(d: &Data, family: &str) -> Vec<Value> {
 fn cache_container(v: &Value) -> Value {
     json!({"server_id":SERVER,"name":v["Name"].as_str().unwrap().trim_start_matches('/'),"id":v["Id"],"state":v["State"]["Status"]})
 }
+
+fn tag_read(d: &Data, request: &Value) -> Option<Response> {
+    let op = request["type"].as_str().unwrap();
+    let p = &request["params"];
+    if op == "ListTags" {
+        fn matches(t: &Value, q: &Value) -> bool {
+            if let Some(or) = q["$or"].as_array() {
+                return or.iter().any(|q| matches(t, q));
+            }
+            if let Some(name) = q["name"].as_str() {
+                return t["name"] == name;
+            }
+            let id = q["_id"]
+                .get("$oid")
+                .and_then(Value::as_str)
+                .or_else(|| q["_id"].as_str());
+            id.is_some_and(|id| resource_id(t).as_str().unwrap().eq_ignore_ascii_case(id))
+        }
+        let q = &p["query"];
+        assert!(
+            q.is_object() && !q.as_object().unwrap().is_empty(),
+            "tag lookup must be exact and bounded by generated selectors"
+        );
+        return Some(
+            Json(json!(
+                d.tags
+                    .values()
+                    .filter(|t| matches(t, q))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            ))
+            .into_response(),
+        );
+    }
+    let family = match op {
+        "ListBuilders" | "GetBuilder" => "builder",
+        "ListAlerters" | "GetAlerter" => "alerter",
+        "ListProcedures" | "GetProcedure" => "procedure",
+        "ListActions" | "GetAction" => "action",
+        "ListResourceSyncs" | "GetResourceSync" => "resource_sync",
+        _ => return None,
+    };
+    if let Some(status) = d.reference_status {
+        return Some(
+            (
+                StatusCode::from_u16(status).unwrap(),
+                format!("{KEY} {SECRET}"),
+            )
+                .into_response(),
+        );
+    }
+    let rows = reference_rows(d, family);
+    if op.starts_with("Get") {
+        let key = if family == "resource_sync" {
+            "sync"
+        } else {
+            family
+        };
+        return Some(match rows.into_iter().find(|v| resource_id(v) == &p[key]) {
+            Some(v) => Json(v).into_response(),
+            None => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"fixture reference missing"})),
+            )
+                .into_response(),
+        });
+    }
+    let limit = p["limit"].as_u64().unwrap() as usize;
+    assert!(limit > 0);
+    let page = p["page"].as_u64().unwrap() as usize;
+    let kind = match family {
+        "builder" => "Builder",
+        "alerter" => "Alerter",
+        "procedure" => "Procedure",
+        "action" => "Action",
+        _ => "ResourceSync",
+    };
+    Some(Json(json!(rows.into_iter().filter(|v|p["query"]["tags"].as_array().unwrap().iter().all(|tag|v["tags"].as_array().is_some_and(|tags|tags.contains(tag)))).skip(page*limit).take(limit).map(|v|json!({"id":resource_id(&v),"name":v["name"],"template":v["template"],"tags":v["tags"],"type":kind,"info":{}})).collect::<Vec<_>>())).into_response())
+}
+
+fn pull_tag(d: &mut Data, id: &str, partial: bool) {
+    for v in std::iter::once(&mut d.stack).chain(d.created.values_mut()) {
+        if let Some(tags) = v["tags"].as_array_mut() {
+            tags.retain(|t| t != id);
+        }
+    }
+    if partial {
+        return;
+    }
+    for v in std::iter::once(&mut d.server)
+        .chain(d.created_servers.values_mut())
+        .chain(std::iter::once(&mut d.deployment))
+        .chain(d.created_deployments.values_mut())
+        .chain(std::iter::once(&mut d.repo))
+        .chain(std::iter::once(&mut d.build))
+        .chain(d.extra_references.values_mut().flat_map(|v| v.iter_mut()))
+    {
+        if let Some(tags) = v["tags"].as_array_mut() {
+            tags.retain(|t| t != id);
+        }
+    }
+    // Pinned Core's cleanup list omits Swarm.
+}
+fn tag_write(d: &mut Data, request: &Value, may_save: bool) -> Value {
+    use komodo_client::api::write::{CreateTag, DeleteTag, RenameTag, UpdateResourceMeta};
+    let p = &request["params"];
+    match request["type"].as_str().unwrap() {
+        "CreateTag" => {
+            let typed: CreateTag = serde_json::from_value(p.clone()).unwrap();
+            assert_eq!(p, &json!({"name":typed.name}));
+            let id = format!("{:024x}", 0x7100 + d.tags.len());
+            let tag = json!({"_id":{"$oid":id},"name":typed.name,"owner":"fixture-owner","color":"Slate"});
+            if may_save {
+                assert!(!d.tags.values().any(|t| t["name"] == tag["name"]));
+                d.tags.insert(id, tag.clone());
+            }
+            tag
+        }
+        "RenameTag" => {
+            let typed: RenameTag = serde_json::from_value(p.clone()).unwrap();
+            assert_eq!(serde_json::to_value(&typed).unwrap(), *p);
+            let old = d.tags.get(&typed.id).unwrap().clone();
+            if may_save {
+                d.tags.get_mut(&typed.id).unwrap()["name"] = json!(typed.name);
+                d.tags[&typed.id].clone()
+            } else {
+                old
+            }
+        }
+        "DeleteTag" => {
+            let typed: DeleteTag = serde_json::from_value(p.clone()).unwrap();
+            assert_eq!(serde_json::to_value(&typed).unwrap(), *p);
+            let tag = d.tags.get(&typed.id).unwrap().clone();
+            if may_save {
+                pull_tag(d, &typed.id, d.tag_partial_cleanup_error);
+                if !d.tag_partial_cleanup_error {
+                    d.tags.remove(&typed.id);
+                }
+            }
+            tag
+        }
+        "UpdateResourceMeta" => {
+            let typed: UpdateResourceMeta = serde_json::from_value(p.clone()).unwrap();
+            assert!(typed.description.is_none() && typed.template.is_none());
+            assert_eq!(
+                p.as_object()
+                    .unwrap()
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<std::collections::BTreeSet<_>>(),
+                std::collections::BTreeSet::from(["tags", "target"])
+            );
+            let mut tags = typed.tags.unwrap();
+            if may_save {
+                if d.tag_drop_on_assign
+                    && let Some(id) = tags.last()
+                {
+                    d.tags.remove(id);
+                }
+                tags.retain(|id| d.tags.contains_key(id));
+                let target = match p["target"]["type"].as_str().unwrap() {
+                    "Stack" => &mut d.stack,
+                    "Deployment" => &mut d.deployment,
+                    "Server" => &mut d.server,
+                    _ => panic!("unsupported tag target"),
+                };
+                assert_eq!(resource_id(target), &p["target"]["id"]);
+                target["tags"] = json!(tags);
+                if d.tag_change_metadata {
+                    target["description"] = json!("tag-private-unrelated-metadata");
+                }
+            }
+            json!({})
+        }
+        _ => panic!("unexpected tag write"),
+    }
+}
+
 fn deletion_read(d: &Data, request: &Value) -> Option<Response> {
     let op = request["type"].as_str().unwrap();
     let p = &request["params"];

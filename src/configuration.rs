@@ -269,6 +269,7 @@ impl<R> Preview<R> {
 enum StoredResult {
     Configuration(Box<ConfigurationResult>),
     Destructive(Box<crate::deletion::DeletionResult>),
+    Tags(Box<crate::tags::TagResult>),
 }
 struct Entries {
     nonce: String,
@@ -295,6 +296,31 @@ impl Default for Entries {
 pub(crate) struct PreviewStore(Mutex<Entries>);
 
 impl PreviewStore {
+    pub(crate) fn insert_tags(
+        &self,
+        entry: Preview<crate::tags::TagResult>,
+    ) -> Result<crate::tags::TagResult, AppError> {
+        let mut result = entry.result.clone();
+        result.preview_id = Some(self.put(entry.map(|r| StoredResult::Tags(Box::new(r))))?);
+        Ok(result)
+    }
+    pub(crate) fn take_tags(
+        &self,
+        token: &str,
+        input: &Value,
+    ) -> Result<Preview<crate::tags::TagResult>, AppError> {
+        let entry = self.take_entry(token, input)?;
+        let StoredResult::Tags(result) = entry.result else {
+            return Err(invalid_preview());
+        };
+        Ok(Preview {
+            created: entry.created,
+            input: entry.input,
+            baseline: entry.baseline,
+            prepared: entry.prepared,
+            result: *result,
+        })
+    }
     fn put(&self, entry: Preview<StoredResult>) -> Result<String, AppError> {
         let mut entries = self.0.lock().map_err(|_| invalid_preview())?;
         entries.values.retain(|_, p| p.created.elapsed() < TTL);
