@@ -311,6 +311,14 @@ class LossProxy:
                 pass
             self.connections.discard(task)
 
+def saved_hook_stages(update):
+    stages = [{'stage':stage['stage'],'success':stage['success']} for stage in update['stages']]
+    require(all(any(stage['stage'] == name and stage['success'] for stage in stages)
+                for name in ['Pre Deploy','Post Deploy']),
+            'saved pre/post deploy hooks must complete, including service-filtered deploy')
+    return stages
+
+
 async def exercise(address, operator, reader, stack_id, deployment_id):
     async with await Mcp.start(address, operator) as mcp:
         async def operation(tool, service=None):
@@ -319,12 +327,23 @@ async def exercise(address, operator, reader, stack_id, deployment_id):
             if receipt['submission'] != 'accepted' or not receipt['update_id']:
                 raise Failure(tool + ': submission not acknowledged')
             update = await observe(mcp, receipt['update_id'])
-            REPORT['operations'].append({'tool':tool, 'scope':receipt['requested_scope'], 'update_id':receipt['update_id'], 'outcome':update['outcome'], 'stages':[{'stage':s['stage'],'success':s['success']} for s in update['stages']]})
+            REPORT['operations'].append({'tool':tool, 'scope':receipt['requested_scope'],
+                'submission':receipt['submission'],'configured_effects':receipt['configured_effects'],
+                'update_id':receipt['update_id'], 'outcome':update['outcome'],
+                'stages':[{'stage':s['stage'],'success':s['success']} for s in update['stages']]})
             persist()
             if update['outcome'] != 'succeeded':
                 raise Failure(tool + ': final Core execution failed')
+            effects = receipt['configured_effects']
+            if tool == 'deploy_stack':
+                require(effects['pre_deploy_hook'] and effects['post_deploy_hook']
+                        and effects['auto_pull'] is False, 'saved Compose hook/image-pull policy changed')
+                saved_hook_stages(update)
             if not tool.startswith('deploy') and any('deploy' in s['stage'].lower() for s in update['stages']):
                 raise Failure('unexpected deploy hooks in lifecycle update')
+            if not tool.startswith('deploy'):
+                require(not effects['pre_deploy_hook'] and not effects['post_deploy_hook']
+                        and effects['auto_pull'] is None,'lifecycle must not claim deploy hooks/image pull')
             print('Verified real Core lifecycle:', tool, service or 'whole', flush=True)
         await operation('deploy_stack')
         await operation('deploy_deployment')
@@ -388,12 +407,22 @@ async def exercise(address, operator, reader, stack_id, deployment_id):
             found = {c['update']['id'] for c in recovered['candidates']}
             require(set(proxy.ids[1:]) <= found, 'bounded history must expose both instrumented accepted updates')
             outcomes = []
+            busy_failure = False
             for update_id in proxy.ids[1:]:
                 observed = await wait_final(fresh,update_id)
                 require(observed['end'] == 'complete', 'each acknowledged candidate must remain observable to completion')
-                outcomes.append(observed['latest_update']['outcome'])
+                update = observed['latest_update']
+                outcomes.append(update['outcome'])
+                if update['outcome'] == 'succeeded':
+                    REPORT.setdefault('service_deploy_hook_evidence',[]).append({
+                        'instrumented_update_id':update_id,'stages':saved_hook_stages(update)})
+                else:
+                    require(any('busy' in (stage['stderr'] or '').lower() for stage in update['stages']),
+                            'overlapping service deploy failed without the expected Core busy evidence')
+                    busy_failure = True
+            require('succeeded' in outcomes,'an independent service deploy must succeed')
         require(len(proxy.ids) == 3, 'independent-call reconciliation must add no execution requests')
-        REPORT['independent_lost_ack_callers'] = {'explicit_calls':2,'accepted_execute_requests':2,'distinct_updates':2,'original_submission':'unknown','attribution':'unconfirmed','candidate_count':len(found),'instrumented_outcomes':outcomes,'recovery_execute_requests':0}
+        REPORT['independent_lost_ack_callers'] = {'explicit_calls':2,'accepted_execute_requests':2,'distinct_updates':2,'original_submission':'unknown','attribution':'unconfirmed','candidate_count':len(found),'instrumented_outcomes':outcomes,'busy_failure_observed':busy_failure,'recovery_execute_requests':0}
     async with await Mcp.start(address,reader,False) as observer:
         tools = (await observer.rpc('tools/list',{}))['tools']
         names = {tool['name'] for tool in tools}
