@@ -11,15 +11,19 @@ Minor and patch updates are grouped by ecosystem. Major updates remain separate.
 Cargo allows five open version-update PRs and Actions allows three. Security
 updates use GitHub's separate limits. No dependency PR is automatically merged.
 
-The exact `komodo_client =2.3.2` and `rmcp =3.8.0` pins are excluded from the
+The exact `komodo_client` and `rmcp` pins in `Cargo.toml` are excluded from the
 compatible-update group so proposed SDK changes receive their own review.
 Before merging a Core SDK update, inspect that version's authoritative read API,
 update compatibility/permission fixtures, and rerun the real stdio tests. An MCP
 SDK change also needs lifecycle, tool-schema, and subprocess verification.
 
-`dtolnay/rust-toolchain` updates are separate because the workflow compiler,
-`rust-toolchain.toml`, and documented compiler must stay aligned. A 0.x minor
-dependency update can change compatibility and still requires review.
+`dtolnay/rust-toolchain` updates are separate. Both workflows pin an action
+commit from its input-capable `master` branch and explicitly select Rust 1.99.1
+with `toolchain`. Version-named action revisions hard-code their compiler and
+can name Rust versions that have not been released. Review action implementation
+updates independently; deliberate compiler updates must keep both workflows,
+`rust-toolchain.toml`, `.tool-versions`, and the documented compiler aligned.
+A 0.x minor dependency update can change compatibility and still requires review.
 
 The benchmark reference is an external checkout pinned in
 [`benchmarks/bench.py`](../benchmarks/bench.py), not a local npm dependency.
