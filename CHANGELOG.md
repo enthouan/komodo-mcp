@@ -8,6 +8,11 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+## v0.4.0
+
+Manage resource configuration with typed previews, deliberate applies and
+separate runtime observations.
+
 - Add typed tag creation/rename and explicit resource assignment preview/apply,
   preserving omitted assignments and unrelated metadata, with additive set
   behavior, deliberate empty-set clearing and read-only discovery by renamed
@@ -56,6 +61,39 @@ New changes go under `Unreleased` until the next release is prepared.
   independent operate/edit grants and verify the same-identity permission
   boundary with the disposable Core/Periphery runner.
   ([#16](https://github.com/enthouan/komodo-mcp/issues/16))
+
+### Permissions and Core effects
+
+Configuration tools opt in through `KOMODO_ALLOW_CONFIGURATION_EDIT=true`,
+independently of `KOMODO_ALLOW_OPERATE`. Applying a supplied Stack source,
+Deployment image or Server connection setting also requires operate access,
+including unchanged inputs. Enabled Server creation and resource/tag deletion
+require both grants. Core remains the upstream permission authority.
+
+Definition saves issue no separate execution request, but Core can auto-deploy
+after source/image updates or reconnect/poll Periphery after connection edits.
+Resource deletion can tear down workloads, detach references or leave runtime
+cleanup incomplete. Core 2.3.2 can leave Builder `server_ids` after Server deletion
+and omits Swarm assignments from tag-deletion cleanup. Final-read races, hidden
+dependencies and uncertain replies remain explicit; no mutation is retried
+automatically and record absence never proves global cleanup.
+
+### Evidence and distribution limits
+
+Verification uses production stdio MCP processes, synthetic Core 2.3.2 wire
+fixtures and fresh owned disposable Core/Periphery 2.3.2 acceptance recorded in
+the [release tracker](https://github.com/enthouan/komodo-mcp/issues/85). Live scope
+covers inline Stacks and direct-image Deployments on Server targets, Server
+record settings and saved-but-unreachable observations, Stack tag assignments,
+running-workload deletion and Server detachment. Git/linked-Repo/host sources,
+Build references and Swarm behavior retain deterministic fixture/source
+coverage. Successful outbound/inbound/changed-key handshakes are not part of
+the live matrix. The pinned `komodo_client =2.3.2` and `rmcp =3.9.0` are unchanged;
+archived benchmark measurements retain their original identities.
+
+Release artifacts remain an annotated source tag and GitHub Release notes.
+Build the stdio executable from source using the
+[installation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/README.md#fresh-checkout-demo-synthetic-core).
 
 ## v0.3.1
 
