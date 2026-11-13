@@ -3,6 +3,7 @@
 pub mod incident;
 pub mod inventory;
 pub mod operations;
+pub mod recovery;
 
 use std::{
     collections::VecDeque,

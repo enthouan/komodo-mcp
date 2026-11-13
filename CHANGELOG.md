@@ -8,6 +8,13 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Add read-only interrupted-submission reconciliation with bounded resource
+  history/service evidence, explicit unknown acceptance and unconfirmed candidate
+  attribution. Verify accepted disconnects, timeouts, malformed/oversized replies,
+  process loss and independent callers across deploy/lifecycle/service operations
+  without automatically executing again.
+  ([#15](https://github.com/enthouan/komodo-mcp/issues/15))
+
 - Add read-only bounded waiting and cross-session resume by Core update ID,
   with cancellation, total/request/polling limits, retained latest evidence and
   explicit incomplete observation. Keep Core execution outcome separate from

@@ -34,6 +34,7 @@ impl KomodoServer {
                 | "list_updates"
                 | "get_update"
                 | "wait_for_update"
+                | "reconcile_operation"
                 | "get_container_logs"
                 | "get_deployment_logs"
                 | "get_stack_logs"
@@ -49,6 +50,22 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description = "Inspect bounded recent history after a lost execution reply when no update ID is known. Reads only, no operate grant needed. Supply the original resolved target, requested whole/service scope, operation and available local UTC submission-window bounds. Search at most three fixed 100-record history pages and five service-detail lookups, with two-second read and ten-second total budgets; return at most five possible candidates. Core service logs may be absent, inaccessible or ambiguous. Zero candidates never proves non-acceptance, and one candidate never proves attribution: another caller can issue an identical action. Original submission remains unknown; no candidate is selected automatically and execution is never resubmitted. Retry observation for delayed history, not execution. If an acknowledged update ID is known, use get_update/wait_for_update directly. Candidate execution outcome is separate from workload health.", input_schema = schema_for_input::<crate::recovery::RecoveryInput>().expect("valid recovery schema"), output_schema = inventory::output_schema::<crate::recovery::RecoveryResult>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn reconcile_operation(
+        &self,
+        arguments: JsonObject,
+        context: RequestContext<RoleServer>,
+    ) -> CallToolResult {
+        let result = match inventory::parse(arguments, "reconcile_operation") {
+            Ok(input) => {
+                crate::recovery::reconcile_operation(&self.client, input, context.ct.cancelled())
+                    .await
+            }
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description = "Observe one known Core update ID with reads only; available without operate. Wait up to 1..30 seconds (default 10), at most 10 lookups, at least one second after each unfinished response. Return the ID, latest bounded observation and explicit end reason. A local deadline, request cap, read failure or cancelled wait is incomplete observation, not remote operation failure/cancellation. Resume with this tool or get_update in a new session using the same saved ID; never execute again to resume. Core Complete plus its success field determines final outcome; it does not establish workload health. Use fleet_health/stack_diagnose/logs separately. MCP cancellation stops local polling; save the ID before waiting because cancelled requests may have no response.", input_schema = schema_for_input::<crate::wait::WaitInput>().expect("valid wait schema"), output_schema = inventory::output_schema::<crate::wait::WaitResult>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
     async fn wait_for_update(
         &self,
@@ -64,7 +81,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description = "Deploy one existing Stack from its saved definition and image-pull policy. Explicitly choose whole_stack or one exact Compose service; dependencies, saved hooks, flags and wrappers can have broader effects. Swarm supports whole-stack deploy only. Unlike restart, deploy can recreate containers with saved changes. Submit once, return an update receipt and one immediate bounded observation; acknowledgement is not rollout success. Never automatically retry execution after a timeout/lost reply: inspect the saved update ID/history. A new explicit call is a new non-idempotent operation.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    #[tool(description = "Deploy one existing Stack from its saved definition and image-pull policy. Explicitly choose whole_stack or one exact Compose service; dependencies, saved hooks, flags and wrappers can have broader effects. Swarm supports whole-stack deploy only. Unlike restart, deploy can recreate containers with saved changes. Submit once, return an update receipt and one immediate bounded observation; acknowledgement is not rollout success. Never automatically retry execution after a timeout/lost reply: use get_update/wait_for_update for a known ID or reconcile_operation for missing-ID candidates. A new explicit call is a new non-idempotent operation.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
     async fn deploy_stack(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "deploy_stack") {
             Ok(input) => crate::operations::deploy_stack(&self.client, input).await,
@@ -73,7 +90,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description = "Deploy one existing Deployment by stable ID or exact name, using saved configuration/image selection and Core's deploy image-pull behavior. Supports Server containers and Swarm services; no service filter or overrides. Deploy can recreate a container; restart uses existing containers. Submit at most once and return an update receipt with one immediate bounded observation. Acceptance does not establish execution/rollout success or workload health. Never automatically retry a lost/uncertain submission; inspect its update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<DetailInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    #[tool(description = "Deploy one existing Deployment by stable ID or exact name, using saved configuration/image selection and Core's deploy image-pull behavior. Supports Server containers and Swarm services; no service filter or overrides. Deploy can recreate a container; restart uses existing containers. Submit at most once and return an update receipt with one immediate bounded observation. Acceptance does not establish execution/rollout success or workload health. Never automatically retry a lost/uncertain submission; use get_update/wait_for_update for a known ID or reconcile_operation for missing-ID candidates. A new explicit call can repeat effects.", input_schema = schema_for_input::<DetailInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
     async fn deploy_deployment(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "deploy_deployment") {
             Ok(input) => crate::operations::deploy_deployment(&self.client, input).await,
@@ -82,7 +99,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description = "Start one existing Server-backed Stack by stable ID or exact name. Swarm is rejected before execution. Choose whole_stack or one exact deployed Compose service. Compose can start existing dependencies. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; inspect update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    #[tool(description = "Start one existing Server-backed Stack by stable ID or exact name. Swarm is rejected before execution. Choose whole_stack or one exact deployed Compose service. Compose can start existing dependencies. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; use get_update/wait_for_update for a known ID or reconcile_operation for missing-ID candidates. A new explicit call can repeat effects.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
     async fn start_stack(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "start_stack") {
             Ok(input) => {
@@ -98,7 +115,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description = "Start one existing Server-backed Deployment by stable ID or exact name. Swarm is rejected before execution. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; inspect update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<DetailInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    #[tool(description = "Start one existing Server-backed Deployment by stable ID or exact name. Swarm is rejected before execution. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; use get_update/wait_for_update for a known ID or reconcile_operation for missing-ID candidates. A new explicit call can repeat effects.", input_schema = schema_for_input::<DetailInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
     async fn start_deployment(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "start_deployment") {
             Ok(input) => {
@@ -114,7 +131,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description = "Stop one existing Server-backed Stack by stable ID or exact name. Swarm is rejected before execution. Choose whole_stack or one exact deployed Compose service. Compose stops selected services without removing them; no dependency expansion is requested. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; inspect update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    #[tool(description = "Stop one existing Server-backed Stack by stable ID or exact name. Swarm is rejected before execution. Choose whole_stack or one exact deployed Compose service. Compose stops selected services without removing them; no dependency expansion is requested. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; use get_update/wait_for_update for a known ID or reconcile_operation for missing-ID candidates. A new explicit call can repeat effects.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
     async fn stop_stack(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "stop_stack") {
             Ok(input) => {
@@ -130,7 +147,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description = "Stop one existing Server-backed Deployment by stable ID or exact name. Swarm is rejected before execution. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; inspect update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<DetailInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    #[tool(description = "Stop one existing Server-backed Deployment by stable ID or exact name. Swarm is rejected before execution. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; use get_update/wait_for_update for a known ID or reconcile_operation for missing-ID candidates. A new explicit call can repeat effects.", input_schema = schema_for_input::<DetailInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
     async fn stop_deployment(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "stop_deployment") {
             Ok(input) => {
@@ -146,7 +163,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description = "Restart one existing Server-backed Stack by stable ID or exact name. Swarm is rejected before execution. Choose whole_stack or one exact deployed Compose service. Compose may restart dependents configured with depends_on.restart; Core adds no --no-deps. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; inspect update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    #[tool(description = "Restart one existing Server-backed Stack by stable ID or exact name. Swarm is rejected before execution. Choose whole_stack or one exact deployed Compose service. Compose may restart dependents configured with depends_on.restart; Core adds no --no-deps. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; use get_update/wait_for_update for a known ID or reconcile_operation for missing-ID candidates. A new explicit call can repeat effects.", input_schema = schema_for_input::<crate::operations::StackOperationInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
     async fn restart_stack(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "restart_stack") {
             Ok(input) => {
@@ -162,7 +179,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description = "Restart one existing Server-backed Deployment by stable ID or exact name. Swarm is rejected before execution. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; inspect update ID/history. A new explicit call can repeat effects.", input_schema = schema_for_input::<DetailInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    #[tool(description = "Restart one existing Server-backed Deployment by stable ID or exact name. Swarm is rejected before execution. Uses existing containers; does not deploy saved changes, pull images or run deploy hooks. Paused/unavailable containers retain Core's actual result; never substitute unpause or redeploy. Submit at most once and return an update receipt with one bounded observation. Acceptance is not execution success or workload health. Never automatically retry after a timeout/lost reply; use get_update/wait_for_update for a known ID or reconcile_operation for missing-ID candidates. A new explicit call can repeat effects.", input_schema = schema_for_input::<DetailInput>().expect("valid input schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
     async fn restart_deployment(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "restart_deployment") {
             Ok(input) => {

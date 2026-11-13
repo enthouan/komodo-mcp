@@ -147,7 +147,7 @@ async fn named_service_preserves_saved_hooks_dependencies_and_pull_policy() {
             .iter()
             .map(|s| s["stage"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        ["Pre Deploy", "Compose Up", "Post Deploy"]
+        ["Service/s", "Pre Deploy", "Compose Up", "Post Deploy"]
     );
     let requests = core.requests();
     let executed = requests.iter().find(|r| r.path == "execute").unwrap();
@@ -469,7 +469,7 @@ async fn production_binary_discovers_mutations_only_when_enabled_and_returns_rec
         .await;
         let (process, session) = Process::start(&core, operate).await;
         let tools = session.list_tools(None).await.unwrap().tools;
-        assert_eq!(tools.len(), 15 + 8 * usize::from(operate));
+        assert_eq!(tools.len(), 16 + 8 * usize::from(operate));
         for tool in tools.iter().filter(|t| {
             ["deploy_", "start_", "stop_", "restart_"]
                 .iter()

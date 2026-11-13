@@ -81,6 +81,41 @@ pub enum WorkloadOperation {
     Restart,
 }
 
+impl WorkloadOperation {
+    pub(crate) fn stack_variants(self) -> (&'static str, Operation, Operation) {
+        match self {
+            WorkloadOperation::Deploy => (
+                "DeployStack",
+                Operation::DeployStack,
+                Operation::DeployStackService,
+            ),
+            WorkloadOperation::Start => (
+                "StartStack",
+                Operation::StartStack,
+                Operation::StartStackService,
+            ),
+            WorkloadOperation::Stop => (
+                "StopStack",
+                Operation::StopStack,
+                Operation::StopStackService,
+            ),
+            WorkloadOperation::Restart => (
+                "RestartStack",
+                Operation::RestartStack,
+                Operation::RestartStackService,
+            ),
+        }
+    }
+    pub(crate) fn deployment_variant(self) -> (&'static str, Operation) {
+        match self {
+            WorkloadOperation::Deploy => ("Deploy", Operation::Deploy),
+            WorkloadOperation::Start => ("StartDeployment", Operation::StartDeployment),
+            WorkloadOperation::Stop => ("StopDeployment", Operation::StopDeployment),
+            WorkloadOperation::Restart => ("RestartDeployment", Operation::RestartDeployment),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SubmissionState {
@@ -172,7 +207,7 @@ fn unsupported(operation: &'static str) -> AppError {
 }
 
 impl StackScope {
-    fn validate(&self, operation: &'static str) -> Result<(), AppError> {
+    pub(crate) fn validate(&self, operation: &'static str) -> Result<(), AppError> {
         if let Self::Service { service } = self
             && (service.is_empty()
                 || service.len() > 128
@@ -293,28 +328,7 @@ pub async fn stack_operation(
     input: StackOperationInput,
     action: WorkloadOperation,
 ) -> Result<SubmissionReceipt, AppError> {
-    let (operation, whole, service) = match action {
-        WorkloadOperation::Deploy => (
-            "DeployStack",
-            Operation::DeployStack,
-            Operation::DeployStackService,
-        ),
-        WorkloadOperation::Start => (
-            "StartStack",
-            Operation::StartStack,
-            Operation::StartStackService,
-        ),
-        WorkloadOperation::Stop => (
-            "StopStack",
-            Operation::StopStack,
-            Operation::StopStackService,
-        ),
-        WorkloadOperation::Restart => (
-            "RestartStack",
-            Operation::RestartStack,
-            Operation::RestartStackService,
-        ),
-    };
+    let (operation, whole, service) = action.stack_variants();
     require_operate(client, operation)?;
     input.scope.validate(operation)?;
     let (_, stack) = inventory::resolve_stack(&client.bounded_evidence(), input.target).await?;
@@ -420,12 +434,7 @@ pub async fn deployment_operation(
     input: DetailInput,
     action: WorkloadOperation,
 ) -> Result<SubmissionReceipt, AppError> {
-    let (operation, core_operation) = match action {
-        WorkloadOperation::Deploy => ("Deploy", Operation::Deploy),
-        WorkloadOperation::Start => ("StartDeployment", Operation::StartDeployment),
-        WorkloadOperation::Stop => ("StopDeployment", Operation::StopDeployment),
-        WorkloadOperation::Restart => ("RestartDeployment", Operation::RestartDeployment),
-    };
+    let (operation, core_operation) = action.deployment_variant();
     require_operate(client, operation)?;
     let (_, deployment) = inventory::resolve_deployment(&client.bounded_evidence(), input).await?;
     check_target(
@@ -547,7 +556,7 @@ where
         automatic_resubmission: false,
     };
     match reply {
-        Err(mut error) => {
+        Err(error) => {
             // These client-error responses reject submission; proxy/server errors,
             // transport loss, deadlines and malformed acknowledgements remain unknown.
             if error
@@ -555,10 +564,6 @@ where
                 .is_some_and(|status| matches!(status, 400 | 401 | 403 | 404 | 405 | 409 | 422))
             {
                 receipt.submission = SubmissionState::Rejected;
-            } else {
-                error.correction = Some(
-                    "Submission acceptance is unknown. Inspect a saved update ID or bounded resource history; never automatically repeat execution.",
-                );
             }
             receipt.submission_error = Some(error);
         }
@@ -608,6 +613,13 @@ where
                 }
             }
         }
+    }
+    if receipt.submission == SubmissionState::Unknown
+        && let Some(error) = &mut receipt.submission_error
+    {
+        error.correction = Some(
+            "Submission acceptance is unknown. Use get_update/wait_for_update for a saved ID, or reconcile_operation with the retained target, scope, operation and time window. Never automatically repeat execution.",
+        );
     }
     // Bound after sanitization and JSON escaping. Normal maximum stage evidence
     // fits; remove trailing stages (failures are already first) rather than ever
