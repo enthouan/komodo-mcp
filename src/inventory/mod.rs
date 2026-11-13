@@ -5,11 +5,12 @@ pub use types::*;
 
 use komodo_client::{
     api::read::{
-        GetDeployment, GetRepo, GetServer, GetStack, GetSwarm, ListDeployments, ListRepos,
-        ListServers, ListStacks, ListSwarms,
+        GetBuild, GetDeployment, GetRepo, GetServer, GetStack, GetSwarm, ListBuilds,
+        ListDeployments, ListRepos, ListServers, ListStacks, ListSwarms,
     },
     entities::{
         ResourceTargetVariant,
+        build::{Build, BuildListItem},
         deployment::{Deployment, DeploymentListItem, DeploymentState as CoreDeploymentState},
         repo::{Repo, RepoListItem},
         resource::ResourceListItem,
@@ -300,6 +301,7 @@ reader!(stacks, ListStacks, StackListItem, Stack);
 reader!(deployments, ListDeployments, DeploymentListItem, Deployment);
 reader!(swarms, ListSwarms, SwarmListItem, Swarm);
 reader!(repos, ListRepos, RepoListItem, Repo);
+reader!(builds, ListBuilds, BuildListItem, Build);
 
 fn nonempty(value: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_owned())
@@ -531,6 +533,24 @@ pub(crate) async fn resolve_repo(
         })
         .await?;
     check_identity(&summary, &full.id, &full.name, full.template, "GetRepo")?;
+    Ok((summary, full))
+}
+
+pub(crate) async fn resolve_build(
+    client: &CoreClient,
+    input: DetailInput,
+) -> Result<(BuildListItem, Build), AppError> {
+    let selector = input.validate("GetBuild")?;
+    let summary = resolve(client, &selector, "ListBuilds", |search, page, limit| {
+        builds(client, search, page, limit)
+    })
+    .await?;
+    let full = client
+        .read(GetBuild {
+            build: summary.id.clone(),
+        })
+        .await?;
+    check_identity(&summary, &full.id, &full.name, full.template, "GetBuild")?;
     Ok((summary, full))
 }
 pub async fn get_stack(client: &CoreClient, input: DetailInput) -> Result<StackDetail, AppError> {

@@ -45,7 +45,11 @@ impl KomodoServer {
                 "preview_stack_update"
                 | "apply_stack_update"
                 | "preview_stack_create"
-                | "apply_stack_create" => Some(Capability::ConfigurationEdit),
+                | "apply_stack_create"
+                | "preview_deployment_create"
+                | "apply_deployment_create"
+                | "preview_deployment_update"
+                | "apply_deployment_update" => Some(Capability::ConfigurationEdit),
                 _ => None,
             },
         )
@@ -54,6 +58,42 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description = "Preview creation of one desired Deployment definition with trusted configuration access. Require a name, explicit image reference or resolved Build plus major.minor.patch version (0.0.0 selects latest at deploy), and an existing Server/Swarm attachment. Optional settings preserve Core defaults. Return normalized name, redacted changes, source/target and zero writes with the shared ten-minute single-use preview_id. Core enforces creation policy and Read/Attach permissions. Saving is separate from runtime state and issues no MCP deploy, restart, image pull or shell request.", input_schema = schema_for_input::<crate::deployment_configuration::CreateInput>().expect("deployment create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_deployment_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_deployment_create") {
+            Ok(input) => crate::deployment_configuration::preview_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Apply the exact Deployment creation input and shared preview_id once with trusted configuration access. Revalidate visible name absence and raw Server/Swarm/Build references, then submit one typed CreateDeployment. Core owns global uniqueness and creation/Read-Attach permissions; hidden names and concurrent creators remain possible. No deployment or image pull is submitted by MCP and no auto-update policy is enabled. A saved definition does not establish running configuration or health. Lost/invalid replies remain submission_unknown; never automatically retry or replay consumed previews.", input_schema = schema_for_input::<crate::deployment_configuration::CreateApplyInput>().expect("deployment create apply schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_deployment_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_deployment_create") {
+            Ok(input) => crate::deployment_configuration::apply_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Preview a typed partial desired Deployment edit with trusted configuration access, zero writes and the shared single-use preview contract. Support image/Build reference, attachment, registry-account reference, environment, ports, volumes, command, network, extra_args, labels, send_alerts and replicas. Omission preserves fields; null and display redaction markers are rejected; documented empty strings/lists explicitly clear. Applying any image requires BOTH operate and configuration-edit grants, regardless of current auto-update/build policy, because Core can auto-deploy. Keep desired saved image/configuration separate from preview-time runtime state: Core's reported image may fall back to desired configuration and does not prove the running image. Raw configuration/references remain private and bound to this proposal.", input_schema = schema_for_input::<crate::deployment_configuration::PreviewInput>().expect("deployment preview schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_deployment_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_deployment_update") {
+            Ok(input) => crate::deployment_configuration::preview_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Apply the exact desired Deployment target/patch and shared preview_id once with trusted configuration access. Any supplied image also requires BOTH operate and configuration-edit grants before Core reads, independently of the observed auto_update policy. Revalidate raw baseline and references, then submit only the typed partial UpdateDeployment; no-op and stale proposals submit zero writes. MCP submits no deployment/restart/pull/shell request. Direct image writes trigger Core registry login/manifest inspection and can auto-deploy under Core policy; Build references can follow existing build-triggered redeploy policy. Inspected Core 2.3.2 target reassignment leaves old workloads in place despite the SDK warning. Custom-name mutation is unsupported and existing names are preserved. Lost/invalid replies retain uncertainty, with no retries; Core final-read/write races remain. Saved desired configuration is separate from runtime verification.", input_schema = schema_for_input::<crate::deployment_configuration::ApplyInput>().expect("deployment apply schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_deployment_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_deployment_update") {
+            Ok(input) => crate::deployment_configuration::apply_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description = "Preview creation of one Stack definition with trusted configuration access. Supply a name, explicit inline/Git/linked-Repo/host source and an existing Server/Swarm attachment; optional settings omit default fields. Returns Core's normalized name, source/target and redacted changes with zero writes. Existing host/Git file contents are not edited. Core still enforces creation and Read/Attach permissions; visible name absence cannot prove global absence. Reuse the exact input and returned process-local single-use preview_id with apply_stack_create. Creation saves desired configuration without a deployment command or a runtime health claim.", input_schema = schema_for_input::<crate::configuration::StackCreateInput>().expect("create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
     async fn preview_stack_create(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "preview_stack_create") {
