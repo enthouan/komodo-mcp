@@ -142,3 +142,14 @@ tests' real chunked bodies and positive-tail checks. Single-tool stdio cases
 verify diagnosis outcomes and final redacted JSON bounds. The full stdio flow
 from fleet health to supporting evidence and measured fleet/concurrency matrix
 remain in #10.
+
+## Server configuration extension (issue #19)
+
+The mutable `tests/support/configuration.rs` fixture round-trips pinned typed
+CreateServer/UpdateServer bodies and captures every HTTP request. Accepted trust
+and deprecated passkeys stay in private raw definitions. Separate cached NotOk
+and Disabled observations test a saved configuration without claiming a working
+connection. Server tests include missing/wrong echoed trust, configuration and
+identity, post-save Read denial, stale accepted keys versus changing attempted
+keys, all capability profiles, zero-write no-ops and bounded uncertain writes.
+No host/provisioning, public-key-management or lifecycle endpoint is implemented.

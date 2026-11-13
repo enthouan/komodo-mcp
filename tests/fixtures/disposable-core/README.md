@@ -29,6 +29,15 @@ image updates; configuration-only direct apply is denied before Core reads/write
 The runner compares saved desired image with the original running container and
 checks Deployment Server reassignment/restoration without changing its ID, image
 or running state. Build references and Swarm targets remain fixture-only coverage.
+Only the Write editor also receives Server creation permission. It creates a
+disabled Server through production MCP, changes one alert setting while comparing
+all other saved fields/trust, and verifies no-op and local connection-apply denial.
+With combined grants it creates an enabled Server with independently obtained
+initial trust against an unreachable endpoint inside the owned Core container:
+the definition is saved while connectivity remains NotOk. The Execute identity
+has no Server creation permission and proves sanitized Core denial without a
+fallback. Server sessions issue zero MCP executions and preserve all existing
+workload IDs/images/states. New Server records disable pruning and key rotation.
 All are enabled non-admin users; API keys expire in
 one hour. Provisioning credentials never enter an MCP child. The test workload
 uses BusyBox **1.37.0** and `depends_on.restart: true`; only deploy has saved hooks.

@@ -243,6 +243,7 @@ pub struct ConfigurationResult {
 pub enum DefinitionPreview {
     Stack(crate::stack_configuration::DefinitionPreview),
     Deployment(crate::deployment_configuration::DefinitionPreview),
+    Server(crate::server_configuration::DefinitionPreview),
 }
 
 // No Debug: these values can contain raw secrets. Nothing here is serialized.
@@ -402,6 +403,10 @@ pub(crate) fn changes(client: &CoreClient, config: &Value, patch: &Value) -> Vec
                     | "volumes"
                     | "labels"
                     | "extra_args"
+                    | "initial_public_key"
+                    | "public_key"
+                    | "passkey"
+                    | "address"
             ) || sensitive_locator(&config[key])
                 || sensitive_locator(after)
                 || contains_configured_secret(client, &config[key])
