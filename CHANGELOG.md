@@ -8,6 +8,14 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Add typed Server creation and partial connection/alerting updates through the
+  shared preview/apply contract. Preserve omitted settings and accepted trust,
+  require explicit pinned keys for enabled saves, disable automatic pruning/key
+  rotation on creation, and gate connection applies with both local grants.
+  Report verified configuration separately from cached connectivity and sanitized
+  connection failures, without provisioning or key-management fallback.
+  ([#19](https://github.com/enthouan/komodo-mcp/issues/19))
+
 - Add typed Deployment creation and partial updates using the shared private
   preview/apply contract, with direct images, versioned Build references and
   existing Server/Swarm targets. Preserve omitted ports, environment references

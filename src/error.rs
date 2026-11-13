@@ -126,7 +126,8 @@ impl AppError {
     pub(crate) fn response_too_large(operation: &'static str, status: StatusCode) -> Self {
         let mut error = Self::new(ErrorKind::ResponseTooLarge, operation, Some(status));
         error.correction = match operation {
-            "UpdateStack" | "CreateStack" | "UpdateDeployment" | "CreateDeployment" => Some(
+            "UpdateStack" | "CreateStack" | "UpdateDeployment" | "CreateDeployment"
+            | "CreateServer" | "UpdateServer" => Some(
                 "The configuration may already have been saved. Inspect the definition; never automatically repeat the write.",
             ),
             "DeployStack" | "Deploy" => Some(
@@ -146,7 +147,12 @@ impl AppError {
         if error.correction.is_some() {
             error.message = if matches!(
                 operation,
-                "UpdateStack" | "CreateStack" | "UpdateDeployment" | "CreateDeployment"
+                "UpdateStack"
+                    | "CreateStack"
+                    | "UpdateDeployment"
+                    | "CreateDeployment"
+                    | "CreateServer"
+                    | "UpdateServer"
             ) {
                 "Core configuration response exceeded its input budget."
             } else if matches!(operation, "DeployStack" | "Deploy") {
@@ -167,6 +173,10 @@ impl AppError {
             kind,
             message: if kind == ErrorKind::PermissionDenied && operation == "CreateStack" {
                 "Core denied Stack creation; check the enabled user's creation permissions, Core's non-admin creation policy, and Read/Attach on the target and linked Repo. No credential fallback was attempted."
+            } else if kind == ErrorKind::PermissionDenied && operation == "CreateServer" {
+                "Core denied Server creation; check the enabled user's create_server_permissions and Core's non-admin creation policy, or use an authorized admin. No credential fallback or provisioning was attempted."
+            } else if kind == ErrorKind::PermissionDenied && operation == "UpdateServer" {
+                "Core denied Server editing; check Write access on this exact Server for the same enabled identity. No key update, rotation, credential fallback or provisioning was attempted."
             } else if kind == ErrorKind::PermissionDenied && operation == "CreateDeployment" {
                 "Core denied Deployment creation; check the enabled user's creation permissions, Core's non-admin creation policy, and Read/Attach on the target and Build. No credential fallback was attempted."
             } else if kind == ErrorKind::PermissionDenied && operation == "UpdateDeployment" {

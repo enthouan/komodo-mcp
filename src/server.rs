@@ -49,7 +49,11 @@ impl KomodoServer {
                 | "preview_deployment_create"
                 | "apply_deployment_create"
                 | "preview_deployment_update"
-                | "apply_deployment_update" => Some(Capability::ConfigurationEdit),
+                | "apply_deployment_update"
+                | "preview_server_create"
+                | "apply_server_create"
+                | "preview_server_update"
+                | "apply_server_update" => Some(Capability::ConfigurationEdit),
                 _ => None,
             },
         )
@@ -58,6 +62,42 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description = "Preview creation of one Server record with trusted configuration access and zero writes. Require a name and explicit address (empty selects inbound), enabled and insecure_tls settings. Optional initial_public_key establishes initial pinned trust only; enabled creation requires a key and applying it requires both local grants. New records explicitly disable automatic image pruning and automatic key rotation. Return bounded redacted changes and a shared ten-minute single-use preview_id. Core enforces admin or create_server_permissions plus non-admin creation policy. This does not provision a host, run a shell, create a network or deploy a workload.", input_schema = schema_for_input::<crate::server_configuration::CreateInput>().expect("server create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_server_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_server_create") {
+            Ok(input) => crate::server_configuration::preview_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Apply the exact Server creation proposal and preview_id once with trusted configuration access; enabled creation also requires operate. Recheck bounded visible name absence and submit one typed CreateServer with explicit initial trust only. Verify the echoed saved config and key privately. Observe Core-reported connectivity separately after saving: a saved record can be unreachable, and even cached Ok does not verify a new connection. Core may reconnect and poll system/Docker/Repo state. No provisioning, shell, container lifecycle or key-rotation request is submitted. Uncertain replies consume the preview and are never retried.", input_schema = schema_for_input::<crate::server_configuration::CreateApplyInput>().expect("server create apply schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_server_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_server_create") {
+            Ok(input) => crate::server_configuration::apply_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Preview a typed partial Server connection, region, stats monitoring, alert-toggle or ignore_mounts edit with trusted configuration access and zero writes. Omission preserves values; null is invalid; empty address selects inbound, empty region and ignore_mounts clear. Raw config and pinned public key stay private in the shared stale baseline. Address, enabled or insecure_tls applies require both local grants independently of current policies. Enabled writes require existing pinned trust. No public-key replacement, changed-key acceptance, rotation, deprecated passkey edit or provisioning fallback is supported. Desired config and preview-time cached connectivity remain separate.", input_schema = schema_for_input::<crate::server_configuration::PreviewInput>().expect("server update schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_server_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_server_update") {
+            Ok(input) => crate::server_configuration::preview_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Apply the exact Server target/patch and shared preview_id once. Configuration-edit is required; any supplied address/enabled/insecure_tls also requires operate before Core reads, because reconnection and existing background prune/key policies can follow the target. Revalidate raw config and pinned key; stale/no-op writes are zero. Submit only a typed partial UpdateServer preserving omitted settings and trust. Core refreshes connectivity independently of the save; report cached connectivity or a sanitized observation error separately. No host provisioning, shell, lifecycle, public-key update or rotation request, credential fallback or automatic retry. Final-read/write races remain without Core conditional writes.", input_schema = schema_for_input::<crate::server_configuration::ApplyInput>().expect("server apply schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_server_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_server_update") {
+            Ok(input) => crate::server_configuration::apply_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description = "Preview creation of one desired Deployment definition with trusted configuration access. Require a name, explicit image reference or resolved Build plus major.minor.patch version (0.0.0 selects latest at deploy), and an existing Server/Swarm attachment. Optional settings preserve Core defaults. Return normalized name, redacted changes, source/target and zero writes with the shared ten-minute single-use preview_id. Core enforces creation policy and Read/Attach permissions. Saving is separate from runtime state and issues no MCP deploy, restart, image pull or shell request.", input_schema = schema_for_input::<crate::deployment_configuration::CreateInput>().expect("deployment create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
     async fn preview_deployment_create(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "preview_deployment_create") {

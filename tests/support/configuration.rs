@@ -12,11 +12,14 @@ use axum::{
     routing::post,
 };
 use komodo_client::{
-    api::write::{CreateDeployment, CreateStack, UpdateDeployment, UpdateStack},
+    api::write::{
+        CreateDeployment, CreateServer, CreateStack, UpdateDeployment, UpdateServer, UpdateStack,
+    },
     entities::{
         build::Build,
         deployment::Deployment,
         repo::{Repo, RepoListItemInfo},
+        server::{Server, ServerInfo},
         stack::Stack,
         swarm::{Swarm, SwarmListItemInfo},
     },
@@ -40,6 +43,16 @@ pub enum WriteReply {
     Template,
     MissingConfig,
     MissingRequested,
+    #[allow(
+        dead_code,
+        reason = "Server-specific response used by its integration binary"
+    )]
+    WrongTrust,
+    #[allow(
+        dead_code,
+        reason = "Server-specific response used by its integration binary"
+    )]
+    MissingTrust,
     Redirect,
     Lost,
     WriteDenied,
@@ -58,6 +71,8 @@ pub struct Data {
     pub observed_deployment_image: String,
     pub build: Value,
     pub server: Value,
+    pub created_servers: BTreeMap<String, Value>,
+    pub post_write_read_status: Option<u16>,
     pub swarm: Value,
     pub repo: Value,
     pub requests: Vec<Request>,
@@ -114,7 +129,12 @@ impl Core {
             created_deployments: BTreeMap::new(),
             observed_deployment_image: "busybox:1.36.1".into(),
             build,
-            server: Family::Server.detail(),
+            server: serde_json::to_value(
+                serde_json::from_value::<Server>(Family::Server.detail()).unwrap(),
+            )
+            .unwrap(),
+            created_servers: BTreeMap::new(),
+            post_write_read_status: None,
             swarm,
             repo,
             requests: vec![],
@@ -163,7 +183,14 @@ async fn read(
 ) -> Response {
     let mut data = data.lock().unwrap();
     record(&mut data, &headers, "read", &value);
-    if let Some(status) = data.read_status {
+    let read_status = data.read_status.or_else(|| {
+        data.requests
+            .iter()
+            .any(|r| r.path == "write")
+            .then_some(data.post_write_read_status)
+            .flatten()
+    });
+    if let Some(status) = read_status {
         return (
             StatusCode::from_u16(status).unwrap(),
             format!("{KEY} {SECRET} sensitive-environment-marker"),
@@ -178,7 +205,9 @@ async fn read(
         "ListStacks" | "GetStack" => std::iter::once(data.stack.clone())
             .chain(data.created.values().cloned())
             .collect::<Vec<_>>(),
-        "ListServers" | "GetServer" => vec![data.server.clone()],
+        "ListServers" | "GetServer" => std::iter::once(data.server.clone())
+            .chain(data.created_servers.values().cloned())
+            .collect(),
         "ListDeployments" | "GetDeployment" => std::iter::once(data.deployment.clone())
             .chain(data.created_deployments.values().cloned())
             .collect(),
@@ -220,6 +249,10 @@ async fn read(
             _=>json!({"type":"Repo","tags":[],"template":false,"info":RepoListItemInfo::default()}),
         };
         result["id"]=resource_id(v).clone();result["name"]=v["name"].clone();
+        if operation=="ListServers" {
+            result["info"]["region"]=v["config"]["region"].clone();
+            if data.created_servers.contains_key(resource_id(v).as_str().unwrap()) {result["info"]["state"]=json!(if v["config"]["enabled"]==false {"Disabled"} else {"NotOk"});}
+        }
         if operation=="ListStacks" {
             result["info"]["server_id"]=v["config"].get("server_id").cloned().unwrap_or(json!(""));
             result["info"]["swarm_id"]=v["config"].get("swarm_id").cloned().unwrap_or(json!(""));
@@ -343,13 +376,48 @@ async fn write(
                 }
                 saved
             }
+            "UpdateServer" => {
+                let typed: UpdateServer = serde_json::from_value(value["params"].clone()).unwrap();
+                assert_eq!(serde_json::to_value(&typed).unwrap(), value["params"]);
+                let target = if typed.id == resource_id(&data.server).as_str().unwrap() {
+                    &mut data.server
+                } else {
+                    data.created_servers.get_mut(&typed.id).unwrap()
+                };
+                if may_save {
+                    for (key, v) in value["params"]["config"].as_object().unwrap() {
+                        target["config"][key] = v.clone();
+                    }
+                }
+                target.clone()
+            }
+            "CreateServer" => {
+                let typed: CreateServer = serde_json::from_value(value["params"].clone()).unwrap();
+                assert_eq!(serde_json::to_value(&typed).unwrap(), value["params"]);
+                let id = format!("{:024x}", 0x300 + data.created_servers.len());
+                let saved = serde_json::to_value(Server {
+                    id: id.clone(),
+                    name: typed.name,
+                    config: typed.config.into(),
+                    info: ServerInfo {
+                        public_key: typed.public_key.unwrap_or_default(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+                .unwrap();
+                if may_save {
+                    data.created_servers.insert(id, saved.clone());
+                }
+                saved
+            }
             other => panic!("unexpected write {other}"),
         };
         (data.reply, saved)
     };
     match reply {
         WriteReply::Valid => Json(saved).into_response(),
-        WriteReply::WriteDenied => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":format!("User does not have required permissions on this {}. Must have at least Write permissions",if value["type"].as_str().unwrap().ends_with("Deployment"){"Deployment"}else{"Stack"}),"trace":[format!("{KEY} {SECRET}")]}))).into_response(),
+        WriteReply::WriteDenied => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":format!("User does not have required permissions on this {}. Must have at least Write permissions",if value["type"].as_str().unwrap().ends_with("Deployment"){"Deployment"}else if value["type"].as_str().unwrap().ends_with("Server"){"Server"}else{"Stack"}),"trace":[format!("{KEY} {SECRET}")]}))).into_response(),
         WriteReply::AttachDenied => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"User does not have required permissions on this Server. Must have at least Read permissions, as well as these specific permissions: [Attach]","trace":[format!("{KEY} {SECRET}")]}))).into_response(),
         WriteReply::Delayed => {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
@@ -383,6 +451,8 @@ async fn write(
             let key=value["params"]["config"].as_object().unwrap().keys().next().unwrap();
             s["config"].as_object_mut().unwrap().remove(key);Json(s).into_response()
         }
+        WriteReply::WrongTrust => {let mut s=saved;s["info"]["public_key"]=json!("unexpected-accepted-public-key");Json(s).into_response()}
+        WriteReply::MissingTrust => {let mut s=saved;s["info"].as_object_mut().unwrap().remove("public_key");Json(s).into_response()}
         WriteReply::Redirect => {
             (StatusCode::TEMPORARY_REDIRECT, [("location", "/write")], "").into_response()
         }

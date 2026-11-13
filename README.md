@@ -152,6 +152,13 @@ Image/Build updates also require both local grants; Core can inspect registries
 and auto-deploy under its policy. See [Deployment definitions](docs/deployments.md)
 for typed fields, Server/Swarm targets, Build versions, preservation and the
 separate saved/runtime observations.
+Server definitions add `preview_server_create`/`apply_server_create` and
+`preview_server_update`/`apply_server_update`. Connection-field applies and
+enabled creation require both local grants; ordinary alert/monitoring edits and
+disabled creation need configuration access. Initial pinned trust is explicit,
+existing keys are preserved, and connectivity is observed separately from a
+verified save. See [Server records](docs/servers.md) for fields, Core permissions,
+background-policy effects and the absence of provisioning/key-rotation fallback.
 
 Use an enabled non-admin Core identity with `Read` on the resources being
 inspected. Deploy, start, stop and restart require Core `Execute` on the selected

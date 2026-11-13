@@ -43,6 +43,13 @@ class Failure(Exception):
     pass
 
 
+class CoreHttpFailure(Failure):
+    """Bounded private error body; only safe status/operation enters the message."""
+    def __init__(self, operation, status, body):
+        super().__init__(f'{operation or "Core request"}: Core HTTP {status}')
+        self.status, self.body = status, body
+
+
 def require(condition, message):
     if not condition:
         raise Failure(message)
@@ -136,8 +143,6 @@ class Api:
             timer.start()
             connection.request('GET' if data is None else 'POST', endpoint, body=data, headers=headers)
             with connection.getresponse() as response:
-                if not 200 <= response.status < 300:
-                    raise Failure(f'{operation or endpoint}: Core HTTP {response.status}')
                 body = bytearray()
                 while True:
                     if expired.is_set() or time.monotonic() >= deadline:
@@ -148,10 +153,11 @@ class Api:
                         raise Failure('bounded Core response exceeded')
                     if not block:
                         break
-                value = json.loads(body)
                 require(not expired.is_set() and time.monotonic() < deadline,
                         'Core request deadline exceeded')
-                return value
+                if not 200 <= response.status < 300:
+                    raise CoreHttpFailure(operation, response.status, bytes(body))
+                return json.loads(body)
         except (OSError, ValueError, http.client.HTTPException):
             if expired.is_set() or time.monotonic() >= deadline:
                 raise Failure('Core request deadline exceeded') from None
@@ -347,14 +353,18 @@ class LossProxy:
             if endpoint == '/read':
                 operation = request['type']
                 self.read_operations[operation] = self.read_operations.get(operation,0) + 1
-            reply = await asyncio.wait_for(asyncio.to_thread(self.api.request, endpoint, request['type'], request['params']), 12)
-            if endpoint == '/execute':
-                self.ids.append(identity(reply))
-                if self.lose_reply:
-                    return  # Core accepted; deliberately lose only its acknowledgement.
-            body = json.dumps(reply).encode()
+            try:
+                reply = await asyncio.wait_for(asyncio.to_thread(self.api.request, endpoint, request['type'], request['params']), 12)
+            except CoreHttpFailure as error:
+                status, body = error.status, error.body
+            else:
+                status, body = 200, json.dumps(reply).encode()
+                if endpoint == '/execute':
+                    self.ids.append(identity(reply))
+                    if self.lose_reply:
+                        return  # Core accepted; deliberately lose only its acknowledgement.
             if len(body) > MAX_BODY: raise Failure('proxy reply exceeded bound')
-            writer.write(b'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ' + str(len(body)).encode() + b'\r\n\r\n' + body)
+            writer.write(b'HTTP/1.1 ' + str(status).encode() + b' Core response\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ' + str(len(body)).encode() + b'\r\n\r\n' + body)
             await asyncio.wait_for(writer.drain(), 5)
         except Exception as error:
             self.failures.append(type(error).__name__)
@@ -738,6 +748,110 @@ async def exercise_deployment_definitions(address, editor, deployment_id, server
     print('Verified real Core Deployment creation, image preservation and separate running-container observations.',flush=True)
 
 
+async def exercise_server_definitions(address, editor, denied_creator, initial_public_key):
+    """Save owned Server records while checking connectivity independently."""
+    api = Api(address, {'x-api-key':editor['key'], 'x-api-secret':editor['secret']})
+    def workload_snapshot():
+        return sorted(run([*COMPOSE,'exec','-T','docker','docker','ps','-a',
+                           '--format','{{.ID}}:{{.Image}}:{{.State}}']).splitlines())
+    before_workloads = await asyncio.to_thread(workload_snapshot)
+    create = {'name':'mcp-config-server','config':{
+        'address':'http://127.0.0.1:9','enabled':False,'insecure_tls':False,'region':'owned'}}
+    async with LossProxy(address,editor,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,editor,operate=False,configuration_edit=True) as mcp:
+            p = await mcp.tool('preview_server_create',create)
+            require(proxy.write_attempts == 0,'Server preview submitted a write')
+            saved = await mcp.tool('apply_server_create',{**create,'preview_id':p['preview_id']})
+            require(saved['outcome'] == 'saved' and saved['saved_configuration_verified'],
+                    'disabled Server creation was not verified')
+            server_id = saved['resource']['id']
+            inspected = await mcp.tool('get_server',{'id':server_id})
+            require(inspected['id'] == server_id and not inspected['enabled'],
+                    'new disabled Server was not inspectable')
+            stored = await asyncio.to_thread(api.read,'GetServer',{'server':server_id})
+            require(not stored['config']['auto_prune'] and not stored['config']['auto_rotate_keys'],
+                    'Server creation inherited destructive background defaults')
+            edit = {'target':{'id':server_id},'patch':{
+                'send_unreachable_alerts':not stored['config']['send_unreachable_alerts']}}
+            p = await mcp.tool('preview_server_update',edit)
+            changed = await mcp.tool('apply_server_update',{**edit,'preview_id':p['preview_id']})
+            after = await asyncio.to_thread(api.read,'GetServer',{'server':server_id})
+            preserved = all(v == after['config'][k] for k,v in stored['config'].items()
+                            if k != 'send_unreachable_alerts') and stored['info']['public_key'] == after['info']['public_key']
+            require(changed['outcome'] == 'saved' and preserved,'alert-only save changed unrelated config or trust')
+            require(changed['definition']['details']['connectivity']['core_reported_state'] == 'Disabled'
+                    and not changed['definition']['details']['connectivity']['connection_verified'],
+                    'saved Server definition was conflated with connectivity')
+            noop = await mcp.tool('preview_server_update',edit)
+            writes = proxy.write_attempts
+            require((await mcp.tool('apply_server_update',{**edit,'preview_id':noop['preview_id']}))['outcome'] == 'no_op'
+                    and proxy.write_attempts == writes,'unchanged Server save wrote again')
+            connection = {'target':{'id':server_id},'patch':{'address':'http://127.0.0.1:10'}}
+            p = await mcp.tool('preview_server_update',connection)
+            reads = dict(proxy.read_operations)
+            denied = await mcp.rpc('tools/call',{'name':'apply_server_update','arguments':{
+                **connection,'preview_id':p['preview_id']}})
+            require(denied.get('isError') and denied['structuredContent']['kind'] == 'capability_disabled'
+                    and proxy.read_operations == reads and proxy.write_attempts == writes,
+                    'configuration-only connection apply reached Core')
+            require(proxy.execute_attempts == 0,'Server record session submitted execution')
+            REPORT['server_definitions'] = {'created_id':server_id,'inspected_id':inspected['id'],
+                'preview_writes':0,'alert_only_unrelated_configuration_and_trust_preserved':preserved,
+                'stored_enabled':False,'core_reported_connectivity':'Disabled','connection_verified':False,
+                'no_op_writes':0,'connection_apply_without_operate_denied_locally':True,
+                'denied_connection_core_reads':0,'denied_connection_core_writes':0,
+                'auto_prune':False,'auto_rotate_keys':False,'execute_attempts':0,'writes':proxy.write_operations}
+
+    # The provisioner supplies independently observed initial trust. It never
+    # enters MCP as an admin credential, and the unreachable endpoint is inside
+    # the owned Core container, not an unrelated host.
+    SECRETS.append(initial_public_key)
+    create = {'name':'mcp-config-unreachable-server','config':{
+        'address':'http://127.0.0.1:9','enabled':True,'insecure_tls':False},
+        'initial_public_key':initial_public_key}
+    async with LossProxy(address,editor,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,editor,operate=True,configuration_edit=True) as mcp:
+            p = await mcp.tool('preview_server_create',create)
+            saved = await mcp.tool('apply_server_create',{**create,'preview_id':p['preview_id']})
+            server_id = saved['resource']['id']
+            stored = await asyncio.to_thread(api.read,'GetServer',{'server':server_id})
+            require(saved['outcome'] == 'saved' and saved['saved_configuration_verified']
+                    and stored['config']['enabled'] and stored['info']['public_key'] == initial_public_key,
+                    'unreachable Server did not retain its saved config and explicit trust')
+            connection = saved['definition']['details']['connectivity']
+            require(connection['core_reported_state'] == 'NotOk' and not connection['connection_verified']
+                    and connection['error']['operation'] == 'ServerConnectivity',
+                    'unreachable Server did not report a separate actionable connection failure')
+            require(initial_public_key not in json.dumps(p) + json.dumps(saved),
+                    'initial trust leaked into preview or saved result')
+            require(proxy.execute_attempts == 0 and proxy.write_attempts == 1,
+                    'unreachable Server triggered an MCP fallback or execution')
+            REPORT['server_unreachable'] = {'id':server_id,'saved_configuration_verified':True,
+                'stored_enabled':True,'initial_pinned_trust_preserved':True,
+                'core_reported_connectivity':connection['core_reported_state'],
+                'connection_verified':False,'sanitized_error':connection['error'],
+                'execute_attempts':0,'writes':proxy.write_operations}
+
+    async with LossProxy(address,denied_creator,lose_reply=False) as proxy:
+        async with await Mcp.start(proxy.address,denied_creator,operate=False,configuration_edit=True) as mcp:
+            create = {'name':'mcp-denied-server','config':{'address':'','enabled':False,'insecure_tls':False}}
+            p = await mcp.tool('preview_server_create',create)
+            denied = await mcp.tool('apply_server_create',{**create,'preview_id':p['preview_id']})
+            require(denied['outcome'] == 'submission_unknown'
+                    and denied['observation_error']['kind'] == 'permission_denied'
+                    and 'create_server_permissions' in denied['observation_error']['message']
+                    and proxy.execute_attempts == 0 and proxy.write_attempts == 1,
+                    'denied Server creation lacked sanitized permissions or attempted a fallback')
+            REPORT['server_creation_denial'] = {'same_non_admin_identity':True,
+                'core_create_server_permission':False,'write_attempts':1,'execute_attempts':0,
+                'sanitized_error':denied['observation_error']}
+    unchanged = before_workloads == await asyncio.to_thread(workload_snapshot)
+    require(unchanged,'Server record writes changed owned container IDs/images/states')
+    REPORT['server_definitions']['workload_ids_images_states_unchanged'] = unchanged
+    persist()
+    print('Verified real Core Server creation/alert edit, pinned trust, separate unreachable state and permission denial.',flush=True)
+
+
 def exercise_environment():
     addresses = run([*COMPOSE, 'port', 'core', '9120']).splitlines()
     if len(addresses) != 1 or not re.fullmatch(r'127\.0\.0\.1:\d+', addresses[0]):
@@ -790,7 +904,7 @@ def exercise_environment():
         user_id = identity(user)
         if user['admin'] or user['super_admin']:
             raise Failure('test identity unexpectedly administrative')
-        admin.write('UpdateUserBasePermissions', {'user_id': user_id, 'enabled': True, 'create_servers': False, 'create_builds': False})
+        admin.write('UpdateUserBasePermissions', {'user_id': user_id, 'enabled': True, 'create_servers': level == 'Write', 'create_builds': False})
         for kind, resource_id, grant in [('Server', server_id, 'Read'), ('Stack', stack_id, level), ('Deployment', deployment_id, level)]:
             admin.write('UpdatePermissionOnTarget', {'user_target': {'type': 'User', 'id': user_id},
                 'resource_target': {'type': kind, 'id': resource_id}, 'permission': {'level': grant,
@@ -816,6 +930,7 @@ def exercise_environment():
     asyncio.run(exercise_configuration(address,credentials[2],stack_id))
     asyncio.run(exercise_stack_definitions(address,credentials[2],stack_id,server_id,alternate_server_id))
     asyncio.run(exercise_deployment_definitions(address,credentials[2],deployment_id,server_id,alternate_server_id))
+    asyncio.run(exercise_server_definitions(address,credentials[2],credentials[0],periphery['public_key']))
     services = Api(address, {'x-api-key': credentials[0]['key'], 'x-api-secret': credentials[0]['secret']}).read('ListAllStackServices', {'stacks': [stack_id]})
     REPORT['observed_services'] = [{'service': s['service'], 'state': s['state']} for s in services]
     if not {'web','db'} <= {s['service'] for s in services}:

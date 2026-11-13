@@ -2,7 +2,8 @@
 
 This page describes the shared contract and Stack fields. See also
 [Deployment definitions](deployments.md) for image/Build references, executable
-settings and separate runtime observations. Both resource types share the same
+settings and separate runtime observations, and [Server records](servers.md) for
+connection/alert settings and explicit initial trust. These resources share the same
 bounded token store; operation/resource-kind binding prevents cross-type replay.
 
 Set `KOMODO_ALLOW_CONFIGURATION_EDIT=true` in the MCP child environment. The

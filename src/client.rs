@@ -143,6 +143,8 @@ impl CoreClient {
             "CreateStack" => "CreateStack",
             "CreateDeployment" => "CreateDeployment",
             "UpdateDeployment" => "UpdateDeployment",
+            "CreateServer" => "CreateServer",
+            "UpdateServer" => "UpdateServer",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "write", None)),
         };
         crate::configuration::require_edit(self)?;
@@ -162,6 +164,14 @@ impl CoreClient {
             self,
             operation == "UpdateDeployment" && parameters["config"].get("image").is_some(),
         )?;
+        crate::server_configuration::require_connection_operate(
+            self,
+            (operation == "UpdateServer"
+                && ["address", "enabled", "insecure_tls"]
+                    .iter()
+                    .any(|f| parameters["config"].get(f).is_some()))
+                || (operation == "CreateServer" && parameters["config"]["enabled"] == true),
+        )?;
         let expected_config = parameters
             .get("config")
             .and_then(serde_json::Value::as_object)
@@ -169,6 +179,12 @@ impl CoreClient {
             .ok_or_else(|| {
                 AppError::arguments(operation, "Use a typed partial configuration object")
             })?;
+        let expected_initial_key = (operation == "CreateServer").then(|| {
+            parameters["public_key"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned()
+        });
         tokio::time::timeout(self.0.policy.operation_timeout, async {
             let response: serde_json::Value = self
                 .request_bounded_body(&self.0.write_request, parameters, T::req_type(), operation)
@@ -178,6 +194,9 @@ impl CoreClient {
                 || !expected_config
                     .iter()
                     .all(|(key, value)| response["config"].get(key) == Some(value))
+                || expected_initial_key.as_ref().is_some_and(|key| {
+                    response["info"]["public_key"].as_str() != Some(key.as_str())
+                })
             {
                 return Err(AppError::new(ErrorKind::InvalidResponse, operation, None));
             }
@@ -390,9 +409,10 @@ impl CoreClient {
 mod write_policy_tests {
     use super::*;
     use komodo_client::{
-        api::write::{UpdateDeployment, UpdateStack},
+        api::write::{CreateServer, UpdateDeployment, UpdateServer, UpdateStack},
         entities::{
             deployment::{DeploymentImage, PartialDeploymentConfig},
+            server::PartialServerConfig,
             stack::PartialStackConfig,
         },
     };
@@ -458,6 +478,39 @@ mod write_policy_tests {
                     .await;
                 assert!(matches!(result,Err(e) if e.kind==ErrorKind::CapabilityDisabled));
             }
+            for config in [
+                PartialServerConfig {
+                    address: Some(String::new()),
+                    ..Default::default()
+                },
+                PartialServerConfig {
+                    enabled: Some(false),
+                    ..Default::default()
+                },
+                PartialServerConfig {
+                    insecure_tls: Some(false),
+                    ..Default::default()
+                },
+            ] {
+                let result = client
+                    .write(UpdateServer {
+                        id: "000000000000000000000001".into(),
+                        config,
+                    })
+                    .await;
+                assert!(matches!(result,Err(e) if e.kind==ErrorKind::CapabilityDisabled));
+            }
+            let result = client
+                .write(CreateServer {
+                    name: "fixture".into(),
+                    config: PartialServerConfig {
+                        enabled: Some(true),
+                        ..Default::default()
+                    },
+                    public_key: Some("explicit-key".into()),
+                })
+                .await;
+            assert!(matches!(result,Err(e) if e.kind==ErrorKind::CapabilityDisabled));
         }
         assert!(
             tokio::time::timeout(Duration::from_millis(20), listener.accept())
