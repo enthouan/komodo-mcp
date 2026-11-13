@@ -317,10 +317,16 @@ async fn raw_secrets_cleanup_identity_runtime_trust_and_reference_changes_invali
         }
         let r = call(&s, "apply_resource_delete", apply(&request, &p)).await;
         assert_eq!(r.is_error, Some(true));
+        let error = r.structured_content.unwrap();
+        assert_eq!(error["kind"], "stale_preview", "case {change}");
         assert_eq!(
-            r.structured_content.unwrap()["kind"],
-            "stale_preview",
-            "case {change}"
+            error["field"],
+            match change {
+                0 | 1 | 5 => "definition",
+                2 => "runtime",
+                3 => "attachment",
+                _ => "references",
+            }
         );
         assert!(core.writes().is_empty());
         process

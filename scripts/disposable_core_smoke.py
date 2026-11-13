@@ -956,6 +956,16 @@ async def exercise_deletion(address, admin, deleter, reader, deleter_id, reader_
         await grant(deleter_id,kind.title(),resource_id,'Read')
     before=await asyncio.to_thread(host_snapshot)
     require(len(before)>=3 and all(w['state']=='running' for w in before),'Server detachment needs original running workloads')
+    deleter_api=Api(address,{'x-api-key':deleter['key'],'x-api-secret':deleter['secret']})
+    expected_ids={w['id'] for w in before}
+    # Earlier live deletes intentionally changed the cache. Wait for its normal
+    # monitor refresh before asking the operator to bind a stable Server preview.
+    # Production revalidation must still reject any subsequent effect change.
+    await asyncio.to_thread(poll,lambda: {c.get('id') for c in deleter_api.read('ListContainers',{'server':server_id})}==expected_ids,
+                            'Server container cache convergence after owned workload deletion')
+    REPORT['server_deletion_precondition']={'nested_docker_ids':sorted(expected_ids),
+        'core_cached_ids_converged':True,'earlier_deleted_ids_excluded':True}
+    persist()
     async with LossProxy(address,deleter,lose_reply=False) as proxy:
         async with await Mcp.start(proxy.address,deleter,True,True) as mcp:
             request={'target':{'kind':'server','id':server_id},'action':'delete'}
@@ -964,7 +974,15 @@ async def exercise_deletion(address, admin, deleter, reader, deleter_id, reader_
             for kind, resource_id in refs.items():
                 require(any(r['kind']==kind and r['id']==resource_id for r in p['visible_references']),
                         'Server preview missed visible '+kind+' reference')
-            result=await mcp.tool('apply_resource_delete',{**request,'preview_id':p['preview_id']})
+            raw=await mcp.rpc('tools/call',{'name':'apply_resource_delete','arguments':{
+                **request,'preview_id':p['preview_id']}})
+            if raw.get('isError'):
+                error=raw.get('structuredContent',{})
+                REPORT['server_deletion_failure']={'kind':error.get('kind'),'field':error.get('field'),
+                    'write_attempts':proxy.write_attempts,'execute_attempts':proxy.execute_attempts}
+                persist()
+                raise Failure('Server deletion failed with sanitized '+str(error.get('kind'))+' in '+str(error.get('field')))
+            result=raw['structuredContent']
             require(result['outcome']=='acknowledged' and result['definition_removal']['observation']=='definition_absent_at_direct_read',
                     'Server delete not acknowledged and directly observed absent')
             observations=[]

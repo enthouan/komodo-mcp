@@ -550,11 +550,22 @@ pub async fn apply(client: &CoreClient, input: ApplyInput) -> Result<DeletionRes
     if p.baseline != entry.baseline
         || entry.prepared != json!({"operation":target.kind.delete_operation(),"id":target.id})
     {
-        return Err(AppError::new(
-            ErrorKind::StalePreview,
-            "resource_delete",
-            None,
-        ));
+        let field = [
+            "definition",
+            "attachment",
+            "references",
+            "runtime",
+            "history",
+        ]
+        .into_iter()
+        .find(|key| p.baseline[*key] != entry.baseline[*key]);
+        return Err(AppError {
+            field,
+            correction: Some(
+                "The previewed deletion effects changed. Inspect the changed evidence category and prepare a new preview; no deletion was submitted.",
+            ),
+            ..AppError::new(ErrorKind::StalePreview, "resource_delete", None)
+        });
     }
     let mut r = entry.result;
     r.preview_id = None;
