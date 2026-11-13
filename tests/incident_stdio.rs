@@ -34,7 +34,7 @@ const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(15);
 const SCENARIO_TIMEOUT: Duration = Duration::from_secs(45);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const STDERR_BYTES: usize = 1024 * 1024;
-const TOOLS: [&str; 15] = [
+const TOOLS: [&str; 16] = [
     "list_servers",
     "get_server",
     "list_stacks",
@@ -46,6 +46,7 @@ const TOOLS: [&str; 15] = [
     "list_updates",
     "get_update",
     "wait_for_update",
+    "reconcile_operation",
     "get_container_logs",
     "get_deployment_logs",
     "get_stack_logs",
@@ -263,7 +264,7 @@ async fn discover_and_reject(session: &Session, core: &IncidentCore) -> Result<(
     let actual: BTreeSet<_> = listed.tools.iter().map(|t| t.name.as_ref()).collect();
     ensure!(
         actual == BTreeSet::from(TOOLS),
-        "expected all fifteen read-only tools"
+        "expected all sixteen read-only tools"
     );
     let reads = core.requests().len();
     for tool in &listed.tools {

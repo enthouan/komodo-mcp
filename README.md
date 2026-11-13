@@ -362,6 +362,12 @@ works from a new session after timeout, cancellation or MCP restart. Incomplete
 observation retains the ID/latest evidence and never means remote operation
 failure or cancellation. See [wait and resume](docs/operations.md#wait-and-resume-by-update-id).
 
+If a submission reply was lost and no update ID is known, `reconcile_operation`
+searches bounded recent target history using the original scope/action and
+available time window. It returns possible candidates with **unconfirmed**
+attribution, including when only one matches. It never resubmits execution; see
+[interrupted-submission recovery](docs/operations.md#recover-an-interrupted-submission-without-repeating-execution).
+
 `stack_diagnose` combines inventory, service state, history, alerts and a bounded
 log excerpt. It returns `healthy`, `unhealthy`, or `inconclusive`, with supporting
 IDs and explicit source gaps. See [diagnosis bounds and evidence](docs/diagnostics.md#stack-diagnosis). The

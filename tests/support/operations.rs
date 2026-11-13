@@ -19,7 +19,7 @@ use komodo_client::api::{
         Deploy, DeployStack, RestartDeployment, RestartStack, StartDeployment, StartStack,
         StopDeployment, StopStack,
     },
-    read::{GetDeployment, GetStack, GetUpdate, ListDeployments, ListStacks},
+    read::{GetDeployment, GetStack, GetUpdate, ListDeployments, ListStacks, ListUpdates},
 };
 use komodo_mcp::{
     capabilities::CapabilityPolicy,
@@ -99,6 +99,11 @@ pub struct Options {
     pub name: Option<String>,
     pub observation_status: Option<u16>,
     pub update_reads: Vec<UpdateRead>,
+    pub history_status: Option<u16>,
+    pub history_status_after: Option<(u32, u16)>,
+    pub repeat_history_page: bool,
+    pub history_hidden: bool,
+    pub history_delay: Duration,
     pub observation_delay: Duration,
     pub chunked: bool,
     pub changed_identity: bool,
@@ -173,6 +178,9 @@ impl Core {
         let id = value["_id"]["$oid"].as_str().unwrap().to_owned();
         self.data.lock().unwrap().updates.insert(id, value);
     }
+    pub fn set_history_hidden(&self, hidden: bool) {
+        self.data.lock().unwrap().options.history_hidden = hidden;
+    }
     pub fn executions(&self) -> usize {
         self.data.lock().unwrap().executions
     }
@@ -180,7 +188,9 @@ impl Core {
         assert!(!self.data.lock().unwrap().bad_credentials);
     }
     pub async fn session(&self, operate: bool) -> (Session, Task) {
-        let client = self.client(operate, Duration::from_secs(3));
+        Self::session_with_client(self.client(operate, Duration::from_secs(3))).await
+    }
+    pub async fn session_with_client(client: CoreClient) -> (Session, Task) {
         let core_version = client.detect_version().await.unwrap();
         let (server_io, client_io) = tokio::io::duplex(256 * 1024);
         let task = Task(tokio::spawn(async move {
@@ -303,6 +313,53 @@ async fn read(
     };
     if operation == "GetVersion" {
         return json_response(200, json!({"version":"2.3.2"}), false);
+    }
+    if operation == "ListUpdates" {
+        let _: ListUpdates = serde_json::from_value(params.clone()).unwrap();
+        tokio::time::sleep(options.history_delay).await;
+        let history_status = options
+            .history_status_after
+            .filter(|(page, _)| params["page"].as_u64().unwrap() >= u64::from(*page))
+            .map(|(_, status)| status)
+            .or(options.history_status);
+        if let Some(status) = history_status {
+            return json_response(
+                status,
+                json!({"error":format!("denied {KEY} {SECRET}")}),
+                options.chunked,
+            );
+        }
+        let data = data.lock().unwrap();
+        let mut updates: Vec<Value> = if options.history_hidden {
+            vec![]
+        } else {
+            data.updates.values().filter(|u| {
+            params["query"].is_null() || (params["query"]["target.type"] == u["target"]["type"] && params["query"]["target.id"] == u["target"]["id"])
+        }).map(|u| json!({"id":u["_id"]["$oid"],"operation":u["operation"],"start_ts":u["start_ts"],"status":u["status"],"success":u["success"],"target":u["target"],"operator":u["operator"],"username":"fixture"})).collect()
+        };
+        updates.sort_by(|a, b| {
+            b["start_ts"]
+                .as_i64()
+                .cmp(&a["start_ts"].as_i64())
+                .then_with(|| b["id"].as_str().cmp(&a["id"].as_str()))
+        });
+        let page = params["page"].as_u64().unwrap() as usize;
+        let offset = if options.repeat_history_page {
+            0
+        } else {
+            page * 100
+        };
+        let items: Vec<_> = updates.into_iter().skip(offset).take(100).collect();
+        let next = if items.len() == 100 {
+            Some(page + 1)
+        } else {
+            None
+        };
+        return json_response(
+            200,
+            json!({"updates":items,"next_page":next}),
+            options.chunked,
+        );
     }
     if operation == "GetUpdate" {
         let request: GetUpdate = serde_json::from_value(params).unwrap();
@@ -507,6 +564,11 @@ async fn execute(
     let update = &mut update["update"];
     update["_id"] = json!({"$oid":id});
     update["operation"] = json!(operation);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    update["start_ts"] = json!(now);
     update["target"] = target;
     update["status"] = json!("InProgress");
     update["end_ts"] = Value::Null;
@@ -520,7 +582,7 @@ async fn execute(
     };
     if !matches!(outcome, Outcome::Running) {
         update["status"] = json!("Complete");
-        update["end_ts"] = json!(1735689605000_i64);
+        update["end_ts"] = json!(now + 1);
         update["success"] = json!(matches!(outcome, Outcome::Succeeded));
         let message = match outcome {
             Outcome::Succeeded => "",
@@ -544,6 +606,11 @@ async fn execute(
         } else {
             json!([{"stage":"Task Error","success":false,"start_ts":1,"end_ts":2,"stdout":"sensitive-environment-marker","stderr":format!("{message}\nAuthorization: Bearer {SECRET}\npassword={KEY}"),"command":"sensitive-stored-file-marker"}])
         };
+    }
+    if !services.is_empty()
+        && !matches!(outcome, Outcome::Denied | Outcome::Busy | Outcome::Running)
+    {
+        update["logs"].as_array_mut().unwrap().insert(0, json!({"stage":"Service/s","success":true,"start_ts":1,"end_ts":2,"stdout":format!("Execution requested for Stack service/s {}", services.join(", ")),"stderr":"","command":""}));
     }
     if data.options.escaped_evidence {
         update["status"] = json!("Complete");

@@ -183,7 +183,7 @@ The total local observation budget is 1–30 seconds (default 10), including Cor
 reads and sleeps. There are at most **10** lookups, with a pause of at least one
 second after each unfinished response. Requests retain the shared 2 MiB body cap
 and request deadline; the total wait deadline can stop an in-flight read sooner.
-The request cap can end a wait before the requested time budget. Result JSON is
+The request cap can end a wait before the requested time budget. Structured result JSON is
 capped at 65536 bytes after redaction/escaping; latest evidence is marked truncated
 if stages are reduced, preserving the ID and prioritized failure evidence.
 
@@ -214,25 +214,81 @@ wait, use `stack_diagnose` / `fleet_health` and bounded logs. The production std
 fixture includes a completed successful update followed by an **unhealthy** stack
 diagnosis, so a successful command is never treated as a health guarantee.
 
-## Inspect results and recover without repeating execution
+## Recover an interrupted submission without repeating execution
 
-Save the receipt and its `update_id`. In this or a new read-only MCP session:
+Before calling a mutation, retain the **resolved stable target ID**, exact original
+service/scope, action and a local UTC start time in the calling client. Save the
+receipt, including its submission window and update ID, when one arrives. If the
+MCP process dies before a receipt, the client still has the original context;
+record the observed end/loss time when available. Recovery does not depend on
+an in-memory MCP session or a local queue.
+
+If an update ID is known, resume it with `get_update` / `wait_for_update` from a
+new read-only session. An acknowledged update that later fails due to permissions,
+busy/conflict or rollout is still an **accepted submission**. Failure is not a
+reason to treat the original request as unsent or to automatically repeat it.
 
 ```json
 {"name":"get_update","arguments":{"id":"100000000000000000000001"}}
 ```
 
-If no ID was received, retain the stable workload ID, requested service/scope,
-operation and submission time window when available. Inspect bounded resource
-history with `list_updates`; a matching recent update is evidence, not proof that
-it belongs to this call. Another operator may have issued an identical action.
-History may be delayed or inaccessible. Never automatically resubmit an uncertain
-operation or infer that a lost reply means it was not executed. There is no
-upstream idempotency-key guarantee or exactly-once promise across independent
-client retries. A new explicit operation is a new submission and can repeat effects.
+When acceptance is unknown and no update ID was received, call the read-only
+`reconcile_operation` with the original context. Use actual retained values;
+these are illustrative `tools/call` parameters:
 
-Retrying read-only observation does not execute again. Once Core reports a final
-outcome, inspect `stack_diagnose` / `fleet_health` and bounded logs independently:
+```json
+{"name":"reconcile_operation","arguments":{"target":{"kind":"stack","id":"000000000000000000000002"},"requested_scope":{"kind":"service","service":"web"},"operation":"deploy","submission_window":{"started_ts":1794500000000,"ended_ts":1794500015000}}}
+```
+
+Deployment scope is `{"kind":"whole_deployment"}` with target kind `deployment`;
+whole-Stack scope is `{"kind":"whole_stack"}`. Actions are `deploy`, `start`,
+`stop`, `restart`. Resource names, wildcards, scope changes and arbitrary history
+queries are not accepted. The stable target and exact service must come from the
+original input/receipt, not a clipped or redacted display name. Optional window
+bounds use UTC Unix milliseconds; omit unknown bounds or the whole window.
+Core's clock and history visibility may differ from the client, so time filtering
+can miss an accepted execution. A missing receipt never authorizes execution again.
+
+Reconciliation reads at most **three fixed 100-record resource-history pages**
+(newest first), **five update details** for service evidence and returns at most
+**five possible candidates**. Each read has a 2-second budget inside a 10-second
+total budget; cancellation stops this local observer. Bodies retain the shared
+2 MiB cap. Structured output is capped at 65536 bytes after sanitization/escaping.
+Truncation, partial/error evidence and request counts are explicit. The search
+deduplicates stable update IDs because page contents can change during reads.
+It never waits for visibility in the background, queues work or submits execution.
+
+Candidates match the target, Core operation variant and available time bounds.
+For a named service, Core 2.3.2's specific `Service/s` requested-service stage can
+corroborate the scope. This is not a claim that dependencies/hooks were isolated.
+No raw stdout, commands, operator identity, saved configuration or `other_data`
+is returned. Missing/ambiguous service evidence, denied detail access or the
+lookup cap is labeled `scope_evidence: unavailable`; a proven different requested
+service is excluded. Busy/denied failed updates remain visible candidates.
+
+**`original_submission` stays `unknown` and `attribution` stays `unconfirmed`.**
+No candidate is selected automatically, including when only one exists. Another
+operator or independent client using the same credentials can submit the same
+action on the same workload/service within the same window. Core exposes no
+unique invocation/idempotency key that proves which client call produced a
+history record. Inspect a candidate's ID with read tools only; doing so observes
+that candidate, not proof that it was the original submission.
+
+| Evidence | Next step |
+| --- | --- |
+| Zero candidates | Retain uncertainty. Visibility, permissions, clock differences or the page/time budget can hide an accepted request. Retry bounded observation later; do not infer that execution is safe to repeat. |
+| One candidate | Inspect its Core update and external context. A single match, even for the same Core actor, does not prove attribution. |
+| Multiple candidates | Keep every candidate unconfirmed. Do not guess which belongs to the interrupted call. |
+| Inaccessible/partial history | Keep the context and returned evidence gap; restore Read access or inspect Core with an authorized identity. No credential fallback occurs. |
+| Known acknowledged ID | Follow that exact update with `get_update` / `wait_for_update`, including a failed busy/denied outcome. |
+
+Retrying observation never executes again. If an operator decides after reviewing
+evidence that a new operation is needed, a new explicit mutation call is a new
+submission and can repeat effects. There is no exactly-once guarantee across
+independent client retries, automatic history-based attribution, or implicit
+resubmission in transport, handlers or reconciliation.
+
+After observing a final Core outcome, inspect workload health independently:
 
 ```json
 {"name":"stack_diagnose","arguments":{"id":"000000000000000000000002"}}
