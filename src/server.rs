@@ -24,6 +24,7 @@ impl KomodoServer {
             self.client.capabilities(),
             |name| match name {
                 "list_servers"
+                | "export_resources_toml"
                 | "get_server"
                 | "list_stacks"
                 | "get_stack"
@@ -108,6 +109,15 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="Export an explicit selection of at most 16 resources and 16 visible user groups through Core's scoped read API. targets is required; [] requires explicit groups or include_variables=true, which selects ALL Core variables, never per-variable names. Return parseable inspection-only TOML with conservative structural omission of arbitrary text, inline documents/scripts, credentials, all variable values and unknown fields, even for administrators. Identify missing definitions (Core omits inline ResourceSyncs), redactions and references outside the selection. Never use this incomplete export as authoritative desired state: omitted fields can reset existing configuration to defaults. No file write, cache refresh, RunSync or deployment; no export-all fallback. Bound source/output and reject excess without returning a truncated document.",input_schema=schema_for_input::<crate::export::Input>().expect("export_resources_toml schema"),output_schema=inventory::output_schema::<crate::export::Output>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn export_resources_toml(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "ExportResourcesToToml") {
+            Ok(input) => crate::export::export(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description="List Core Action/Procedure schedule owners in bounded positive pages. Core includes nonempty expressions even when disabled, and includes templates. Return configured expression/format/timezone/enabled and Core-reported cached next-run/error plus latest completed run start time (success or failure, manual or scheduled). A disabled/empty expression is not parsed; missing or cached values provide no validity/execution/health guarantee. Core internally collects/sorts owners before pagination.",input_schema=schema_for_input::<ListInput>().expect("list_schedules schema"),output_schema=inventory::output_schema::<crate::schedules::SchedulePage>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn list_schedules(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_schedules") {

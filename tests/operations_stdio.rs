@@ -118,7 +118,7 @@ async fn readonly_defaults_and_core_denied_busy_rollout_failures_remain_observab
         })
         .await;
         let (process, session) = Process::start(&core, false).await;
-        assert_eq!(session.list_tools(None).await.unwrap().tools.len(), 29);
+        assert_eq!(session.list_tools(None).await.unwrap().tools.len(), 30);
         let reads = core.requests().len();
         let disabled = tokio::time::timeout(
             support::operations::DEADLINE,

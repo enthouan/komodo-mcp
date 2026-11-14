@@ -455,6 +455,11 @@ impl CoreClient {
             "ListActions" => "ListActions",
             "GetActionActionState" => "GetActionActionState",
             "ListSchedules" => "ListSchedules",
+            "ListAlerters" => "ListAlerters",
+            "ListResourceSyncs" => "ListResourceSyncs",
+            "GetResourceSync" => "GetResourceSync",
+            "ListUserGroups" => "ListUserGroups",
+            "ExportResourcesToToml" => "ExportResourcesToToml",
             "GetBuilder" => "GetBuilder",
             "ListBuilders" => "ListBuilders",
             "GetAlerter" => "GetAlerter",
@@ -481,6 +486,7 @@ impl CoreClient {
                 || matches!(
                     T::req_type(),
                     "GetContainerLog"
+                        | "ExportResourcesToToml"
                         | "GetDeploymentLog"
                         | "GetStackLog"
                         | "ListAlerts"

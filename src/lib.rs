@@ -16,6 +16,7 @@ pub mod deletion;
 pub mod deployment_configuration;
 pub mod diagnostics;
 pub mod error;
+pub mod export;
 pub mod health;
 pub mod history;
 pub mod inventory;
