@@ -26,7 +26,8 @@ class AutomationScopeTests(unittest.TestCase):
             self.assertEqual(service['labels']['komodo-mcp.test.session'], 'owned-session')
             self.assertNotIn('ports', service)
             self.assertNotIn('volumes', service)
-        self.assertEqual(config['services']['docker']['command'], ['--insecure-registry=registry:5000'])
+        self.assertEqual(config['services']['docker']['command'], ['--insecure-registry=registry.test:5000'])
+        self.assertEqual(config['services']['registry']['networks']['default']['aliases'], ['registry.test'])
         self.assertEqual(config['services']['core']['environment']['KOMODO_TIMEZONE'], 'Asia/Tokyo')
         self.assertNotIn('/var/run/docker.sock:', json.dumps(config))
 

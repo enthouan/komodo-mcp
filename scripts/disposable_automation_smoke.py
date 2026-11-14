@@ -18,16 +18,18 @@ OWNED = []
 ACTIVE = []
 PREFIX = 'mcp-automation-'
 REPOSITORY = 'fixture/workload.git'
+REGISTRY = 'registry.test:5000'
 
 
 def customize(config):
     labels = {'komodo-mcp.test.session': s.OWNER,
               'komodo-mcp.test.scope': 'disposable-stdio-smoke'}
-    config['services']['docker']['command'] = ['--insecure-registry=registry:5000']
+    config['services']['docker']['command'] = ['--insecure-registry=' + REGISTRY]
     config['services']['core']['environment']['KOMODO_TIMEZONE'] = 'Asia/Tokyo'
     for service in ['core', 'periphery']:
         config['services'][service]['environment']['GIT_SSL_CAINFO'] = '/tmp/automation-source-ca.crt'
-    config['services']['registry'] = {'image': 'registry:2.8.3', 'labels': dict(labels)}
+    config['services']['registry'] = {'image': 'registry:2.8.3', 'labels': dict(labels),
+        'networks': {'default': {'aliases': ['registry.test']}}}
     config['services']['source'] = {'image': 'nginx:1.27.5-alpine', 'labels': dict(labels),
         'command': ['sh', '-c', 'while [ ! -f /etc/nginx/automation-ready ]; do sleep 1; done; exec nginx -g "daemon off;"']}
 
@@ -220,7 +222,7 @@ def provision(context):
         'super_admin': False, 'provisioner_credentials_passed_to_mcp': False}
     token = secrets.token_hex(32)
     s.SECRETS.append(token)
-    admin.write('CreateImageRegistryAccount', {'account': {'domain': 'registry:5000',
+    admin.write('CreateImageRegistryAccount', {'account': {'domain': REGISTRY,
         'username': 'fixture', 'token': token}})
     revision, marker = source_fixture()
     CONTEXT['revision'], CONTEXT['marker'] = revision, marker
@@ -490,7 +492,7 @@ async def exercise():
                       'Repo observed short revision mismatch')
         build_id = await create(mcp, 'build', PREFIX + 'build', {
             'builder': {'id': builder_id}, 'source': {'kind': 'linked_repo', 'target': {'id': repo_id}},
-            'image_name': 'workload', 'image_registry': [{'domain': 'registry:5000',
+            'image_name': 'workload', 'image_registry': [{'domain': REGISTRY,
                 'account': 'fixture', 'organization': 'owned-automation'}],
             'version': '0.0.1', 'auto_increment_version': True, 'include_latest_tag': False,
             'include_version_tags': True, 'include_commit_tag': False,
@@ -506,10 +508,10 @@ async def exercise():
         s.require(len(observed) >= 7 and CONTEXT['revision'].startswith(observed),
                   'Build observed short revision mismatch')
         version = built['observed_build_result']['version']
-        image = 'registry:5000/owned-automation/workload:' + version
+        image = REGISTRY + '/owned-automation/workload:' + version
         digests = json.loads(s.run([*s.COMPOSE, 'exec', '-T', 'docker', 'docker',
             'image', 'inspect', image, '--format', '{{json .RepoDigests}}']))
-        s.require(digests and any(x.startswith('registry:5000/owned-automation/workload@sha256:')
+        s.require(digests and any(x.startswith(REGISTRY + '/owned-automation/workload@sha256:')
                                  for x in digests), 'pushed workload digest unavailable')
         deployment_id = await create(mcp, 'deployment', PREFIX + 'deployment', {
             'attachment': {'kind': 'server', 'target': {'id': CONTEXT['server_id']}},

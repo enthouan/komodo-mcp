@@ -81,6 +81,11 @@ RunBuild; webhooks and dependent redeployment policy can cause other effects.
    stronger proof is needed.
    Retain at least one tag policy when pushing; disabling latest, version and
    commit tags together can leave Core's build command without a push tag.
+   Core 2.3.2's Deployment registry-domain extractor recognizes a registry host
+   by a dot in the first image component. Use an explicit dotted registry DNS
+   name: a valid Docker name such as `registry:5000` is misclassified as
+   `docker.io` by Core's deployment login path. The fixture uses the private
+   alias `registry.test:5000` and configures only its nested daemon as insecure.
 5. Use a typed Deployment image reference to the selected Build and the explicit
    observed version. `0.0.0` deliberately means latest and may change. Preview,
    apply and read back the definition, then explicitly call `deploy_deployment`.
