@@ -29,6 +29,8 @@ impl KomodoServer {
                 | "get_stack"
                 | "list_deployments"
                 | "get_deployment"
+                | "list_repos"
+                | "get_repo"
                 | "fleet_health"
                 | "list_alerts"
                 | "list_updates"
@@ -42,10 +44,14 @@ impl KomodoServer {
                 | "find_resources_by_tag" => Some(Capability::Read),
                 "deploy_stack" | "deploy_deployment" | "start_stack" | "stop_stack"
                 | "restart_stack" | "start_deployment" | "stop_deployment"
-                | "restart_deployment" => Some(Capability::Operate),
+                | "restart_deployment" | "clone_repo" | "pull_repo" => Some(Capability::Operate),
                 "apply_resource_delete" | "apply_tag_delete" => Some(Capability::Destructive),
                 "preview_stack_update"
                 | "apply_stack_update"
+                | "preview_repo_create"
+                | "apply_repo_create"
+                | "preview_repo_update"
+                | "apply_repo_update"
                 | "preview_stack_create"
                 | "apply_stack_create"
                 | "preview_deployment_create"
@@ -72,6 +78,92 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description = "List visible Repos with bounded positive pages and exact-name ascending order. Return safe configured source/branch and current cached cloned revision separately; credential references, hooks and private URLs are omitted. Continue next_page with the same page_size.", input_schema = schema_for_input::<ListInput>().expect("list_repos schema"), output_schema = inventory::output_schema::<Page<crate::repositories::RepoSummary>>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn list_repos(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_repos") {
+            Ok(input) => crate::repositories::list(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Inspect exactly one Repo by stable ID or exact case-sensitive name. Disclose saved on-clone/on-pull hook presence, environment, webhook policy and Server target without exposing commands or credentials. Inspect these trusted effects BEFORE clone/pull and copy the two hook flags into expected_hooks. Configured branch/pinned commit and cached observed cloned revision are separate; cached revision is not proof of a particular run.", input_schema = schema_for_input::<DetailInput>().expect("get_repo schema"), output_schema = inventory::output_schema::<crate::repositories::RepoDetail>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn get_repo(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_repo") {
+            Ok(input) => crate::repositories::get(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Preview one Repo definition using explicit repo, branch and target plus allowlisted settings and credential references. Trusted configuration access is required. No writes or executions. Creation explicitly defaults webhooks off; enabling them on apply requires both local grants. Hooks and host destination paths are trusted executable configuration. The shared preview binds input, visible Server/trust and name absence; Core retains creation and Attach permission checks.", input_schema = schema_for_input::<crate::repositories::CreateInput>().expect("preview_repo_create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_repo_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_repo_create") {
+            Ok(input) => crate::repositories::preview_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Apply the exact previewed Repo creation and single-use preview_id once. Enabling webhooks requires both local grants. Revalidate visible name absence and Server/trust, submit one typed CreateRepo, verify the echo and independent authoritative complete configuration read-back. Core creation policy and Read/Attach still apply. No execution, credential fallback or retry; uncertainty consumes the preview.", input_schema = schema_for_input::<crate::repositories::CreateApplyInput>().expect("apply_repo_create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_repo_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_repo_create") {
+            Ok(input) => crate::repositories::apply_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Preview an allowlisted partial Repo edit with trusted configuration access and zero writes. Omission preserves fields and secrets; documented empty strings, empty hook commands and an unassigned target explicitly clear. Bind the private authoritative baseline and supplied Server reference/trust. Hook/environment edits are trusted code; enabling webhook execution requires both grants on apply. Core 2.3.2 definition writes refresh caches without clone/pull or old-target teardown.", input_schema = schema_for_input::<crate::repositories::PreviewInput>().expect("preview_repo_update schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_repo_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_repo_update") {
+            Ok(input) => crate::repositories::preview_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Apply the exact Repo target/patch and shared preview_id once. Check grants before I/O, consume the preview, revalidate raw baseline and supplied references, then submit only supplied typed fields. No-op and stale previews write zero times. Enabling webhooks requires operate plus configuration-edit. Verify returned and independently read saved configuration while preserving omitted secrets. Core Write/Attach remains authoritative. A final-read/write race remains; never retry an ambiguous write or submit execution.", input_schema = schema_for_input::<crate::repositories::ApplyInput>().expect("apply_repo_update schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_repo_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_repo_update") {
+            Ok(input) => crate::repositories::apply_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Clone exactly one saved Repo on its attached Server. Requires operate and Core Execute. FIRST inspect get_repo and acknowledge both saved hook-presence flags with expected_hooks: clone can run on-clone THEN on-pull and trusted environment/scripts can have broader effects. Reject changed hook presence before submission; concurrent Core definition changes still race. Execute by resolved stable ID at most once without rewriting definitions. Return shared update receipt and observed revision when available. Resume/reconcile read-only; never replay an ambiguous or timed-out call.", input_schema = schema_for_input::<crate::repositories::OperationInput>().expect("clone_repo schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn clone_repo(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "clone_repo") {
+            Ok(input) => {
+                crate::repositories::execute(
+                    &self.client,
+                    input,
+                    crate::operations::WorkloadOperation::Clone,
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Pull exactly one saved Repo on its attached Server. Requires operate and Core Execute. FIRST inspect get_repo and acknowledge both saved hook-presence flags with expected_hooks. Pull runs the configured on-pull hook; it does not run on-clone. Hooks/environment are trusted code. Reject changed hook presence before the one stable-ID submission; Core configuration can still race. Return shared receipt, bounded failed-stage evidence and observed revision when available. Timeout/lost acknowledgement never replays; get_update, wait_for_update and reconcile_operation remain read-only.", input_schema = schema_for_input::<crate::repositories::OperationInput>().expect("pull_repo schema"), output_schema = inventory::output_schema::<crate::operations::SubmissionReceipt>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn pull_repo(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "pull_repo") {
+            Ok(input) => {
+                crate::repositories::execute(
+                    &self.client,
+                    input,
+                    crate::operations::WorkloadOperation::Pull,
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description="Find visible Server, Stack or Deployment records by one exact tag id or case-sensitive name. Resolve the tag to its stable ID, then use bounded positive pages and verify returned tag assignments. This remains read-only in every local profile. Hidden records and concurrent changes are not an exhaustive snapshot; an empty visible page does not prove no assignments.",input_schema=schema_for_input::<crate::tags::FindInput>().expect("tag discovery schema"),output_schema=inventory::output_schema::<crate::tags::FindResult>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn find_resources_by_tag(&self, arguments: JsonObject) -> CallToolResult {
         let r = match inventory::parse(arguments, "find_resources_by_tag") {

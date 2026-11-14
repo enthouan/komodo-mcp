@@ -244,6 +244,7 @@ pub enum DefinitionPreview {
     Stack(crate::stack_configuration::DefinitionPreview),
     Deployment(crate::deployment_configuration::DefinitionPreview),
     Server(crate::server_configuration::DefinitionPreview),
+    Repo(crate::repositories::DefinitionPreview),
 }
 
 // No Debug: these values can contain raw secrets. Nothing here is serialized.
@@ -495,6 +496,9 @@ pub(crate) fn changes(client: &CoreClient, config: &Value, patch: &Value) -> Vec
                     | "public_key"
                     | "passkey"
                     | "address"
+                    | "path"
+                    | "on_clone"
+                    | "on_pull"
             ) || sensitive_locator(&config[key])
                 || sensitive_locator(after)
                 || contains_configured_secret(client, &config[key])
@@ -659,6 +663,38 @@ pub(crate) fn finish_save<C: Default + Serialize, I: Default>(
         }
         other => {
             result.outcome = ConfigurationOutcome::SubmissionUnknown;
+            result.observation_error = Some(
+                other
+                    .err()
+                    .unwrap_or_else(|| AppError::new(ErrorKind::InvalidResponse, operation, None)),
+            );
+        }
+    }
+    result
+}
+
+/// A valid write echo establishes acknowledgement. Independently verify the
+/// complete saved configuration using a raw bounded read, without SDK defaults
+/// manufacturing omitted evidence. A failed read does not retry the write or
+/// erase its acknowledgement. The read is an observation, not a CAS guarantee.
+pub(crate) fn verify_readback(
+    mut result: ConfigurationResult,
+    response: Result<Value, AppError>,
+    expected_config: &Value,
+    expected_name: &str,
+    operation: &'static str,
+) -> ConfigurationResult {
+    result.saved_configuration_verified = false;
+    match response {
+        Ok(value)
+            if value["_id"]["$oid"].as_str() == result.resource.id.as_deref()
+                && value["name"] == expected_name
+                && value["template"] == false
+                && value.get("config") == Some(expected_config) =>
+        {
+            result.saved_configuration_verified = true;
+        }
+        other => {
             result.observation_error = Some(
                 other
                     .err()

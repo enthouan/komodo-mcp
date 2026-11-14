@@ -180,6 +180,71 @@ pub struct UpdateDetail {
     /// At most 20 stages, failures first, preserving original index/order within each group.
     pub stages: Vec<UpdateStage>,
     pub stages_truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_revision: Option<RevisionObservation>,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct RevisionObservation {
+    pub revision: String,
+    /// update_commit_hash or the pinned Repo Latest Commit stage. Never inferred
+    /// from a configured branch or the resource's mutable current cache.
+    pub evidence: &'static str,
+}
+
+fn observed_revision(client: &CoreClient, update: &Update) -> Option<RevisionObservation> {
+    if let Some(revision) = crate::repositories::revision(client, &update.commit_hash) {
+        return Some(RevisionObservation {
+            revision,
+            evidence: "update_commit_hash",
+        });
+    }
+    if !matches!(
+        update.operation,
+        komodo_client::entities::Operation::CloneRepo
+            | komodo_client::entities::Operation::PullRepo
+    ) || !matches!(update.target, ResourceTarget::Repo(_))
+    {
+        return None;
+    }
+    // Core 2.3.2 drops the clone response's structured hash, but keeps this
+    // specific git-library stage. Decode only its bounded first line/hex value,
+    // never return arbitrary stdout, commit messages, commands or other_data.
+    let mut logs = update.logs.iter().filter(|l| l.stage == "Latest Commit");
+    let log = logs.next()?;
+    if logs.next().is_some() || !log.success || log.stdout.len() > 4096 {
+        return None;
+    }
+    let mut plain = String::new();
+    let mut chars = log.stdout.lines().next()?.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            if chars.next() != Some('[') {
+                return None;
+            }
+            let mut complete = false;
+            for _ in 0..32 {
+                match chars.next()? {
+                    'm' => {
+                        complete = true;
+                        break;
+                    }
+                    c if c.is_ascii_digit() || c == ';' => (),
+                    _ => return None,
+                }
+            }
+            if !complete {
+                return None;
+            }
+        } else {
+            plain.push(c);
+        }
+    }
+    let revision = crate::repositories::revision(client, plain.strip_prefix("hash: ")?.trim())?;
+    Some(RevisionObservation {
+        revision,
+        evidence: "repo_latest_commit_stage",
+    })
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -415,6 +480,20 @@ pub async fn list_updates(
 
 fn bounded(client: &CoreClient, text: &str, max: usize) -> (String, bool) {
     let safe = crate::logs::redact_log(client, text);
+    // Git failures can echo URL-embedded credentials without assignment labels.
+    // History never needs a raw source URL: retain surrounding stage evidence
+    // and omit each URL-bearing token, including any query/fragment secrets.
+    let safe = safe
+        .split_inclusive(char::is_whitespace)
+        .map(|part| {
+            if part.contains("://") {
+                let end = part.trim_end_matches(char::is_whitespace).len();
+                format!("{}{}", client.redaction_marker(), &part[end..])
+            } else {
+                part.into()
+            }
+        })
+        .collect::<String>();
     let truncated = text.len() > crate::logs::MAX_INPUT_BYTES || safe.len() > max;
     let mut end = safe.len().min(max);
     while !safe.is_char_boundary(end) {
@@ -483,5 +562,6 @@ pub(crate) fn project_update_detail(
         end_ts: update.end_ts,
         stages,
         stages_truncated: update.logs.len() > MAX_UPDATE_STAGES,
+        observed_revision: observed_revision(client, update),
     })
 }

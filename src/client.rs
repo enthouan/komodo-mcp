@@ -145,12 +145,19 @@ impl CoreClient {
             "UpdateDeployment" => "UpdateDeployment",
             "CreateServer" => "CreateServer",
             "UpdateServer" => "UpdateServer",
+            "CreateRepo" => "CreateRepo",
+            "UpdateRepo" => "UpdateRepo",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "write", None)),
         };
         crate::configuration::require_edit(self)?;
         let parameters = serde_json::to_value(request).map_err(|_| {
             AppError::arguments(operation, "Use a supported typed configuration request")
         })?;
+        crate::repositories::require_webhook_operate(
+            self,
+            (operation == "CreateRepo" && parameters["config"]["webhook_enabled"] != false)
+                || (operation == "UpdateRepo" && parameters["config"]["webhook_enabled"] == true),
+        )?;
         // Enforce Core's implicit execution boundary at the shared transport too.
         // Do not rely on a previously observed auto_update policy: it can race.
         crate::configuration::require_source_operate(
@@ -306,6 +313,8 @@ impl CoreClient {
             "StartDeployment" => "StartDeployment",
             "StopDeployment" => "StopDeployment",
             "RestartDeployment" => "RestartDeployment",
+            "CloneRepo" => "CloneRepo",
+            "PullRepo" => "PullRepo",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "execute", None)),
         };
         if !self.capabilities().allows(Capability::Operate) {
@@ -667,6 +676,10 @@ mod write_policy_tests {
 
     #[tokio::test]
     async fn shared_transport_denies_implicit_execution_fields_without_both_grants() {
+        use komodo_client::{
+            api::write::{CreateRepo, UpdateRepo},
+            entities::repo::PartialRepoConfig,
+        };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         for (operate, edit) in [(false, true), (true, false), (false, false)] {
             let client = CoreClient::new(
@@ -680,6 +693,28 @@ mod write_policy_tests {
                 RequestPolicy::default(),
             )
             .unwrap();
+            for enabled in [None, Some(true)] {
+                let result = client
+                    .write(CreateRepo {
+                        name: "fixture".into(),
+                        config: PartialRepoConfig {
+                            webhook_enabled: enabled,
+                            ..Default::default()
+                        },
+                    })
+                    .await;
+                assert!(matches!(result,Err(e)if e.kind==ErrorKind::CapabilityDisabled));
+            }
+            let result = client
+                .write(UpdateRepo {
+                    id: "00000000000000000000000a".into(),
+                    config: PartialRepoConfig {
+                        webhook_enabled: Some(true),
+                        ..Default::default()
+                    },
+                })
+                .await;
+            assert!(matches!(result,Err(e)if e.kind==ErrorKind::CapabilityDisabled));
             for config in [
                 PartialStackConfig {
                     repo: Some(String::new()),

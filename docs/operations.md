@@ -1,5 +1,11 @@
 # Workload operations
 
+[Repo clone/pull](repositories.md#inspect-effects-before-one-clone-or-pull) extends
+the same receipt, update, wait and read-only reconciliation contracts. Inspect
+saved hooks first, then acknowledge their presence in the explicit operation
+input. Repo recovery uses target kind `repo`, scope `whole_repo` and operation
+`clone` or `pull`; a history match never establishes caller attribution.
+
 Set `KOMODO_ALLOW_OPERATE=true` in the MCP server's process environment and
 restart it. The default remains read-only. `KOMODO_ALLOW_CONFIGURATION_EDIT`
 is independent and exposes no production configuration-edit tools yet. Use an

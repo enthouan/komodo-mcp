@@ -474,6 +474,16 @@ pub async fn list_deployments(
     ))
 }
 
+pub(crate) async fn list_repo_records(
+    client: &CoreClient,
+    input: ListInput,
+) -> Result<Page<RepoListItem>, AppError> {
+    paginate(input, "ListRepos", |page, limit| {
+        repos(client, Search::default(), page, limit)
+    })
+    .await
+}
+
 pub async fn get_server(client: &CoreClient, input: DetailInput) -> Result<ServerDetail, AppError> {
     let (summary, full) = resolve_server(client, input).await?;
     Ok(ServerDetail {

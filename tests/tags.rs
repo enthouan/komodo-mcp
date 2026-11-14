@@ -232,8 +232,8 @@ async fn every_profile_enforces_discovery_and_direct_tag_calls_before_core_io() 
         let tools = s.list_tools(None).await.unwrap().tools;
         assert_eq!(
             tools.len(),
-            17 + 8 * usize::from(operate)
-                + 20 * usize::from(edit)
+            19 + 10 * usize::from(operate)
+                + 24 * usize::from(edit)
                 + 2 * usize::from(operate && edit)
         );
         for name in [

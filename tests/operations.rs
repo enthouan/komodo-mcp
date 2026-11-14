@@ -469,7 +469,7 @@ async fn production_binary_discovers_mutations_only_when_enabled_and_returns_rec
         .await;
         let (process, session) = Process::start(&core, operate).await;
         let tools = session.list_tools(None).await.unwrap().tools;
-        assert_eq!(tools.len(), 17 + 8 * usize::from(operate));
+        assert_eq!(tools.len(), 19 + 10 * usize::from(operate));
         for tool in tools.iter().filter(|t| {
             ["deploy_", "start_", "stop_", "restart_"]
                 .iter()
