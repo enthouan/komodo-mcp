@@ -35,6 +35,8 @@ impl KomodoServer {
                 | "get_builder"
                 | "list_builds"
                 | "get_build"
+                | "list_procedures"
+                | "get_procedure"
                 | "fleet_health"
                 | "list_alerts"
                 | "list_updates"
@@ -49,7 +51,9 @@ impl KomodoServer {
                 "deploy_stack" | "deploy_deployment" | "start_stack" | "stop_stack"
                 | "restart_stack" | "start_deployment" | "stop_deployment"
                 | "restart_deployment" | "clone_repo" | "pull_repo" | "run_build"
-                | "cancel_build" => Some(Capability::Operate),
+                | "cancel_build" | "run_procedure" | "cancel_procedure" => {
+                    Some(Capability::Operate)
+                }
                 "apply_resource_delete" | "apply_tag_delete" => Some(Capability::Destructive),
                 "preview_stack_update"
                 | "apply_stack_update"
@@ -65,6 +69,10 @@ impl KomodoServer {
                 | "apply_build_create"
                 | "preview_build_update"
                 | "apply_build_update"
+                | "preview_procedure_create"
+                | "apply_procedure_create"
+                | "preview_procedure_update"
+                | "apply_procedure_update"
                 | "preview_stack_create"
                 | "apply_stack_create"
                 | "preview_deployment_create"
@@ -91,6 +99,78 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="List visible Procedures in bounded positive pages. Return stable IDs, configured stage count and cached run state; no scripts, execution arguments or secrets. Core stages are sequential and each enabled stage runs enabled executions in parallel.",input_schema=schema_for_input::<ListInput>().expect("list_procedures schema"),output_schema=inventory::output_schema::<Page<crate::procedures::ProcedureSummary>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_procedures(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_procedures") {
+            Ok(input) => crate::procedures::list(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Inspect one exact saved Procedure: ordered stages, parallel grouping, disabled entries, safe execution kinds/reference IDs and explicit truncation. Arguments and webhook secrets are omitted. Read effects and copy effects.acknowledgement before run_procedure. Core executes saved children as its built-in administrator user, not a caller-permission or Server-only Build sandbox. Schedule tools are separate.",input_schema=schema_for_input::<DetailInput>().expect("get_procedure schema"),output_schema=inventory::output_schema::<crate::procedures::Detail>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_procedure(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_procedure") {
+            Ok(input) => crate::procedures::get(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Preview inert Procedure creation with trusted typed stages and zero writes. Explicit enabled flags preserve stage order/parallel grouping. Create requires stages and forces empty disabled schedule and disabled webhooks. Bind visible static references including disabled steps; Core checks editor Execute/Write/admin and creation permissions. Arguments remain private; no generic SDK passthrough.",input_schema=schema_for_input::<crate::procedures::CreateInput>().expect("preview_procedure_create schema"),output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn preview_procedure_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_procedure_create") {
+            Ok(input) => crate::procedures::preview_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Create one previewed inert Procedure with configuration-edit and Core create/reference permissions; admin-only step types remain admin-only. Consume the shared single-use preview, revalidate references/name absence, submit one typed write and verify echo plus full authoritative read-back. Explicitly disable schedule/webhooks. Core refreshes schedule/cache; no RunProcedure is submitted. No retry or credential fallback.",input_schema=schema_for_input::<crate::procedures::CreateApplyInput>().expect("apply_procedure_create schema"),output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn apply_procedure_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_procedure_create") {
+            Ok(input) => crate::procedures::apply_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Preview typed trusted Procedure edits with zero writes. Omission preserves ordered stages, disabled steps, arguments, secrets and schedule; [] deliberately clears stages. Supplied stages are complete typed replacements, not flattened operations. Privately bind the full current definition and bounded visible references. All nonempty updates require both local grants on apply because Core refreshes scheduling and policy can race. Scheduling fields are not accepted here.",input_schema=schema_for_input::<crate::procedures::PreviewInput>().expect("preview_procedure_update schema"),output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn preview_procedure_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_procedure_update") {
+            Ok(input) => crate::procedures::preview_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Apply one previewed Procedure patch. Configuration-edit plus operate are required for every nonempty update before Core I/O. Revalidate private definition/references, preserve omitted secrets and unsupported existing steps during unrelated edits, handle no-op, send one partial write and verify full saved config independently. Core authoritatively checks editor referenced execution/admin permissions. No CAS, automatic retry or RunProcedure submission.",input_schema=schema_for_input::<crate::procedures::ApplyInput>().expect("apply_procedure_update schema"),output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn apply_procedure_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_procedure_update") {
+            Ok(input) => crate::procedures::apply_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Run one exact saved Procedure with operate and Core Execute; first inspect get_procedure and acknowledge trusted Core administrator execution authority and broader effects. Submit its stable ID once without rewriting steps. Core executes stages sequentially and enabled children within a stage in parallel, under its built-in admin user. Return shared receipt, bounded safe stage/step reports and available reported child IDs; Finished execution does not prove child success. Definitions can race. Read-only wait/recovery never replays or attributes concurrent history candidates.",input_schema=schema_for_input::<crate::procedure_operations::RunInput>().expect("run_procedure schema"),output_schema=inventory::output_schema::<crate::operations::SubmissionReceipt>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn run_procedure(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "run_procedure") {
+            Ok(input) => crate::procedure_operations::run(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Explicitly request cancellation of one saved Procedure with operate/Core Execute and locally checked expected_update_id of its original RunProcedure. Recheck nonterminal history and running state; completed/replaced/ambiguous runs send nothing. Core cancels by Procedure resource and IGNORES its optional update_id, so no atomic historical-run guard exists and replacements can race. Cancellation takes effect after the current stage finishes; no child cancellation or rollback is promised. Cancellation ACK and original terminal outcome remain separate. Cancelling a local wait sends no remote cancellation.",input_schema=schema_for_input::<crate::procedure_operations::CancelInput>().expect("cancel_procedure schema"),output_schema=inventory::output_schema::<crate::operations::CancellationResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn cancel_procedure(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "cancel_procedure") {
+            Ok(input) => crate::procedure_operations::cancel(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description="Run exactly one saved Build by exact ID/name with operate and Core Execute. FIRST inspect get_build.configured_effects and copy its acknowledgement flags: trusted pre-build/Dockerfile/arguments, configured pushes and possible hidden/concurrent dependent redeployments. Revalidate the actual Build-to-Builder association and reject AWS/URL, templates or an empty Server list before submission, including in shared transport. Core chooses a cached-healthy least-used Server, with configured order breaking ties; the update does not attest the actual runner. Submit the stable Build ID once without config edits. Core can advance/store its version on success. Return shared receipt, bounded stages/revision/version and image output reports when available. Definitions can race after reads. Resume/reconcile read-only; never replay timeout/lost ACK or infer deployment health.",input_schema=schema_for_input::<crate::build_operations::RunInput>().expect("run_build schema"),output_schema=inventory::output_schema::<crate::operations::SubmissionReceipt>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
     async fn run_build(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "run_build") {

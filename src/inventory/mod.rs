@@ -5,14 +5,16 @@ pub use types::*;
 
 use komodo_client::{
     api::read::{
-        GetBuild, GetBuilder, GetDeployment, GetRepo, GetServer, GetStack, GetSwarm, ListBuilders,
-        ListBuilds, ListDeployments, ListRepos, ListServers, ListStacks, ListSwarms,
+        GetBuild, GetBuilder, GetDeployment, GetProcedure, GetRepo, GetServer, GetStack, GetSwarm,
+        ListBuilders, ListBuilds, ListDeployments, ListProcedures, ListRepos, ListServers,
+        ListStacks, ListSwarms,
     },
     entities::{
         ResourceTargetVariant,
         build::{Build, BuildListItem},
         builder::{Builder, BuilderListItem},
         deployment::{Deployment, DeploymentListItem, DeploymentState as CoreDeploymentState},
+        procedure::{Procedure, ProcedureListItem},
         repo::{Repo, RepoListItem},
         resource::ResourceListItem,
         server::{Server, ServerListItem, ServerState as CoreServerState},
@@ -304,6 +306,7 @@ reader!(swarms, ListSwarms, SwarmListItem, Swarm);
 reader!(repos, ListRepos, RepoListItem, Repo);
 reader!(builds, ListBuilds, BuildListItem, Build);
 reader!(builders, ListBuilders, BuilderListItem, Builder);
+reader!(procedures, ListProcedures, ProcedureListItem, Procedure);
 
 fn nonempty(value: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_owned())
@@ -601,6 +604,42 @@ pub(crate) async fn resolve_builder(
         })
         .await?;
     check_identity(&summary, &full.id, &full.name, full.template, "GetBuilder")?;
+    Ok((summary, full))
+}
+
+pub(crate) async fn list_procedures(
+    client: &CoreClient,
+    input: ListInput,
+) -> Result<Page<ProcedureListItem>, AppError> {
+    paginate(input, "ListProcedures", |page, limit| {
+        procedures(client, Search::default(), page, limit)
+    })
+    .await
+}
+pub(crate) async fn resolve_procedure(
+    client: &CoreClient,
+    input: DetailInput,
+) -> Result<(ProcedureListItem, Procedure), AppError> {
+    let selector = input.validate("GetProcedure")?;
+    let summary = resolve(
+        client,
+        &selector,
+        "ListProcedures",
+        |search, page, limit| procedures(client, search, page, limit),
+    )
+    .await?;
+    let full = client
+        .read(GetProcedure {
+            procedure: summary.id.clone(),
+        })
+        .await?;
+    check_identity(
+        &summary,
+        &full.id,
+        &full.name,
+        full.template,
+        "GetProcedure",
+    )?;
     Ok((summary, full))
 }
 pub async fn get_stack(client: &CoreClient, input: DetailInput) -> Result<StackDetail, AppError> {

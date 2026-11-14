@@ -26,6 +26,13 @@ host Dockerfile caches inside Core. Scripts, source/registry credentials and
 dependent redeployment policies remain trusted configuration. Definition tools
 submit no build execution or cloud provisioning.
 
+[Procedure definitions](procedures.md) share the same tokens and complete
+authoritative read-back. Typed stages retain order, parallel groups and disabled
+entries. Existing nonempty updates require both grants because Core refreshes
+scheduling after saves; inert creation explicitly disables schedule/webhooks.
+Editor reference Execute/admin checks differ from running a saved Procedure,
+whose children use Core's built-in administrator identity. Arguments stay private.
+
 Set `KOMODO_ALLOW_CONFIGURATION_EDIT=true` in the MCP child environment. The
 default is false. This trusted grant is independent of
 `KOMODO_ALLOW_OPERATE`; Core remains the permission authority. Preview needs

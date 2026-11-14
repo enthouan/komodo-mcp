@@ -184,6 +184,8 @@ pub struct UpdateDetail {
     pub observed_revision: Option<RevisionObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_build_result: Option<crate::build_observation::BuildObservation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_procedure_result: Option<crate::procedure_observation::ProcedureObservation>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -592,7 +594,17 @@ pub(crate) fn project_update_detail(
                 .filter(|(_, log)| log.success),
         )
         .take(MAX_UPDATE_STAGES)
-        .map(|(index, log)| project_stage(client, index, log))
+        .map(|(index, log)| {
+            // Procedure error chains embed Debug of potentially secret-bearing
+            // execution arguments. Only the narrow projection may inspect it.
+            if update.operation==komodo_client::entities::Operation::RunProcedure && !log.stderr.is_empty() {
+                let mut safe=log.clone();
+                safe.stderr="Procedure error details omitted because they may contain configured execution arguments. Inspect the safe parent stage reports and reported child update IDs separately.".into();
+                let mut stage=project_stage(client,index,&safe);
+                stage.stderr_truncated=true;
+                stage
+            } else {project_stage(client,index,log)}
+        })
         .collect();
     Ok(UpdateDetail {
         summary,
@@ -601,5 +613,6 @@ pub(crate) fn project_update_detail(
         stages_truncated: update.logs.len() > MAX_UPDATE_STAGES,
         observed_revision: observed_revision(client, update),
         observed_build_result: crate::build_observation::project(client, update),
+        observed_procedure_result: crate::procedure_observation::project(client, update),
     })
 }
