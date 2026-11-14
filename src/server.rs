@@ -32,6 +32,8 @@ impl KomodoServer {
                 | "get_deployment"
                 | "list_repos"
                 | "get_repo"
+                | "list_resource_syncs"
+                | "get_resource_sync"
                 | "list_builders"
                 | "get_builder"
                 | "list_builds"
@@ -62,6 +64,10 @@ impl KomodoServer {
                 "preview_stack_update"
                 | "apply_stack_update"
                 | "preview_repo_create"
+                | "preview_resource_sync_create"
+                | "apply_resource_sync_create"
+                | "preview_resource_sync_update"
+                | "apply_resource_sync_update"
                 | "apply_repo_create"
                 | "preview_repo_update"
                 | "apply_repo_update"
@@ -109,6 +115,59 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description = "List visible ResourceSync definitions with bounded positive pagination and name-ascending order. Return sanitized identity/source kind, management and cached state only. Use the same page_size with next_page. This calls only Core read APIs; no refresh, RunSync or source-file write.", input_schema = schema_for_input::<ListInput>().expect("list_resource_syncs schema"), output_schema = inventory::output_schema::<Page<crate::resource_syncs::SyncSummary>>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn list_resource_syncs(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_resource_syncs") {
+            Ok(input) => crate::resource_syncs::list(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Inspect one exact ResourceSync by stable ID or exact name. Return sanitized source/settings, effective managed-or-delete policy, tag restriction, separate variable/group flags and webhook configuration; omit inline TOML, credentials, webhook secrets and pending raw content/errors. Core-host sources are under sync_directory / normalized sync name. Cached inspection calls no refresh or execution. Raw definitions remain private.", input_schema = schema_for_input::<DetailInput>().expect("get_resource_sync schema"), output_schema = inventory::output_schema::<crate::resource_syncs::SyncDetail>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn get_resource_sync(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_resource_sync") {
+            Ok(input) => crate::resource_syncs::get(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Preview creating a ResourceSync with an explicit inline, direct-Git, linked-Repo or Core-host source. Creation requires an administrator in Core; Read/Attach on a linked Repo remains authoritative. Use bounded trusted inline desired-state TOML; omitted desired fields can reset defaults. External sources require explicit resource_paths on creation; [] reads no files. New webhooks default OFF explicitly. Preview managed deletion, filters, inclusion and webhook settings with zero mutations; bind private linked Repo state and exact input to a ten-minute single-use preview_id.", input_schema = schema_for_input::<crate::resource_syncs::CreateInput>().expect("preview_resource_sync_create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_resource_sync_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_resource_sync_create") {
+            Ok(input) => crate::resource_syncs::preview_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Save the exact ResourceSync creation preview once with configuration-edit; enabling webhooks also requires operate. Revalidate name absence and private linked Repo baseline before one typed CreateResourceSync, then verify full saved configuration independently. Core requires an administrator and Read/Attach; no credential fallback. Saving triggers Core pending-cache refresh, source reads/Git-cache fetch and pending alerts through its sync admin. Submit NO RunSync, CommitSync, WriteSyncFileContents or deployment; external source write-back remains deferred. Uncertain acknowledgements consume the preview and are never retried.", input_schema = schema_for_input::<crate::resource_syncs::CreateApplyInput>().expect("apply_resource_sync_create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_resource_sync_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_resource_sync_create") {
+            Ok(input) => crate::resource_syncs::apply_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Preview a typed partial ResourceSync definition edit with zero writes. Omitted fields and secret references are preserved; source variants deliberately clear conflicting selectors according to Core precedence host > linked Repo > Git > inline. Bind the complete private definition and active linked Repo, including secret-only changes. Show effective deletion (managed OR delete), empty-tag unrestricted resource scope, separate resource/variable/group flags, pending alerts and webhooks. Inline TOML is complete desired state, not a partial config patch; omitted desired fields can reset defaults. Applying execution-bearing settings needs both local grants even with currently disabled webhooks.", input_schema = schema_for_input::<crate::resource_syncs::PreviewInput>().expect("preview_resource_sync_update schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_resource_sync_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_resource_sync_update") {
+            Ok(input) => crate::resource_syncs::preview_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Save the exact target/patch and single-use preview_id once. Require configuration-edit and, for execution-bearing fields or enabling webhooks, operate before any Core I/O. Empty, pending-alert-only and webhook-disable-only patches need edit alone. Revalidate private definition and active linked Repo baselines, reject stale previews, and skip unchanged edits with zero writes. Submit one typed partial UpdateResourceSync, preserve omitted settings/secrets, and independently verify full saved config. Core Write/Attach decisions remain authoritative; its save hook refreshes pending/cache/source/alerts but submits no RunSync. No external Git/host write-back or automatic retry; final-read/write races and uncertain outcomes remain.", input_schema = schema_for_input::<crate::resource_syncs::ApplyInput>().expect("apply_resource_sync_update schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_resource_sync_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_resource_sync_update") {
+            Ok(input) => crate::resource_syncs::apply_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
     #[tool(description="Export an explicit selection of at most 16 resources and 16 visible user groups through Core's scoped read API. targets is required; [] requires explicit groups or include_variables=true, which selects ALL Core variables, never per-variable names. Return parseable inspection-only TOML with conservative structural omission of arbitrary text, inline documents/scripts, credentials, all variable values and unknown fields, even for administrators. Identify missing definitions (Core omits inline ResourceSyncs), redactions and references outside the selection. Never use this incomplete export as authoritative desired state: omitted fields can reset existing configuration to defaults. No file write, cache refresh, RunSync or deployment; no export-all fallback. Bound source/output and reject excess without returning a truncated document.",input_schema=schema_for_input::<crate::export::Input>().expect("export_resources_toml schema"),output_schema=inventory::output_schema::<crate::export::Output>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn export_resources_toml(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "ExportResourcesToToml") {

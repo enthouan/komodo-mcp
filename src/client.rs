@@ -160,6 +160,8 @@ impl CoreClient {
             "UpdateServer" => "UpdateServer",
             "CreateRepo" => "CreateRepo",
             "UpdateRepo" => "UpdateRepo",
+            "CreateResourceSync" => "CreateResourceSync",
+            "UpdateResourceSync" => "UpdateResourceSync",
             "CreateBuilder" => "CreateBuilder",
             "UpdateBuilder" => "UpdateBuilder",
             "CreateBuild" => "CreateBuild",
@@ -174,6 +176,7 @@ impl CoreClient {
         let parameters = serde_json::to_value(request).map_err(|_| {
             AppError::arguments(operation, "Use a supported typed configuration request")
         })?;
+        crate::resource_syncs::guard_write(self, operation, &parameters)?;
         crate::builders::guard_write(self, operation, &parameters).await?;
         crate::procedures::guard_write(self, operation, &parameters)?;
         crate::actions::guard_write(self, operation, &parameters)?;
@@ -928,10 +931,47 @@ mod write_policy_tests {
     }
 
     #[tokio::test]
+    async fn shared_sync_transport_rejects_external_writeback_even_with_both_grants() {
+        use komodo_client::api::write::{CommitSync, WriteSyncFileContents};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = CoreClient::new(
+            Config::parse(
+                &format!("http://{}", listener.local_addr().unwrap()),
+                "fixture-key",
+                "fixture-secret",
+            )
+            .unwrap()
+            .with_capabilities(CapabilityPolicy::new(true, true)),
+            RequestPolicy::default(),
+        )
+        .unwrap();
+        let commit = client
+            .write(CommitSync {
+                sync: "owned-sync".into(),
+            })
+            .await;
+        let file = client
+            .write(WriteSyncFileContents {
+                sync: "owned-sync".into(),
+                resource_path: String::new(),
+                file_path: "owned.toml".into(),
+                contents: "trusted".into(),
+            })
+            .await;
+        assert!(matches!(commit,Err(e)if e.kind == ErrorKind::UnsupportedTarget));
+        assert!(matches!(file,Err(e)if e.kind == ErrorKind::UnsupportedTarget));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
     async fn shared_transport_denies_implicit_execution_fields_without_both_grants() {
         use komodo_client::{
-            api::write::{CreateRepo, UpdateRepo},
-            entities::repo::PartialRepoConfig,
+            api::write::{CreateRepo, CreateResourceSync, UpdateRepo, UpdateResourceSync},
+            entities::{repo::PartialRepoConfig, sync::PartialResourceSyncConfig},
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         for (operate, edit) in [(false, true), (true, false), (false, false)] {
@@ -947,6 +987,16 @@ mod write_policy_tests {
             )
             .unwrap();
             for enabled in [None, Some(true)] {
+                let sync_result = client
+                    .write(CreateResourceSync {
+                        name: "fixture-sync".into(),
+                        config: PartialResourceSyncConfig {
+                            webhook_enabled: enabled,
+                            ..Default::default()
+                        },
+                    })
+                    .await;
+                assert!(matches!(sync_result,Err(e)if e.kind==ErrorKind::CapabilityDisabled));
                 let result = client
                     .write(CreateRepo {
                         name: "fixture".into(),
@@ -954,6 +1004,27 @@ mod write_policy_tests {
                             webhook_enabled: enabled,
                             ..Default::default()
                         },
+                    })
+                    .await;
+                assert!(matches!(result,Err(e)if e.kind==ErrorKind::CapabilityDisabled));
+            }
+            for config in [
+                serde_json::json!({"file_contents":"[[server]]\nname='trusted'"}),
+                serde_json::json!({"linked_repo":"00000000000000000000000a"}),
+                serde_json::json!({"repo":"fixture/source"}),
+                serde_json::json!({"managed":true}),
+                serde_json::json!({"delete":true}),
+                serde_json::json!({"match_tags":[]}),
+                serde_json::json!({"include_resources":false}),
+                serde_json::json!({"include_variables":true}),
+                serde_json::json!({"include_user_groups":true}),
+                serde_json::json!({"webhook_enabled":true}),
+                serde_json::json!({"webhook_secret":"trusted-secret"}),
+            ] {
+                let result = client
+                    .write(UpdateResourceSync {
+                        id: "00000000000000000000000b".into(),
+                        config: serde_json::from_value(config).unwrap(),
                     })
                     .await;
                 assert!(matches!(result,Err(e)if e.kind==ErrorKind::CapabilityDisabled));

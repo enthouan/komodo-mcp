@@ -8,6 +8,14 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Inspect and save typed ResourceSync definitions with private single-use
+  previews, inline TOML validation, explicit Git/linked-Repo/Core-host sources,
+  preserved omitted settings/secrets, linked-reference drift checks and full
+  authoritative read-back. Default new webhooks off, gate execution-bearing edits
+  by both grants, and disclose pending-cache/source/alert effects, managed deletion
+  and desired-state resets. Submit no RunSync or external source write-back.
+  ([#29](https://github.com/enthouan/komodo-mcp/issues/29))
+
 - Export explicit resource/group selections through Core's scoped read API,
   with separate opt-in to all variables. Parse and serialize a conservative
   inspection-only TOML projection, omit secret-bearing content even for admins,

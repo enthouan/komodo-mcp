@@ -141,7 +141,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All thirty read tools remain locally available in every grant
+All thirty-two read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -166,6 +166,15 @@ disabled creation need configuration access. Initial pinned trust is explicit,
 existing keys are preserved, and connectivity is observed separately from a
 verified save. See [Server records](docs/servers.md) for fields, Core permissions,
 background-policy effects and the absence of provisioning/key-rotation fallback.
+
+ResourceSync definitions add bounded `list_resource_syncs`/`get_resource_sync`
+and typed create/update preview/apply tools for inline TOML, direct Git, linked
+Repos and Core-host files. Core preserves administrator-only creation and
+Write/Attach permissions. New webhooks default off; execution-bearing updates
+require both local grants. Saving can refresh pending/source caches and alerts,
+but submits no RunSync or external source write-back. Inspect managed deletion,
+empty tag filters and desired-state omission/reset behavior in
+[ResourceSync definitions](docs/resource-syncs.md).
 
 Builders and Builds add `list_builders`/`get_builder`, `list_builds`/`get_build`
 and typed create/update preview/apply tools. Direct writes support explicit

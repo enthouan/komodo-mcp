@@ -60,8 +60,8 @@ async fn all_profiles_direct_calls_and_generic_definition_edits_keep_schedule_ef
             let tools = s.list_tools(None).await.unwrap().tools;
             assert_eq!(
                 tools.len(),
-                30 + 16 * usize::from(operate)
-                    + 42 * usize::from(edit)
+                32 + 16 * usize::from(operate)
+                    + 46 * usize::from(edit)
                     + 2 * usize::from(operate && edit)
             );
             for name in [
