@@ -62,7 +62,7 @@ fn reference(client: &CoreClient, s: &str) -> Option<(String, Option<String>)> {
     }
     Some((name.into(), digest))
 }
-fn plain(line: &str) -> Option<String> {
+pub(crate) fn plain(line: &str) -> Option<String> {
     if line.len() > 4096 {
         return None;
     }

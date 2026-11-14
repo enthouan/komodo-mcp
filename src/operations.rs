@@ -55,6 +55,7 @@ pub enum WorkloadKind {
     Deployment,
     Repo,
     Build,
+    Procedure,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -74,6 +75,7 @@ pub enum RequestedScope {
     WholeDeployment {},
     WholeRepo {},
     WholeBuild {},
+    WholeProcedure {},
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -160,6 +162,8 @@ pub struct ConfiguredEffects {
     pub repository: Option<crate::repositories::RepoEffects>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub build: Option<crate::build_operations::BuildEffects>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub procedure: Option<crate::procedures::ProcedureEffects>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
@@ -445,6 +449,7 @@ pub async fn stack_operation(
         }),
         repository: None,
         build: None,
+        procedure: None,
     };
     let target = resource(client, WorkloadKind::Stack, stack.id.clone(), &stack.name);
     let scope = input.scope.requested();
@@ -558,6 +563,7 @@ pub async fn deployment_operation(
         compose_dependencies: None,
         repository: None,
         build: None,
+        procedure: None,
     };
     let scope = RequestedScope::WholeDeployment {};
     let id = deployment.id;
@@ -671,6 +677,7 @@ where
                 WorkloadKind::Deployment => ResourceTarget::Deployment(receipt.resource.id.clone()),
                 WorkloadKind::Repo => ResourceTarget::Repo(receipt.resource.id.clone()),
                 WorkloadKind::Build => ResourceTarget::Build(receipt.resource.id.clone()),
+                WorkloadKind::Procedure => ResourceTarget::Procedure(receipt.resource.id.clone()),
             };
             if update.operation != core_operation
                 || update.target != expected

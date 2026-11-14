@@ -8,6 +8,14 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Manage typed trusted Procedure definitions with ordered sequential stages,
+  parallel/disabled steps, private preview/read-back and automatic-effect gates.
+  Run one saved Procedure with explicit Core administrator-authority acknowledgement,
+  safe bounded stage/child reports and shared wait/recovery. Add resource-level
+  cancellation with active-run checks, after-current-stage semantics and separate
+  acknowledgement/original outcome; retain uncertainty and never replay work.
+  ([#25](https://github.com/enthouan/komodo-mcp/issues/25))
+
 - Run one saved Server-backed Build with explicit effect acknowledgement and
   shared bounded receipts, revision/version/image evidence, wait and read-only
   recovery. Add deliberate Build cancellation with active-run rechecks and

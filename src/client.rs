@@ -164,6 +164,8 @@ impl CoreClient {
             "UpdateBuilder" => "UpdateBuilder",
             "CreateBuild" => "CreateBuild",
             "UpdateBuild" => "UpdateBuild",
+            "CreateProcedure" => "CreateProcedure",
+            "UpdateProcedure" => "UpdateProcedure",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "write", None)),
         };
         crate::configuration::require_edit(self)?;
@@ -171,6 +173,7 @@ impl CoreClient {
             AppError::arguments(operation, "Use a supported typed configuration request")
         })?;
         crate::builders::guard_write(self, operation, &parameters).await?;
+        crate::procedures::guard_write(self, operation, &parameters)?;
         crate::build_configuration::guard_write(self, operation, &parameters).await?;
         crate::repositories::require_execution_effect_operate(
             self,
@@ -348,6 +351,8 @@ impl CoreClient {
             "PullRepo" => "PullRepo",
             "RunBuild" => "RunBuild",
             "CancelBuild" => "CancelBuild",
+            "RunProcedure" => "RunProcedure",
+            "CancelProcedure" => "CancelProcedure",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "execute", None)),
         };
         if !self.capabilities().allows(Capability::Operate) {
@@ -360,6 +365,7 @@ impl CoreClient {
         let params = serde_json::to_value(&request)
             .map_err(|_| AppError::arguments(operation, "Use a typed execution request"))?;
         crate::build_operations::guard_execute(self, operation, &params).await?;
+        crate::procedure_operations::guard_execute(self, operation, &params).await?;
         Ok(tokio::time::timeout(
             self.0.policy.operation_timeout,
             self.request_bounded_body(&self.0.execute_request, request, T::req_type(), operation),
@@ -436,6 +442,9 @@ impl CoreClient {
             "GetBuild" => "GetBuild",
             "ListBuilds" => "ListBuilds",
             "GetBuildActionState" => "GetBuildActionState",
+            "GetProcedure" => "GetProcedure",
+            "ListProcedures" => "ListProcedures",
+            "GetProcedureActionState" => "GetProcedureActionState",
             "GetBuilder" => "GetBuilder",
             "ListBuilders" => "ListBuilders",
             "GetAlerter" => "GetAlerter",
@@ -612,8 +621,46 @@ mod write_policy_tests {
     };
 
     #[tokio::test]
-    async fn shared_build_execute_requires_operate_before_preflight_io() {
-        use komodo_client::api::execute::{CancelBuild, RunBuild};
+    async fn shared_procedure_transport_rejects_unsafe_defaults_and_empty_update_without_operate() {
+        use komodo_client::api::write::{CreateProcedure, UpdateProcedure};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = CoreClient::new(
+            Config::parse(
+                &format!("http://{}", listener.local_addr().unwrap()),
+                "fixture-key",
+                "fixture-secret",
+            )
+            .unwrap()
+            .with_capabilities(CapabilityPolicy::new(false, true)),
+            RequestPolicy::default(),
+        )
+        .unwrap();
+        for r in [
+            client
+                .write(CreateProcedure {
+                    name: "inherited-unsafe-automation".into(),
+                    config: Default::default(),
+                })
+                .await,
+            client
+                .write(UpdateProcedure {
+                    id: "000000000000000000000030".into(),
+                    config: Default::default(),
+                })
+                .await,
+        ] {
+            assert!(matches!(r,Err(e) if e.kind==ErrorKind::CapabilityDisabled));
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn shared_saved_execute_requires_operate_before_preflight_io() {
+        use komodo_client::api::execute::{CancelBuild, CancelProcedure, RunBuild, RunProcedure};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         for edit in [false, true] {
             let client = CoreClient::new(
@@ -636,6 +683,17 @@ mod write_policy_tests {
                 client
                     .execute(CancelBuild {
                         build: "000000000000000000000011".into(),
+                    })
+                    .await,
+                client
+                    .execute(RunProcedure {
+                        procedure: "000000000000000000000030".into(),
+                    })
+                    .await,
+                client
+                    .execute(CancelProcedure {
+                        procedure: "000000000000000000000030".into(),
+                        update_id: None,
                     })
                     .await,
             ] {

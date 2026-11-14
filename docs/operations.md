@@ -11,6 +11,11 @@ recovery contracts with target kind `build`, scope `whole_build`, and operation
 `run` or `cancel`. Inspect `get_build` first. Image output reports are bounded
 observations; Build success does not prove a dependent deployment or its health.
 
+[Saved Procedure run/cancel](procedures.md#run-and-observe) extends these same
+contracts with target kind `procedure`, scope `whole_procedure` and operation
+`run` / `cancel`. Trusted children run as Core's built-in administrator user;
+parent reports do not provide complete child outcomes or deployment health.
+
 Set `KOMODO_ALLOW_OPERATE=true` in the MCP server's process environment and
 restart it. The default remains read-only. `KOMODO_ALLOW_CONFIGURATION_EDIT`
 is independent and exposes the typed configuration tools. Use an

@@ -11,8 +11,8 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.9.0 SDK](https://docs.rs/rmcp/3.9.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Twenty-three read-only tools list and inspect
-Servers, Stacks, Deployments, Repos, Builders and Builds, summarize fleet health, inspect alerts/update
+exactly with optional features disabled. Twenty-five read-only tools list and inspect
+Servers, Stacks, Deployments, Repos, Builders, Builds and Procedures, summarize fleet health, inspect alerts/update
 history, read bounded logs, and diagnose a stack in one call.
 Optional operate-enabled tools deploy one existing workload or clone/pull a saved
 Repo, or run/cancel a saved Server-backed Build, and return its Core update receipt.
@@ -135,7 +135,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All twenty-three read tools remain locally available in every grant
+All twenty-five read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -176,6 +176,14 @@ actual Server Builder before execution. `cancel_build` is an explicit resource-l
 request with a local original-update check; Core cannot enforce that update guard.
 Bounded shared receipts, history and read-only recovery keep submission, observed
 image results, cancellation and deployment health separate. See [Build operations](docs/builds.md#run-one-saved-build).
+
+Procedures add bounded list/get, typed create/update preview/apply and explicit
+saved run/cancel tools. Preserve sequential stage order, parallel groups and
+disabled entries; existing nonempty updates require both grants. Saved children
+run under Core's built-in administrator Procedure identity, with explicit effect
+acknowledgement. Cancellation is resource-level and waits for the current stage;
+parent/child reports, acknowledgement, terminal state and health stay separate.
+See [trusted Procedures](docs/procedures.md) for permissions, limits and recovery.
 
 Deliberate deletion adds `preview_resource_delete` for trusted configuration
 access and `apply_resource_delete` only when both local grants are enabled.
@@ -243,6 +251,7 @@ RUST_LOG=komodo_mcp=debug,rmcp=warn ./target/release/komodo-mcp
 | `get_repo` | Inspect a Repo definition and disclose saved hooks before clone/pull |
 | `list_builders` / `get_builder` | Inspect supported Server Builders and safe unsupported-type summaries |
 | `list_builds` / `get_build` | Inspect Build source/image selectors and disclose execution effects |
+| `list_procedures` / `get_procedure` | Inspect ordered stages, parallel/disabled steps and trusted execution authority |
 
 Each tool advertises a JSON input schema, output schema, and read-only,
 idempotent, non-destructive annotations through MCP `tools/list`. Inventory and
