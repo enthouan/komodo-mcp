@@ -31,6 +31,10 @@ impl KomodoServer {
                 | "get_deployment"
                 | "list_repos"
                 | "get_repo"
+                | "list_builders"
+                | "get_builder"
+                | "list_builds"
+                | "get_build"
                 | "fleet_health"
                 | "list_alerts"
                 | "list_updates"
@@ -52,6 +56,14 @@ impl KomodoServer {
                 | "apply_repo_create"
                 | "preview_repo_update"
                 | "apply_repo_update"
+                | "preview_builder_create"
+                | "apply_builder_create"
+                | "preview_builder_update"
+                | "apply_builder_update"
+                | "preview_build_create"
+                | "apply_build_create"
+                | "preview_build_update"
+                | "apply_build_update"
                 | "preview_stack_create"
                 | "apply_stack_create"
                 | "preview_deployment_create"
@@ -78,6 +90,114 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description = "List visible Builders using bounded positive pages and name order. Identify Server/AWS/URL support without credentials. Direct writes and Build execution support explicit existing-Server builders only; AWS provisioning/configuration is deferred and URL writes are unsupported.", input_schema = schema_for_input::<ListInput>().expect("list_builders schema"), output_schema = inventory::output_schema::<Page<crate::builders::BuilderSummary>>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn list_builders(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_builders") {
+            Ok(input) => crate::builders::list(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Inspect one exact Builder by stable ID or case-sensitive name. Show ordered Server fallback IDs and explicit support limits. Unsupported AWS/URL definitions remain inspectable without addresses, passkeys, cloud credentials or secrets. Server order is meaningful; it is never sorted.", input_schema = schema_for_input::<DetailInput>().expect("get_builder schema"), output_schema = inventory::output_schema::<crate::builders::BuilderDetail>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn get_builder(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_builder") {
+            Ok(input) => crate::builders::get(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Preview a Builder with config.kind=server and 1–16 ordered existing Server selectors. Reuse the shared ten-minute single-use preview store. Zero writes, builds or provisioning. Core requires an admin identity for creation and Read/Attach on the Servers; local edit access does not override that. Never inherit SDK AWS/URL defaults.", input_schema = schema_for_input::<crate::builders::CreateInput>().expect("preview_builder_create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_builder_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_builder_create") {
+            Ok(input) => crate::builders::preview_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Apply exactly one previewed Server Builder creation with its preview_id. Revalidate name absence and ordered Server/trust references, submit one explicit Server variant, verify echo and independent entire configuration read-back. Core admin-only creation and Read/Attach remain authoritative. No cloud provisioning, Build execution or credential fallback; no automatic retry.", input_schema = schema_for_input::<crate::builders::CreateApplyInput>().expect("apply_builder_create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_builder_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_builder_create") {
+            Ok(input) => crate::builders::apply_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Preview an explicit kind=server Builder patch with zero writes. Omit servers to preserve order or use [] to deliberately clear all Servers. Reject existing AWS/URL Builders without conversion. Bind private baseline and supplied Server/trust. Applying any supplied Server list needs both local grants because it can redirect Builds used by automatic execution; Core write hooks themselves perform no execution.", input_schema = schema_for_input::<crate::builders::PreviewInput>().expect("preview_builder_update schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_builder_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_builder_update") {
+            Ok(input) => crate::builders::preview_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Apply the exact Server Builder target/patch/preview_id once. Applying servers requires both grants before I/O regardless of current automation policy. Revalidate authoritative Server variant, private baseline and supplied Server/trust, preserve ordering, and verify echo plus complete read-back after one write. Empty/no-op and stale proposals write zero times. Core Write/Attach and final-read/write races remain; no build, provision or retry.", input_schema = schema_for_input::<crate::builders::ApplyInput>().expect("apply_builder_update schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_builder_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_builder_update") {
+            Ok(input) => crate::builders::apply_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "List visible Build definitions with bounded positive pages and exact name order. Keep configured version/Builder association separate from current cached built/latest revisions. Return no scripts, Dockerfile/cache contents, arguments, tokens or credential names. This does not start builds.", input_schema = schema_for_input::<ListInput>().expect("list_builds schema"), output_schema = inventory::output_schema::<Page<crate::build_configuration::BuildSummary>>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn list_builds(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_builds") {
+            Ok(input) => crate::build_configuration::list(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Inspect one saved Build by exact ID/name with safe source/image/registry and trusted-hook presence. Identify its actual Builder support or an explicit observation gap. Configured source/version/image and cached observed revision are separate. AWS/URL Builders are inspectable but unsupported for direct definition writes and Build execution. Saving/inspection does not prove a build or healthy deployment.", input_schema = schema_for_input::<DetailInput>().expect("get_build schema"), output_schema = inventory::output_schema::<crate::build_configuration::BuildDetail>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    async fn get_build(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_build") {
+            Ok(input) => crate::build_configuration::get(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Preview a Build with explicit builder, source, image_name and image_registry ([] means local-only). Support typed Git, linked_repo, inline Dockerfile or host sources and existing-Server Builders only. Zero writes/executions. Bind private effective Builder/ordered Server/trust, linked Repo and visible credential evidence. Disclose pushes, visible dependent redeployment policy and Core's Git/Periphery cache refresh. Scripts/paths are trusted configuration; missing/hidden credential evidence is explicit.", input_schema = schema_for_input::<crate::build_configuration::CreateInput>().expect("preview_build_create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_build_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_build_create") {
+            Ok(input) => crate::build_configuration::preview_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Apply exactly one previewed Build creation with shared preview_id. Git/linked-Repo/host source or enabled webhooks requires both grants before Core I/O; inline-only creation with webhooks explicitly off permits edit alone. Core creation and Builder/Repo Read-Attach remain authoritative. Revalidate references/name absence, save one typed partial config and verify echo plus complete read-back. Core can clone/pull source or read host Dockerfiles while refreshing caches, but MCP submits no RunBuild. No cloud provision, privileged fallback or retry.", input_schema = schema_for_input::<crate::build_configuration::CreateApplyInput>().expect("apply_build_create schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_build_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_build_create") {
+            Ok(input) => crate::build_configuration::apply_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Preview typed partial Build edits with zero writes. Omission preserves config/secrets; documented empty strings/lists clear. Sources select Git, linked_repo, inline Dockerfile or host and explicitly clear competing selectors. Inspect/revalidate the effective Server Builder and ordered Server/trust, linked Repo, visible credentials and dependent redeployment policy. All nonempty updates need both grants on apply: Core cache refresh can contact Git/Periphery and automation policy can race. No RunBuild is submitted.", input_schema = schema_for_input::<crate::build_configuration::PreviewInput>().expect("preview_build_update schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = true, idempotent_hint = false, destructive_hint = false))]
+    async fn preview_build_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_build_update") {
+            Ok(input) => crate::build_configuration::preview_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description = "Apply the exact Build target/patch/shared preview_id once. Require both grants for every nonempty update before I/O; empty patches remain zero-write no-ops. Revalidate raw baseline, actual effective Server Builder, ordered Server/trust, linked Repo and visible credential evidence. Reject AWS/URL before mutation. Preserve omitted secrets and unrelated settings, verify echo and independent complete read-back. Core can refresh Git/host Dockerfile caches as its build identity. Core Write/Attach, no-CAS races and unknown outcomes remain; never retry or execute a Build.", input_schema = schema_for_input::<crate::build_configuration::ApplyInput>().expect("apply_build_update schema"), output_schema = inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint = false, idempotent_hint = false, destructive_hint = true))]
+    async fn apply_build_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_build_update") {
+            Ok(input) => crate::build_configuration::apply_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description = "List visible Repos with bounded positive pages and exact-name ascending order. Return safe configured source/branch and current cached cloned revision separately; credential references, hooks and private URLs are omitted. Continue next_page with the same page_size.", input_schema = schema_for_input::<ListInput>().expect("list_repos schema"), output_schema = inventory::output_schema::<Page<crate::repositories::RepoSummary>>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
     async fn list_repos(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_repos") {

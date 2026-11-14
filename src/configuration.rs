@@ -245,6 +245,8 @@ pub enum DefinitionPreview {
     Deployment(crate::deployment_configuration::DefinitionPreview),
     Server(crate::server_configuration::DefinitionPreview),
     Repo(crate::repositories::DefinitionPreview),
+    Builder(crate::builders::DefinitionPreview),
+    Build(Box<crate::build_configuration::DefinitionPreview>),
 }
 
 // No Debug: these values can contain raw secrets. Nothing here is serialized.
@@ -499,6 +501,13 @@ pub(crate) fn changes(client: &CoreClient, config: &Value, patch: &Value) -> Vec
                     | "path"
                     | "on_clone"
                     | "on_pull"
+                    | "dockerfile"
+                    | "pre_build"
+                    | "build_args"
+                    | "secret_args"
+                    | "image_registry"
+                    | "build_path"
+                    | "dockerfile_path"
             ) || sensitive_locator(&config[key])
                 || sensitive_locator(after)
                 || contains_configured_secret(client, &config[key])

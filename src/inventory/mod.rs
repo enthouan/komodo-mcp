@@ -5,12 +5,13 @@ pub use types::*;
 
 use komodo_client::{
     api::read::{
-        GetBuild, GetDeployment, GetRepo, GetServer, GetStack, GetSwarm, ListBuilds,
-        ListDeployments, ListRepos, ListServers, ListStacks, ListSwarms,
+        GetBuild, GetBuilder, GetDeployment, GetRepo, GetServer, GetStack, GetSwarm, ListBuilders,
+        ListBuilds, ListDeployments, ListRepos, ListServers, ListStacks, ListSwarms,
     },
     entities::{
         ResourceTargetVariant,
         build::{Build, BuildListItem},
+        builder::{Builder, BuilderListItem},
         deployment::{Deployment, DeploymentListItem, DeploymentState as CoreDeploymentState},
         repo::{Repo, RepoListItem},
         resource::ResourceListItem,
@@ -302,6 +303,7 @@ reader!(deployments, ListDeployments, DeploymentListItem, Deployment);
 reader!(swarms, ListSwarms, SwarmListItem, Swarm);
 reader!(repos, ListRepos, RepoListItem, Repo);
 reader!(builds, ListBuilds, BuildListItem, Build);
+reader!(builders, ListBuilders, BuilderListItem, Builder);
 
 fn nonempty(value: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_owned())
@@ -484,6 +486,26 @@ pub(crate) async fn list_repo_records(
     .await
 }
 
+pub(crate) async fn list_builder_records(
+    client: &CoreClient,
+    input: ListInput,
+) -> Result<Page<BuilderListItem>, AppError> {
+    paginate(input, "ListBuilders", |page, limit| {
+        builders(client, Search::default(), page, limit)
+    })
+    .await
+}
+
+pub(crate) async fn list_build_records(
+    client: &CoreClient,
+    input: ListInput,
+) -> Result<Page<BuildListItem>, AppError> {
+    paginate(input, "ListBuilds", |page, limit| {
+        builds(client, Search::default(), page, limit)
+    })
+    .await
+}
+
 pub async fn get_server(client: &CoreClient, input: DetailInput) -> Result<ServerDetail, AppError> {
     let (summary, full) = resolve_server(client, input).await?;
     Ok(ServerDetail {
@@ -561,6 +583,24 @@ pub(crate) async fn resolve_build(
         })
         .await?;
     check_identity(&summary, &full.id, &full.name, full.template, "GetBuild")?;
+    Ok((summary, full))
+}
+
+pub(crate) async fn resolve_builder(
+    client: &CoreClient,
+    input: DetailInput,
+) -> Result<(BuilderListItem, Builder), AppError> {
+    let selector = input.validate("GetBuilder")?;
+    let summary = resolve(client, &selector, "ListBuilders", |search, page, limit| {
+        builders(client, search, page, limit)
+    })
+    .await?;
+    let full = client
+        .read(GetBuilder {
+            builder: summary.id.clone(),
+        })
+        .await?;
+    check_identity(&summary, &full.id, &full.name, full.template, "GetBuilder")?;
     Ok((summary, full))
 }
 pub async fn get_stack(client: &CoreClient, input: DetailInput) -> Result<StackDetail, AppError> {
