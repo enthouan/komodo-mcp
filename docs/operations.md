@@ -16,6 +16,12 @@ contracts with target kind `procedure`, scope `whole_procedure` and operation
 `run` / `cancel`. Trusted children run as Core's built-in administrator user;
 parent reports do not provide complete child outcomes or deployment health.
 
+[Saved Action run/cancel](actions.md#run-and-observe) uses kind `action`, scope
+`whole_action` and operation `run` / `cancel`. Per-run overrides never rewrite
+source/defaults. Scripts receive Core host/admin authority. Exact cancellation
+IDs are checked against the selected Action/run; acknowledgements, original
+termination and child effects remain separate. Arbitrary output is omitted.
+
 Set `KOMODO_ALLOW_OPERATE=true` in the MCP server's process environment and
 restart it. The default remains read-only. `KOMODO_ALLOW_CONFIGURATION_EDIT`
 is independent and exposes the typed configuration tools. Use an

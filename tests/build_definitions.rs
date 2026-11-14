@@ -50,8 +50,8 @@ async fn discovery_and_direct_calls_enforce_every_local_profile_without_core_io(
             let tools = s.list_tools(None).await.unwrap().tools;
             assert_eq!(
                 tools.len(),
-                25 + 14 * usize::from(operate)
-                    + 36 * usize::from(edit_grant)
+                27 + 16 * usize::from(operate)
+                    + 40 * usize::from(edit_grant)
                     + 2 * usize::from(operate && edit_grant)
             );
             for name in [

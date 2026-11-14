@@ -5,12 +5,13 @@ pub use types::*;
 
 use komodo_client::{
     api::read::{
-        GetBuild, GetBuilder, GetDeployment, GetProcedure, GetRepo, GetServer, GetStack, GetSwarm,
-        ListBuilders, ListBuilds, ListDeployments, ListProcedures, ListRepos, ListServers,
-        ListStacks, ListSwarms,
+        GetAction, GetBuild, GetBuilder, GetDeployment, GetProcedure, GetRepo, GetServer, GetStack,
+        GetSwarm, ListActions, ListBuilders, ListBuilds, ListDeployments, ListProcedures,
+        ListRepos, ListServers, ListStacks, ListSwarms,
     },
     entities::{
         ResourceTargetVariant,
+        action::{Action, ActionListItem},
         build::{Build, BuildListItem},
         builder::{Builder, BuilderListItem},
         deployment::{Deployment, DeploymentListItem, DeploymentState as CoreDeploymentState},
@@ -307,6 +308,7 @@ reader!(repos, ListRepos, RepoListItem, Repo);
 reader!(builds, ListBuilds, BuildListItem, Build);
 reader!(builders, ListBuilders, BuilderListItem, Builder);
 reader!(procedures, ListProcedures, ProcedureListItem, Procedure);
+reader!(actions, ListActions, ActionListItem, Action);
 
 fn nonempty(value: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_owned())
@@ -640,6 +642,32 @@ pub(crate) async fn resolve_procedure(
         full.template,
         "GetProcedure",
     )?;
+    Ok((summary, full))
+}
+pub(crate) async fn list_actions(
+    client: &CoreClient,
+    input: ListInput,
+) -> Result<Page<ActionListItem>, AppError> {
+    paginate(input, "ListActions", |page, limit| {
+        actions(client, Search::default(), page, limit)
+    })
+    .await
+}
+pub(crate) async fn resolve_action(
+    client: &CoreClient,
+    input: DetailInput,
+) -> Result<(ActionListItem, Action), AppError> {
+    let selector = input.validate("GetAction")?;
+    let summary = resolve(client, &selector, "ListActions", |search, page, limit| {
+        actions(client, search, page, limit)
+    })
+    .await?;
+    let full = client
+        .read(GetAction {
+            action: summary.id.clone(),
+        })
+        .await?;
+    check_identity(&summary, &full.id, &full.name, full.template, "GetAction")?;
     Ok((summary, full))
 }
 pub async fn get_stack(client: &CoreClient, input: DetailInput) -> Result<StackDetail, AppError> {

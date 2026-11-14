@@ -125,7 +125,7 @@ impl RecoveryInput {
                 self.operation,
                 WorkloadOperation::Clone | WorkloadOperation::Pull
             ),
-            WorkloadKind::Build | WorkloadKind::Procedure => matches!(
+            WorkloadKind::Build | WorkloadKind::Procedure | WorkloadKind::Action => matches!(
                 self.operation,
                 WorkloadOperation::Run | WorkloadOperation::Cancel
             ),
@@ -146,6 +146,7 @@ impl RecoveryInput {
             (WorkloadKind::Repo, RequestedScope::WholeRepo {}) => (),
             (WorkloadKind::Build, RequestedScope::WholeBuild {}) => (),
             (WorkloadKind::Procedure, RequestedScope::WholeProcedure {}) => (),
+            (WorkloadKind::Action, RequestedScope::WholeAction {}) => (),
             (WorkloadKind::Stack, RequestedScope::Service { service }) => StackScope::Service {
                 service: service.clone(),
             }
@@ -255,6 +256,7 @@ pub async fn reconcile_operation(
             WorkloadKind::Repo => ResourceKind::Repo,
             WorkloadKind::Build => ResourceKind::Build,
             WorkloadKind::Procedure => ResourceKind::Procedure,
+            WorkloadKind::Action => ResourceKind::Action,
         },
         id: input.target.id.clone(),
     };
@@ -264,6 +266,7 @@ pub async fn reconcile_operation(
         WorkloadKind::Repo => ResourceTarget::Repo(input.target.id.clone()),
         WorkloadKind::Build => ResourceTarget::Build(input.target.id.clone()),
         WorkloadKind::Procedure => ResourceTarget::Procedure(input.target.id.clone()),
+        WorkloadKind::Action => ResourceTarget::Action(input.target.id.clone()),
     };
     let operation = match input.target.kind {
         WorkloadKind::Stack => {
@@ -282,6 +285,16 @@ pub async fn reconcile_operation(
                 return Err(AppError::arguments(
                     "reconcile_operation",
                     "Procedure recovery requires run or cancel",
+                ));
+            }
+        },
+        WorkloadKind::Action => match input.operation {
+            WorkloadOperation::Run => komodo_client::entities::Operation::RunAction,
+            WorkloadOperation::Cancel => komodo_client::entities::Operation::CancelAction,
+            _ => {
+                return Err(AppError::arguments(
+                    "reconcile_operation",
+                    "Action recovery requires run or cancel",
                 ));
             }
         },

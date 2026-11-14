@@ -33,6 +33,12 @@ scheduling after saves; inert creation explicitly disables schedule/webhooks.
 Editor reference Execute/admin checks differ from running a saved Procedure,
 whose children use Core's built-in administrator identity. Arguments stay private.
 
+[Action definitions](actions.md) reuse this store and complete private read-back.
+Omitted source/defaults retain their original format and text; JSON replacements
+are explicit. Creation requires Core admin and disables startup/webhooks/schedule.
+Every actual existing update requires both grants, including automatic-execution
+settings. Saved scripts receive Core host and administrator authority.
+
 Set `KOMODO_ALLOW_CONFIGURATION_EDIT=true` in the MCP child environment. The
 default is false. This trusted grant is independent of
 `KOMODO_ALLOW_OPERATE`; Core remains the permission authority. Preview needs

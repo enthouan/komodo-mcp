@@ -186,6 +186,8 @@ pub struct UpdateDetail {
     pub observed_build_result: Option<crate::build_observation::BuildObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_procedure_result: Option<crate::procedure_observation::ProcedureObservation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_action_result: Option<crate::action_observation::ActionObservation>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -595,15 +597,33 @@ pub(crate) fn project_update_detail(
         )
         .take(MAX_UPDATE_STAGES)
         .map(|(index, log)| {
-            // Procedure error chains embed Debug of potentially secret-bearing
-            // execution arguments. Only the narrow projection may inspect it.
-            if update.operation==komodo_client::entities::Operation::RunProcedure && !log.stderr.is_empty() {
-                let mut safe=log.clone();
-                safe.stderr="Procedure error details omitted because they may contain configured execution arguments. Inspect the safe parent stage reports and reported child update IDs separately.".into();
-                let mut stage=project_stage(client,index,&safe);
-                stage.stderr_truncated=true;
+            // Arbitrary Action output can disclose source, arguments or the
+            // temporary administrator credentials even after an MCP restart.
+            if update.operation == komodo_client::entities::Operation::RunAction {
+                let mut safe = log.clone();
+                if safe.stage != "Execute Action" {
+                    safe.stage = "Action preparation".into();
+                }
+                safe.stderr = if log.stderr.is_empty() {
+                    String::new()
+                } else {
+                    "Action output omitted because it may contain source, arguments or temporary administrator credentials. Inspect structured status and observed_action_result.".into()
+                };
+                let mut stage = project_stage(client, index, &safe);
+                stage.stderr_truncated = !log.stderr.is_empty();
                 stage
-            } else {project_stage(client,index,log)}
+            } else if update.operation == komodo_client::entities::Operation::RunProcedure
+                && !log.stderr.is_empty()
+            {
+                // Procedure error chains embed secret-bearing execution Debug.
+                let mut safe = log.clone();
+                safe.stderr = "Procedure error details omitted because they may contain configured execution arguments. Inspect the safe parent stage reports and reported child update IDs separately.".into();
+                let mut stage = project_stage(client, index, &safe);
+                stage.stderr_truncated = true;
+                stage
+            } else {
+                project_stage(client, index, log)
+            }
         })
         .collect();
     Ok(UpdateDetail {
@@ -614,5 +634,6 @@ pub(crate) fn project_update_detail(
         observed_revision: observed_revision(client, update),
         observed_build_result: crate::build_observation::project(client, update),
         observed_procedure_result: crate::procedure_observation::project(client, update),
+        observed_action_result: crate::action_observation::project(update),
     })
 }

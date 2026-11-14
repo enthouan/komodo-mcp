@@ -63,6 +63,7 @@ fn effects(client: &CoreClient, p: &Procedure) -> ConfiguredEffects {
         repository: None,
         build: None,
         procedure: Some(procedures::effects(client, p)),
+        action: None,
     }
 }
 pub async fn run(client: &CoreClient, input: RunInput) -> Result<SubmissionReceipt, AppError> {

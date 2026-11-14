@@ -11,11 +11,12 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.9.0 SDK](https://docs.rs/rmcp/3.9.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Twenty-five read-only tools list and inspect
-Servers, Stacks, Deployments, Repos, Builders, Builds and Procedures, summarize fleet health, inspect alerts/update
+exactly with optional features disabled. Twenty-seven read-only tools list and inspect
+Servers, Stacks, Deployments, Repos, Builders, Builds, Procedures and Actions, summarize fleet health, inspect alerts/update
 history, read bounded logs, and diagnose a stack in one call.
 Optional operate-enabled tools deploy one existing workload or clone/pull a saved
-Repo, or run/cancel a saved Server-backed Build, and return its Core update receipt.
+Repo, or run/cancel a saved Server-backed Build, Procedure or Action, and return
+its Core update receipt.
 See [workload operations](docs/operations.md) and [Build operations](docs/builds.md#run-one-saved-build).
 
 ## Fresh-checkout demo (synthetic Core)
@@ -135,7 +136,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All twenty-five read tools remain locally available in every grant
+All twenty-seven read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -184,6 +185,13 @@ run under Core's built-in administrator Procedure identity, with explicit effect
 acknowledgement. Cancellation is resource-level and waits for the current stage;
 parent/child reports, acknowledgement, terminal state and health stay separate.
 See [trusted Procedures](docs/procedures.md) for permissions, limits and recovery.
+
+Actions add private typed source/default-argument previews, inert administrator-only
+creation and explicit saved run/cancel. Scripts execute on the Core host with Deno
+`--allow-all` and built-in administrator API access. Per-run arguments use Core
+recursive/array-appending merges without saved-definition writes. Cancellation
+validates the exact Action/run update ID; arbitrary secret-bearing output is
+omitted while structured Core outcomes remain available. See [trusted Actions](docs/actions.md).
 
 Deliberate deletion adds `preview_resource_delete` for trusted configuration
 access and `apply_resource_delete` only when both local grants are enabled.
@@ -252,6 +260,7 @@ RUST_LOG=komodo_mcp=debug,rmcp=warn ./target/release/komodo-mcp
 | `list_builders` / `get_builder` | Inspect supported Server Builders and safe unsupported-type summaries |
 | `list_builds` / `get_build` | Inspect Build source/image selectors and disclose execution effects |
 | `list_procedures` / `get_procedure` | Inspect ordered stages, parallel/disabled steps and trusted execution authority |
+| `list_actions` / `get_action` | Inspect safe Action settings and delegated host/administrator execution authority |
 
 Each tool advertises a JSON input schema, output schema, and read-only,
 idempotent, non-destructive annotations through MCP `tools/list`. Inventory and

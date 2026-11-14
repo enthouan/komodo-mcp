@@ -19,9 +19,9 @@ the permission authority, including a denial recorded after acknowledgement.
    `KOMODO_API_SECRET`, `KOMODO_ALLOW_OPERATE=true` and
    `KOMODO_ALLOW_CONFIGURATION_EDIT=false`. These are process environment values;
    `.env` files are not loaded. Restart the child after changing capabilities.
-   With both optional grants disabled, discovery contains twenty-five read tools,
+   With both optional grants disabled, discovery contains twenty-seven read tools,
    including exact [discovery by tag](tags.md).
-   Operate adds fourteen tools; configuration editing independently adds typed
+   Operate adds sixteen tools; configuration editing independently adds typed
    preview/apply tools. See [client configuration](../README.md#local-capabilities-and-core-permissions)
    and the [configuration workflow](configuration.md).
 2. Initialize your stdio client and call `tools/list`. Resolve an exact workload
@@ -204,3 +204,9 @@ counts zero MCP execute submissions; no-op image apply adds zero writes. Build
 references and Swarm attachments have deterministic fixture coverage only. See
 [Deployment definitions](deployments.md) for Core registry/auto-deploy effects and
 why Core's reported image can fall back to desired configuration.
+
+For trusted host/admin automation, follow the [Action walkthrough](actions.md):
+inspect authority, preview/apply private source/default changes, then run the saved
+Action with bounded overrides. Retain its update ID; explicitly cancel that exact
+Action/run if needed and observe the original separately. No replay occurs after
+lost replies or restarted read-only recovery.
