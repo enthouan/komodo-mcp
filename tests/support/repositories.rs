@@ -330,9 +330,7 @@ async fn execute(
     update.end_ts = (!d.running).then_some(2000);
     update.logs.push(Log {
         stage: "Latest Commit".into(),
-        stdout:
-            "\u{1b}[2mhash:\u{1b}[0m \u{1b}[1ma1b2c3d\u{1b}[0m\nmessage: private commit message"
-                .into(),
+        stdout: "<span style=\"color: var(--mantine-color-dimmed)\">hash:</span> <span style=\"font-weight: bolder\">a1b2c3d</span>\n<span style=\"color: var(--mantine-color-dimmed)\">message:</span> <span style=\"font-weight: bolder\">private commit message</span>".into(),
         success: true,
         ..Default::default()
     });

@@ -18,6 +18,9 @@ Optional operate-enabled tools deploy one existing workload or clone/pull a save
 Repo, or run/cancel a saved Server-backed Build, Procedure or Action, and return
 its Core update receipt.
 See [workload operations](docs/operations.md) and [Build operations](docs/builds.md#run-one-saved-build).
+Follow the [automation walkthrough](docs/automation-walkthrough.md) for revision,
+image and deployment evidence, trusted authority, schedules, recovery and opt-in
+disposable Core/Periphery acceptance.
 
 ## Fresh-checkout demo (synthetic Core)
 

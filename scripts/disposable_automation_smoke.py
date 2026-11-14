@@ -324,6 +324,106 @@ async def cancel_action(mcp, action_id):
         'limit': 'Core token/process cancellation is not rollback or child Core execution cancellation.'}
 
 
+async def wait_marker(path):
+    for _ in range(80):
+        try:
+            await asyncio.to_thread(s.run, [*s.COMPOSE, 'exec', '-T', 'periphery', 'test', '-f', path])
+            return
+        except s.Failure:
+            await asyncio.sleep(.25)
+    raise s.Failure('owned pre-build marker deadline')
+
+
+async def fault_cases(mcp, repo_id, build_id, procedure_id, action_id, stages):
+    """Inject bounded faults only inside the owned source/registry/automation."""
+    faults = s.REPORT['automation'].setdefault('faults', [])
+    await patch(mcp, 'repo', repo_id, {'on_pull': {'path': '.', 'command': 'exit 14', 'shell_mode': True}})
+    update = await finish(mcp, await mcp.tool('pull_repo', await arguments(mcp, 'repo', repo_id)), 'failed')
+    s.require(any(x['stage'] == 'On Pull' and not x['success'] for x in update['stages']),
+              'failed Repo hook stage was not identified')
+    faults.append({'case': 'repo_hook', 'update_id': update['id'], 'failed_stage': 'On Pull'})
+    await patch(mcp, 'repo', repo_id, {'on_pull': {'path': '.', 'command': '', 'shell_mode': True}})
+    await patch(mcp, 'build', build_id, {'pre_build': {'path': '.', 'command': 'exit 15', 'shell_mode': True}})
+    update = await run(mcp, 'build', build_id, 'failed')
+    s.require(any(x['stage'] == 'Pre Build' and not x['success'] for x in update['stages']),
+              'failed pre-build stage was not identified')
+    faults.append({'case': 'pre_build_hook', 'update_id': update['id'], 'failed_stage': 'Pre Build'})
+    await patch(mcp, 'build', build_id, {'pre_build': {'path': '.', 'command': '', 'shell_mode': True},
+                                       'dockerfile_path': 'OwnedMissingDockerfile'})
+    update = await run(mcp, 'build', build_id, 'failed')
+    s.require(any(x['stage'] == 'Docker Build' and not x['success'] for x in update['stages']),
+              'failed Docker build stage was not identified')
+    faults.append({'case': 'docker_build', 'update_id': update['id'], 'failed_stage': 'Docker Build'})
+    # Login precedes Pre Build in pinned Periphery. Stop the registry only after
+    # the marker, proving this is the Docker build/push phase rather than login.
+    marker = '/tmp/owned-automation-push-' + secrets.token_hex(8)
+    await patch(mcp, 'build', build_id, {'dockerfile_path': 'Dockerfile', 'pre_build': {
+        'path': '.', 'command': 'touch ' + marker + '; sleep 3', 'shell_mode': True}})
+
+    async def interrupt_registry():
+        await wait_marker(marker)
+        await asyncio.to_thread(s.run, [*s.COMPOSE, 'stop', 'registry'], timeout=30)
+
+    interrupt = asyncio.create_task(interrupt_registry())
+    try:
+        update = await run(mcp, 'build', build_id, 'failed')
+        await interrupt
+        s.require(any(x['stage'] == 'Docker Build' and not x['success'] for x in update['stages'])
+                  and not any(x['stage'] == 'Docker Login' and not x['success'] for x in update['stages']),
+                  'registry fault did not reach build/push after successful login')
+        faults.append({'case': 'registry_push_after_login', 'update_id': update['id'],
+                       'failed_stage': 'Docker Build', 'registry_interruption_instrumented': True})
+    finally:
+        if not interrupt.done():
+            interrupt.cancel()
+        await asyncio.gather(interrupt, return_exceptions=True)
+        await asyncio.to_thread(s.run, [*s.COMPOSE, 'start', 'registry'], timeout=30)
+    # Resource-level Build cancellation is acknowledged separately from the
+    # original pre-build process's terminal update; no rollback is claimed.
+    marker = '/tmp/owned-automation-cancel-' + secrets.token_hex(8)
+    await patch(mcp, 'build', build_id, {'pre_build': {'path': '.',
+        'command': 'touch ' + marker + '; sleep 15', 'shell_mode': True}})
+    receipt = await mcp.tool('run_build', await arguments(mcp, 'build', build_id))
+    await wait_marker(marker)
+    cancelled = await mcp.tool('cancel_build', {'target': {'id': build_id},
+                                             'expected_update_id': receipt['update_id']})
+    s.require(cancelled['cancellation_receipt']['submission'] == 'accepted', 'Build cancellation not acknowledged')
+    original = await s.observe(mcp, receipt['update_id'])
+    s.require(original['outcome'] == 'failed', 'Build cancellation original not independently terminal')
+    faults.append({'case': 'explicit_build_cancel', 'original_update_id': receipt['update_id'],
+        'cancel_update_id': cancelled['cancellation_receipt']['update_id'],
+        'original_terminal_outcome': original['outcome'], 'targeting_limit': cancelled['targeting_limit']})
+    await patch(mcp, 'build', build_id, {'pre_build': {'path': '.', 'command': '', 'shell_mode': True}})
+    # A parallel stage has one successful and one failed child. Later stages do
+    # not convert partial work into parent success or deployment-health evidence.
+    partial = [{'name': 'owned-partial-stage', 'enabled': True, 'executions': [
+        {'enabled': True, 'execution': {'kind': 'run_action', 'resource_id': action_id, 'args': {'fail': failed}}}
+        for failed in [False, True]]},
+        {'name': 'must-not-run', 'enabled': True, 'executions': [
+            {'enabled': True, 'execution': {'kind': 'sleep', 'duration_ms': 1}}]}]
+    await patch(mcp, 'procedure', procedure_id, {'stages': partial})
+    update = await run(mcp, 'procedure', procedure_id, 'failed')
+    faults.append({'case': 'parallel_child_partial_failure', 'update_id': update['id'],
+        'parent_outcome': update['outcome'], 'observed': update.get('observed_procedure_result'),
+        'child_link_limit': 'Only explicit Core-reported child IDs, never inferred from timing.'})
+    cancellable = [{'name': 'current-stage', 'enabled': True, 'executions': [
+        {'enabled': True, 'execution': {'kind': 'sleep', 'duration_ms': 5000}}]},
+        {'name': 'next-stage', 'enabled': True, 'executions': [
+        {'enabled': True, 'execution': {'kind': 'sleep', 'duration_ms': 15000}}]}]
+    await patch(mcp, 'procedure', procedure_id, {'stages': cancellable})
+    receipt = await mcp.tool('run_procedure', await arguments(mcp, 'procedure', procedure_id))
+    cancelled = await mcp.tool('cancel_procedure', {'target': {'id': procedure_id},
+                                                 'expected_update_id': receipt['update_id']})
+    s.require(cancelled['cancellation_receipt']['submission'] == 'accepted', 'Procedure cancellation not acknowledged')
+    original = await s.observe(mcp, receipt['update_id'])
+    s.require(original['outcome'] == 'failed', 'Procedure original did not stop before next stage')
+    faults.append({'case': 'explicit_procedure_cancel', 'original_update_id': receipt['update_id'],
+        'cancel_update_id': cancelled['cancellation_receipt']['update_id'],
+        'original_terminal_outcome': original['outcome'], 'targeting_limit': cancelled['targeting_limit']})
+    await patch(mcp, 'procedure', procedure_id, {'stages': stages})
+    s.persist()
+
+
 async def exercise():
     address, editor, operator = CONTEXT['address'], CONTEXT['editor'], CONTEXT['operator']
     async with await s.Mcp.start(address, CONTEXT['admin_test'], True, True) as creator:
@@ -341,8 +441,10 @@ async def exercise():
         CONTEXT['repo_id'] = repo_id
         cloned = await run(mcp, 'repo', repo_id)
         pulled = await finish(mcp, await mcp.tool('pull_repo', await arguments(mcp, 'repo', repo_id)))
-        s.require(cloned['observed_revision']['revision'] == CONTEXT['revision'] and
-                  pulled['observed_revision']['revision'] == CONTEXT['revision'], 'Repo observed revision mismatch')
+        for update in [cloned, pulled]:
+            observed = update.get('observed_revision', {}).get('revision', '')
+            s.require(len(observed) >= 7 and CONTEXT['revision'].startswith(observed),
+                      'Repo observed short revision mismatch')
         build_id = await create(mcp, 'build', PREFIX + 'build', {
             'builder': {'id': builder_id}, 'source': {'kind': 'linked_repo', 'target': {'id': repo_id}},
             'image_name': 'workload', 'image_registry': [{'domain': 'registry:5000',
@@ -352,7 +454,9 @@ async def exercise():
             'build_path': '.', 'dockerfile_path': 'Dockerfile'})
         CONTEXT['build_id'] = build_id
         built = await run(mcp, 'build', build_id)
-        s.require(built['observed_revision']['revision'] == CONTEXT['revision'], 'Build observed revision mismatch')
+        observed = built.get('observed_revision', {}).get('revision', '')
+        s.require(len(observed) >= 7 and CONTEXT['revision'].startswith(observed),
+                  'Build observed short revision mismatch')
         version = built['observed_build_result']['version']
         image = 'registry:5000/owned-automation/workload:' + version
         digests = json.loads(s.run([*s.COMPOSE, 'exec', '-T', 'docker', 'docker',
@@ -374,7 +478,10 @@ async def exercise():
         s.require(observed and revision_file == CONTEXT['marker'], 'deployed source content mismatch')
         fleet = await mcp.tool('fleet_health', {})
         health = next(x for x in fleet['deployments'] if x['id'] == deployment_id)
-        s.REPORT['automation']['chain'] = {'repo_id': repo_id, 'revision': CONTEXT['revision'],
+        s.REPORT['automation']['chain'] = {'repo_id': repo_id, 'fixture_full_revision': CONTEXT['revision'],
+            'clone_observed_revision': cloned['observed_revision'],
+            'pull_observed_revision': pulled['observed_revision'],
+            'build_observed_revision': built['observed_revision'],
             'builder_id': builder_id, 'server_ids': [CONTEXT['server_id']], 'build_id': build_id,
             'build_version': version, 'image': image, 'independent_repo_digests': digests,
             'deployment_id': deployment_id, 'explicit_deployment_update_id': deployed_receipt['update_id'],
@@ -414,6 +521,7 @@ async def exercise():
         s.REPORT['automation']['procedure_definition_unchanged'] = True
         await schedule_cycle(mcp, 'action', action_id)
         await schedule_cycle(mcp, 'procedure', procedure_id)
+        await fault_cases(mcp, repo_id, build_id, procedure_id, action_id, stages)
         await permission_profiles(repo_id, action_id)
         await lost_ack_and_concurrency(action_id)
         await cancel_action(mcp, action_id)

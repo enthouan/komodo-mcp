@@ -221,31 +221,17 @@ fn observed_revision(client: &CoreClient, update: &Update) -> Option<RevisionObs
     if logs.next().is_some() || !log.success || log.stdout.len() > 4096 {
         return None;
     }
-    let mut plain = String::new();
-    let mut chars = log.stdout.lines().next()?.chars();
-    while let Some(c) = chars.next() {
-        if c == '\u{1b}' {
-            if chars.next() != Some('[') {
-                return None;
-            }
-            let mut complete = false;
-            for _ in 0..32 {
-                match chars.next()? {
-                    'm' => {
-                        complete = true;
-                        break;
-                    }
-                    c if c.is_ascii_digit() || c == ';' => (),
-                    _ => return None,
-                }
-            }
-            if !complete {
-                return None;
-            }
-        } else {
-            plain.push(c);
-        }
-    }
+    let first = log.stdout.lines().next()?;
+    // Pinned Core's formatting::{muted,bold} emits literal HTML, not ANSI.
+    // Recognize only its complete hash-line wrapper, never arbitrary HTML or
+    // the following private commit message. Keep the narrow plain/SGR form too.
+    let plain = if let Some(hash) = first.strip_prefix(
+        "<span style=\"color: var(--mantine-color-dimmed)\">hash:</span> <span style=\"font-weight: bolder\">",
+    ) {
+        format!("hash: {}", hash.strip_suffix("</span>")?)
+    } else {
+        crate::build_observation::plain(first)?
+    };
     let revision = crate::repositories::revision(client, plain.strip_prefix("hash: ")?.trim())?;
     Some(RevisionObservation {
         revision,
