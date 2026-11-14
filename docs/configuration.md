@@ -39,6 +39,12 @@ are explicit. Creation requires Core admin and disables startup/webhooks/schedul
 Every actual existing update requires both grants, including automatic-execution
 settings. Saved scripts receive Core host and administrator authority.
 
+[Action/Procedure schedules](schedules.md) use the same private-baseline tokens
+and complete read-back through typed owning-resource updates. Saved schedule
+fields and Core parser/cache observations are verified separately; arbitrary parent
+source/stages/defaults remain untouched. Every actual schedule update needs both
+grants. Generic definition patches cannot accept scheduling fields.
+
 Set `KOMODO_ALLOW_CONFIGURATION_EDIT=true` in the MCP child environment. The
 default is false. This trusted grant is independent of
 `KOMODO_ALLOW_OPERATE`; Core remains the permission authority. Preview needs

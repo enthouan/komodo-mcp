@@ -39,6 +39,8 @@ impl KomodoServer {
                 | "get_procedure"
                 | "list_actions"
                 | "get_action"
+                | "list_schedules"
+                | "get_schedule"
                 | "fleet_health"
                 | "list_alerts"
                 | "list_updates"
@@ -70,6 +72,8 @@ impl KomodoServer {
                 | "apply_build_create"
                 | "preview_build_update"
                 | "apply_build_update"
+                | "preview_schedule_update"
+                | "apply_schedule_update"
                 | "preview_action_create"
                 | "apply_action_create"
                 | "preview_action_update"
@@ -104,7 +108,43 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
-    #[tool(description="List visible Actions in bounded positive pages. Return stable IDs, cached run state and last successful run; source, default/per-run arguments and secrets are omitted. Multiple Core Action runs can overlap.",input_schema=schema_for_input::<ListInput>().expect("list_actions schema"),output_schema=inventory::output_schema::<Page<crate::actions::ActionSummary>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    #[tool(description="List Core Action/Procedure schedule owners in bounded positive pages. Core includes nonempty expressions even when disabled, and includes templates. Return configured expression/format/timezone/enabled and Core-reported cached next-run/error plus latest completed run start time (success or failure, manual or scheduled). A disabled/empty expression is not parsed; missing or cached values provide no validity/execution/health guarantee. Core internally collects/sorts owners before pagination.",input_schema=schema_for_input::<ListInput>().expect("list_schedules schema"),output_schema=inventory::output_schema::<crate::schedules::SchedulePage>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_schedules(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_schedules") {
+            Ok(input) => crate::schedules::list(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Inspect the schedule of one exact Action/Procedure owner, including empty schedules and templates. Return saved fields plus a separate bounded Core ListSchedules cache lookup (at most four 100-item pages) matched by exact owner kind/ID and expected fields. Empty timezone inherits Core configured timezone, otherwise Core host local; never the MCP host. Cache/error/last-run evidence can be missing, stale or mismatched; no MCP parsing or scheduler.",input_schema=schema_for_input::<crate::schedules::DetailRequest>().expect("get_schedule schema"),output_schema=inventory::output_schema::<crate::schedules::Detail>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_schedule(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_schedule") {
+            Ok(input) => crate::schedules::get(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Preview typed schedule fields for one saved Action/Procedure with configuration-edit and zero writes. Allow expression, format cron/english, timezone, enabled and alert only; omission preserves everything else. Bind the complete private parent source/stages/default arguments/secrets/settings in the shared expiring single-use preview. Empty expression clears the schedule and empty timezone inherits Core defaults. Every actual update requires both local grants; Core executes future trusted automation under administrator authority. Parsing and effective next run are Core-owned evidence, separate from saving.",input_schema=schema_for_input::<crate::schedules::PreviewInput>().expect("preview_schedule_update schema"),output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn preview_schedule_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_schedule_update") {
+            Ok(input) => crate::schedules::preview(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Apply one previewed Action/Procedure schedule patch with both grants for every nonempty input plus Core owner Write. Consume the shared preview, recheck full private baseline, preserve source/stages/defaults/secrets/settings, handle no-op, submit one typed UpdateAction/UpdateProcedure and independently verify full saved config. Report Core parser/cache results separately; an invalid schedule may save successfully with a cache error. No CAS/retry/MCP scheduler. Disabling or clearing does not cancel already dispatched/running work; Core can reschedule from an older in-flight definition.",input_schema=schema_for_input::<crate::schedules::ApplyInput>().expect("apply_schedule_update schema"),output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn apply_schedule_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_schedule_update") {
+            Ok(input) => crate::schedules::apply(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="List visible Actions in bounded positive pages. Return stable IDs, cached run state and latest completed run start time (successful or failed); source, default/per-run arguments and secrets are omitted. Multiple Core Action runs can overlap.",input_schema=schema_for_input::<ListInput>().expect("list_actions schema"),output_schema=inventory::output_schema::<Page<crate::actions::ActionSummary>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn list_actions(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_actions") {
             Ok(input) => crate::actions::list(&self.client, input).await,

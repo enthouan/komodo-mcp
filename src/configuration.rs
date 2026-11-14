@@ -249,6 +249,7 @@ pub enum DefinitionPreview {
     Build(Box<crate::build_configuration::DefinitionPreview>),
     Procedure(Box<crate::procedures::DefinitionPreview>),
     Action(Box<crate::actions::DefinitionPreview>),
+    Schedule(Box<crate::schedules::DefinitionPreview>),
 }
 
 // No Debug: these values can contain raw secrets. Nothing here is serialized.

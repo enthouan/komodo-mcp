@@ -8,6 +8,14 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Inspect Core Action/Procedure schedules with bounded pagination and separate
+  saved configuration, cache, parse-error and next/last-run evidence. Preview and
+  apply typed Cron/English/timezone/enable/alert edits through the shared private
+  contract, preserving source, stages, defaults and secrets with both effect grants.
+  Report inherited Core timezone and scheduling races; add pinned-parser DST
+  fixtures without an MCP scheduler or automatic replay.
+  ([#27](https://github.com/enthouan/komodo-mcp/issues/27))
+
 - Manage trusted Action source/default arguments with private typed previews and
   full read-back, inert administrator-only creation and automatic-effect gates.
   Run saved Actions once with bounded Core argument merging and shared read-only

@@ -22,6 +22,11 @@ source/defaults. Scripts receive Core host/admin authority. Exact cancellation
 IDs are checked against the selected Action/run; acknowledgements, original
 termination and child effects remain separate. Arbitrary output is omitted.
 
+[Schedules](schedules.md) provide read-only saved-policy and Core cache evidence.
+Enabling/changing/clearing a schedule is a separate trusted configuration effect;
+it neither submits an explicit run nor cancels an existing run. Core owns timezones
+and next occurrences, including cached/invalid/missing evidence.
+
 Set `KOMODO_ALLOW_OPERATE=true` in the MCP server's process environment and
 restart it. The default remains read-only. `KOMODO_ALLOW_CONFIGURATION_EDIT`
 is independent and exposes the typed configuration tools. Use an

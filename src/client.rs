@@ -454,6 +454,7 @@ impl CoreClient {
             "GetAction" => "GetAction",
             "ListActions" => "ListActions",
             "GetActionActionState" => "GetActionActionState",
+            "ListSchedules" => "ListSchedules",
             "GetBuilder" => "GetBuilder",
             "ListBuilders" => "ListBuilders",
             "GetAlerter" => "GetAlerter",
@@ -697,6 +698,53 @@ mod write_policy_tests {
                 .await,
         ] {
             assert!(matches!(r,Err(e) if e.kind==ErrorKind::CapabilityDisabled));
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn shared_schedule_partials_require_both_grants_before_any_io() {
+        use komodo_client::{
+            api::write::{UpdateAction, UpdateProcedure},
+            entities::{action::PartialActionConfig, procedure::PartialProcedureConfig},
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        for (operate, edit) in [(false, false), (false, true), (true, false)] {
+            let client = CoreClient::new(
+                Config::parse(
+                    &format!("http://{}", listener.local_addr().unwrap()),
+                    "fixture-key",
+                    "fixture-secret",
+                )
+                .unwrap()
+                .with_capabilities(CapabilityPolicy::new(operate, edit)),
+                RequestPolicy::default(),
+            )
+            .unwrap();
+            let action = client
+                .write(UpdateAction {
+                    id: "000000000000000000000040".into(),
+                    config: PartialActionConfig {
+                        schedule_enabled: Some(true),
+                        ..Default::default()
+                    },
+                })
+                .await;
+            assert!(matches!(action,Err(e)if e.kind==ErrorKind::CapabilityDisabled));
+            let procedure = client
+                .write(UpdateProcedure {
+                    id: "000000000000000000000030".into(),
+                    config: PartialProcedureConfig {
+                        schedule: Some("0 0 9 * * *".into()),
+                        ..Default::default()
+                    },
+                })
+                .await;
+            assert!(matches!(procedure,Err(e)if e.kind==ErrorKind::CapabilityDisabled));
         }
         assert!(
             tokio::time::timeout(Duration::from_millis(20), listener.accept())
