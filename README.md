@@ -11,9 +11,11 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.9.0 SDK](https://docs.rs/rmcp/3.9.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Twenty-nine read-only tools list and inspect
+exactly with optional features disabled. Thirty read-only tools list and inspect
 Servers, Stacks, Deployments, Repos, Builders, Builds, Procedures and Actions, summarize fleet health, inspect alerts/update
 history, read bounded logs, and diagnose a stack in one call.
+The [scoped TOML export](docs/export.md) returns a sanitized inspection document
+for explicit resources/groups, with separate opt-in to all Core variables.
 Optional operate-enabled tools deploy one existing workload or clone/pull a saved
 Repo, or run/cancel a saved Server-backed Build, Procedure or Action, and return
 its Core update receipt.
@@ -139,7 +141,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All twenty-nine read tools remain locally available in every grant
+All thirty read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -272,6 +274,7 @@ RUST_LOG=komodo_mcp=debug,rmcp=warn ./target/release/komodo-mcp
 | `list_procedures` / `get_procedure` | Inspect ordered stages, parallel/disabled steps and trusted execution authority |
 | `list_actions` / `get_action` | Inspect safe Action settings and delegated host/administrator execution authority |
 | `list_schedules` / `get_schedule` | Inspect saved Action/Procedure schedules and separate Core cache/parse/next-run evidence |
+| `export_resources_toml` | Export explicit resources/groups and optional all-variable metadata as sanitized, incomplete inspection TOML |
 
 Each tool advertises a JSON input schema, output schema, and read-only,
 idempotent, non-destructive annotations through MCP `tools/list`. Inventory and

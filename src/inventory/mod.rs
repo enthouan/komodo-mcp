@@ -5,13 +5,15 @@ pub use types::*;
 
 use komodo_client::{
     api::read::{
-        GetAction, GetBuild, GetBuilder, GetDeployment, GetProcedure, GetRepo, GetServer, GetStack,
-        GetSwarm, ListActions, ListBuilders, ListBuilds, ListDeployments, ListProcedures,
-        ListRepos, ListServers, ListStacks, ListSwarms,
+        GetAction, GetAlerter, GetBuild, GetBuilder, GetDeployment, GetProcedure, GetRepo,
+        GetResourceSync, GetServer, GetStack, GetSwarm, ListActions, ListAlerters, ListBuilders,
+        ListBuilds, ListDeployments, ListProcedures, ListRepos, ListResourceSyncs, ListServers,
+        ListStacks, ListSwarms,
     },
     entities::{
         ResourceTargetVariant,
         action::{Action, ActionListItem},
+        alerter::{Alerter, AlerterListItem},
         build::{Build, BuildListItem},
         builder::{Builder, BuilderListItem},
         deployment::{Deployment, DeploymentListItem, DeploymentState as CoreDeploymentState},
@@ -21,6 +23,7 @@ use komodo_client::{
         server::{Server, ServerListItem, ServerState as CoreServerState},
         stack::{Stack, StackListItem, StackState as CoreStackState},
         swarm::{Swarm, SwarmListItem},
+        sync::{ResourceSync, ResourceSyncListItem},
     },
 };
 use rmcp::model::{CallToolResult, JsonObject};
@@ -309,6 +312,13 @@ reader!(builds, ListBuilds, BuildListItem, Build);
 reader!(builders, ListBuilders, BuilderListItem, Builder);
 reader!(procedures, ListProcedures, ProcedureListItem, Procedure);
 reader!(actions, ListActions, ActionListItem, Action);
+reader!(alerters, ListAlerters, AlerterListItem, Alerter);
+reader!(
+    resource_syncs,
+    ListResourceSyncs,
+    ResourceSyncListItem,
+    ResourceSync
+);
 
 fn nonempty(value: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_owned())
@@ -668,6 +678,51 @@ pub(crate) async fn resolve_action(
         })
         .await?;
     check_identity(&summary, &full.id, &full.name, full.template, "GetAction")?;
+    Ok((summary, full))
+}
+
+pub(crate) async fn resolve_alerter(
+    client: &CoreClient,
+    input: DetailInput,
+) -> Result<(AlerterListItem, Alerter), AppError> {
+    let selector = input.validate("GetAlerter")?;
+    let summary = resolve(client, &selector, "ListAlerters", |search, page, limit| {
+        alerters(client, search, page, limit)
+    })
+    .await?;
+    let full = client
+        .read(GetAlerter {
+            alerter: summary.id.clone(),
+        })
+        .await?;
+    check_identity(&summary, &full.id, &full.name, full.template, "GetAlerter")?;
+    Ok((summary, full))
+}
+
+pub(crate) async fn resolve_resource_sync(
+    client: &CoreClient,
+    input: DetailInput,
+) -> Result<(ResourceSyncListItem, ResourceSync), AppError> {
+    let selector = input.validate("GetResourceSync")?;
+    let summary = resolve(
+        client,
+        &selector,
+        "ListResourceSyncs",
+        |search, page, limit| resource_syncs(client, search, page, limit),
+    )
+    .await?;
+    let full = client
+        .read(GetResourceSync {
+            sync: summary.id.clone(),
+        })
+        .await?;
+    check_identity(
+        &summary,
+        &full.id,
+        &full.name,
+        full.template,
+        "GetResourceSync",
+    )?;
     Ok((summary, full))
 }
 pub async fn get_stack(client: &CoreClient, input: DetailInput) -> Result<StackDetail, AppError> {

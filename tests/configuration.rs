@@ -183,7 +183,7 @@ async fn all_four_profiles_enforce_discovery_and_direct_dispatch_before_any_core
             let tools = session.list_tools(None).await.unwrap().tools;
             assert_eq!(
                 tools.len(),
-                29 + 16 * usize::from(operate)
+                30 + 16 * usize::from(operate)
                     + 42 * usize::from(edit)
                     + 2 * usize::from(operate && edit)
             );

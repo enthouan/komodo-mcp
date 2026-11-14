@@ -8,6 +8,13 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Export explicit resource/group selections through Core's scoped read API,
+  with separate opt-in to all variables. Parse and serialize a conservative
+  inspection-only TOML projection, omit secret-bearing content even for admins,
+  report missing definitions and reuse limits, and reject excess output without
+  truncating a document. Add compiled-stdio selection, permission, redaction and
+  zero-mutation evidence. ([#28](https://github.com/enthouan/komodo-mcp/issues/28))
+
 ## v0.5.0
 
 Manage repositories, build workload images on existing Servers, and run trusted
