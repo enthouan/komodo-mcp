@@ -134,7 +134,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All nineteen read tools remain locally available in every grant
+All twenty-three read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -159,6 +159,15 @@ disabled creation need configuration access. Initial pinned trust is explicit,
 existing keys are preserved, and connectivity is observed separately from a
 verified save. See [Server records](docs/servers.md) for fields, Core permissions,
 background-policy effects and the absence of provisioning/key-rotation fallback.
+
+Builders and Builds add `list_builders`/`get_builder`, `list_builds`/`get_build`
+and typed create/update preview/apply tools. Direct writes support explicit
+existing-Server Builders only and preserve Server fallback order. Core retains
+admin-only Builder creation and attachment permissions. Build saves can refresh
+Git/host Dockerfile caches; nonempty Build edits and existing Builder Server-list
+edits require both grants. These definition tools submit zero build executions.
+See [Builders and Build definitions](docs/builds.md) for credential evidence,
+registry/redeployment effects, supported sources and read-back limits.
 
 Deliberate deletion adds `preview_resource_delete` for trusted configuration
 access and `apply_resource_delete` only when both local grants are enabled.

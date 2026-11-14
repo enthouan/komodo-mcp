@@ -8,6 +8,14 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Add bounded Builder/Build inspection and shared typed definition preview/apply.
+  Support explicit existing-Server Builders with ordered fallback, preserve
+  omitted secrets, revalidate references and verify complete saved configuration.
+  Disclose Core cache, registry and dependent redeployment effects; gate
+  execution-bearing edits with both local grants and reject AWS/URL writes.
+  Definition tools submit no build execution or cloud provisioning.
+  ([#23](https://github.com/enthouan/komodo-mcp/issues/23))
+
 - Add bounded Repo inspection, typed definition preview/apply and explicit
   clone/pull with prior hook acknowledgement. Preserve omitted secrets, verify
   authoritative saved configuration and gate execution-bearing updates and

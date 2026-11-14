@@ -247,7 +247,7 @@ fn invalid() -> AppError {
         "Use documented typed fields, safe bounded source selectors without URL credentials, explicit supported clears, and complete trusted hook objects",
     )
 }
-fn locator(s: &str) -> bool {
+pub(crate) fn locator(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 256
         && !s.starts_with('-')
@@ -255,7 +255,7 @@ fn locator(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"._-/".contains(&b))
         && s.split('/').all(|p| !p.is_empty() && p != "." && p != "..")
 }
-fn provider(s: &str) -> bool {
+pub(crate) fn provider(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 256
         && s.bytes()
@@ -269,7 +269,7 @@ fn provider(s: &str) -> bool {
                 && u.fragment().is_none()
         })
 }
-fn safe_source(client: &CoreClient, s: &str, valid: bool) -> String {
+pub(crate) fn safe_source(client: &CoreClient, s: &str, valid: bool) -> String {
     if valid || s.is_empty() {
         common::bounded_text(client, s, 256)
     } else {

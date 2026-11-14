@@ -18,6 +18,14 @@ write echo and require both grants for execution-bearing updates or enabling
 future webhook execution, independently of the currently observed webhook state.
 Clone and pull use the independent operation grant.
 
+[Server Builders and Build definitions](builds.md) also share these tokens,
+partial writes and complete authoritative read-back. Builder writes explicitly
+select the Server variant and retain fallback order. Existing Server-list edits
+and nonempty Build updates require both grants; Build writes can refresh Git or
+host Dockerfile caches inside Core. Scripts, source/registry credentials and
+dependent redeployment policies remain trusted configuration. Definition tools
+submit no build execution or cloud provisioning.
+
 Set `KOMODO_ALLOW_CONFIGURATION_EDIT=true` in the MCP child environment. The
 default is false. This trusted grant is independent of
 `KOMODO_ALLOW_OPERATE`; Core remains the permission authority. Preview needs

@@ -138,6 +138,19 @@ impl CoreClient {
         T: Serialize + KomodoWriteRequest,
         T::Response: DeserializeOwned,
     {
+        self.write_checked(request).await?
+    }
+
+    /// Outer errors rejected before a write was attempted; inner errors may
+    /// follow submission. New definition handlers preserve that distinction.
+    pub(crate) async fn write_checked<T>(
+        &self,
+        request: T,
+    ) -> Result<Result<T::Response, AppError>, AppError>
+    where
+        T: Serialize + KomodoWriteRequest,
+        T::Response: DeserializeOwned,
+    {
         let operation = match T::req_type() {
             "UpdateStack" => "UpdateStack",
             "CreateStack" => "CreateStack",
@@ -147,12 +160,18 @@ impl CoreClient {
             "UpdateServer" => "UpdateServer",
             "CreateRepo" => "CreateRepo",
             "UpdateRepo" => "UpdateRepo",
+            "CreateBuilder" => "CreateBuilder",
+            "UpdateBuilder" => "UpdateBuilder",
+            "CreateBuild" => "CreateBuild",
+            "UpdateBuild" => "UpdateBuild",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "write", None)),
         };
         crate::configuration::require_edit(self)?;
         let parameters = serde_json::to_value(request).map_err(|_| {
             AppError::arguments(operation, "Use a supported typed configuration request")
         })?;
+        crate::builders::guard_write(self, operation, &parameters).await?;
+        crate::build_configuration::guard_write(self, operation, &parameters).await?;
         crate::repositories::require_execution_effect_operate(
             self,
             (operation == "CreateRepo" && parameters["config"]["webhook_enabled"] != false)
@@ -194,26 +213,33 @@ impl CoreClient {
                 .unwrap_or_default()
                 .to_owned()
         });
-        tokio::time::timeout(self.0.policy.operation_timeout, async {
-            let response: serde_json::Value = self
-                .request_bounded_body(&self.0.write_request, parameters, T::req_type(), operation)
-                .await?;
-            // SDK defaults must not turn an absent echoed field into a verified save.
-            if !response["config"].is_object()
-                || !expected_config
-                    .iter()
-                    .all(|(key, value)| response["config"].get(key) == Some(value))
-                || expected_initial_key.as_ref().is_some_and(|key| {
-                    response["info"]["public_key"].as_str() != Some(key.as_str())
-                })
-            {
-                return Err(AppError::new(ErrorKind::InvalidResponse, operation, None));
-            }
-            serde_json::from_value(response)
-                .map_err(|_| AppError::new(ErrorKind::InvalidResponse, operation, None))
-        })
-        .await
-        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
+        Ok(
+            tokio::time::timeout(self.0.policy.operation_timeout, async {
+                let response: serde_json::Value = self
+                    .request_bounded_body(
+                        &self.0.write_request,
+                        parameters,
+                        T::req_type(),
+                        operation,
+                    )
+                    .await?;
+                // SDK defaults must not turn an absent echoed field into a verified save.
+                if !response["config"].is_object()
+                    || !expected_config
+                        .iter()
+                        .all(|(key, value)| response["config"].get(key) == Some(value))
+                    || expected_initial_key.as_ref().is_some_and(|key| {
+                        response["info"]["public_key"].as_str() != Some(key.as_str())
+                    })
+                {
+                    return Err(AppError::new(ErrorKind::InvalidResponse, operation, None));
+                }
+                serde_json::from_value(response)
+                    .map_err(|_| AppError::new(ErrorKind::InvalidResponse, operation, None))
+            })
+            .await
+            .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None))),
+        )
     }
 
     /// A single typed destructive write. Its raw acknowledgement is retained
@@ -361,6 +387,10 @@ impl CoreClient {
             "GetRepo" => "GetRepo",
             "GetStack" => "GetStack",
             "GetDeployment" => "GetDeployment",
+            "ListGitProviderAccounts" => "ListGitProviderAccounts",
+            "ListImageRegistryAccounts" => "ListImageRegistryAccounts",
+            "ListGitProvidersFromConfig" => "ListGitProvidersFromConfig",
+            "ListImageRegistriesFromConfig" => "ListImageRegistriesFromConfig",
             _ => {
                 return Err(AppError::new(
                     ErrorKind::UnsupportedTarget,
@@ -398,6 +428,7 @@ impl CoreClient {
             "GetBuild" => "GetBuild",
             "ListBuilds" => "ListBuilds",
             "GetBuilder" => "GetBuilder",
+            "ListBuilders" => "ListBuilders",
             "GetAlerter" => "GetAlerter",
             "ListFullBuilders" => "ListFullBuilders",
             "ListFullAlerters" => "ListFullAlerters",
@@ -805,6 +836,59 @@ mod write_policy_tests {
                 })
                 .await;
             assert!(matches!(result,Err(e) if e.kind==ErrorKind::CapabilityDisabled));
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn shared_definition_transport_rejects_variants_and_effects_before_connection() {
+        use komodo_client::{
+            api::write::{CreateBuild, CreateBuilder, UpdateBuild, UpdateBuilder},
+            entities::{
+                build::PartialBuildConfig,
+                builder::{PartialBuilderConfig, PartialServerBuilderConfig},
+            },
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = |operate, edit| {
+            CoreClient::new(
+                Config::parse(
+                    &format!("http://{}", listener.local_addr().unwrap()),
+                    "fixture-key",
+                    "fixture-secret",
+                )
+                .unwrap()
+                .with_capabilities(CapabilityPolicy::new(operate, edit)),
+                RequestPolicy::default(),
+            )
+            .unwrap()
+        };
+        for variant in [
+            PartialBuilderConfig::Aws(Default::default()),
+            PartialBuilderConfig::Url(Default::default()),
+        ] {
+            assert!(
+                matches!(client(true,true).write(CreateBuilder {name:"fixture".into(),config:variant.clone()}).await,Err(e)if e.kind==ErrorKind::UnsupportedTarget)
+            );
+            assert!(
+                matches!(client(true,true).write(UpdateBuilder {id:"000000000000000000000010".into(),config:variant}).await,Err(e)if e.kind==ErrorKind::UnsupportedTarget)
+            );
+        }
+        for (operate, edit) in [(false, true), (true, false), (false, false)] {
+            let c = client(operate, edit);
+            assert!(
+                matches!(c.write(UpdateBuilder {id:"000000000000000000000010".into(),config:PartialBuilderConfig::Server(PartialServerBuilderConfig {server_ids:Some(vec!["000000000000000000000001".into()])})}).await,Err(e)if e.kind==ErrorKind::CapabilityDisabled)
+            );
+            assert!(
+                matches!(c.write(CreateBuild {name:"fixture".into(),config:PartialBuildConfig {repo:Some("fixture/workload".into()),webhook_enabled:Some(false),..Default::default()}}).await,Err(e)if e.kind==ErrorKind::CapabilityDisabled)
+            );
+            assert!(
+                matches!(c.write(UpdateBuild {id:"000000000000000000000011".into(),config:PartialBuildConfig {image_tag:Some("next".into()),..Default::default()}}).await,Err(e)if e.kind==ErrorKind::CapabilityDisabled)
+            );
         }
         assert!(
             tokio::time::timeout(Duration::from_millis(20), listener.accept())
