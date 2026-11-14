@@ -30,7 +30,7 @@ async fn discover_inspect_act_follow_and_observe_health_for_every_action_and_sco
     })
     .await;
     let (process, session) = Process::start(&core, true).await;
-    assert_eq!(session.list_tools(None).await.unwrap().tools.len(), 45);
+    assert_eq!(session.list_tools(None).await.unwrap().tools.len(), 46);
     assert_eq!(
         data(call(&session, "get_stack", json!({"id":STACK})).await)["id"],
         STACK
