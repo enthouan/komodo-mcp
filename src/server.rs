@@ -37,6 +37,8 @@ impl KomodoServer {
                 | "get_build"
                 | "list_procedures"
                 | "get_procedure"
+                | "list_actions"
+                | "get_action"
                 | "fleet_health"
                 | "list_alerts"
                 | "list_updates"
@@ -51,9 +53,8 @@ impl KomodoServer {
                 "deploy_stack" | "deploy_deployment" | "start_stack" | "stop_stack"
                 | "restart_stack" | "start_deployment" | "stop_deployment"
                 | "restart_deployment" | "clone_repo" | "pull_repo" | "run_build"
-                | "cancel_build" | "run_procedure" | "cancel_procedure" => {
-                    Some(Capability::Operate)
-                }
+                | "cancel_build" | "run_procedure" | "cancel_procedure" | "run_action"
+                | "cancel_action" => Some(Capability::Operate),
                 "apply_resource_delete" | "apply_tag_delete" => Some(Capability::Destructive),
                 "preview_stack_update"
                 | "apply_stack_update"
@@ -69,6 +70,10 @@ impl KomodoServer {
                 | "apply_build_create"
                 | "preview_build_update"
                 | "apply_build_update"
+                | "preview_action_create"
+                | "apply_action_create"
+                | "preview_action_update"
+                | "apply_action_update"
                 | "preview_procedure_create"
                 | "apply_procedure_create"
                 | "preview_procedure_update"
@@ -99,6 +104,78 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="List visible Actions in bounded positive pages. Return stable IDs, cached run state and last successful run; source, default/per-run arguments and secrets are omitted. Multiple Core Action runs can overlap.",input_schema=schema_for_input::<ListInput>().expect("list_actions schema"),output_schema=inventory::output_schema::<Page<crate::actions::ActionSummary>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_actions(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_actions") {
+            Ok(input) => crate::actions::list(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Inspect one exact saved Action and its trusted execution effects without source, argument values or webhook secrets. Core runs TypeScript on its host with Deno --allow-all and a temporary built-in administrator API key. First read effects and copy effects.acknowledgement before running. This is trusted host/admin automation. Schedule tools are separate.",input_schema=schema_for_input::<DetailInput>().expect("get_action schema"),output_schema=inventory::output_schema::<crate::actions::Detail>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_action(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_action") {
+            Ok(input) => crate::actions::get(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Preview inert Action creation with explicit trusted source and optional bounded JSON default_arguments. Zero writes. Force startup, webhooks and schedule disabled with empty schedule. Core requires administrator creation permission. Keep source/defaults private in the shared expiring single-use preview; no generic SDK or schedule passthrough.",input_schema=schema_for_input::<crate::actions::CreateInput>().expect("preview_action_create schema"),output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn preview_action_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_action_create") {
+            Ok(input) => crate::actions::preview_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Create one previewed inert Action with configuration-edit and Core administrator permission. Recheck name absence, consume the shared single-use preview, send one typed write and verify echo plus full authoritative read-back. Startup/webhooks/schedule are disabled. No execution, retry or credential fallback.",input_schema=schema_for_input::<crate::actions::CreateApplyInput>().expect("apply_action_create schema"),output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn apply_action_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_action_create") {
+            Ok(input) => crate::actions::apply_create(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Preview trusted Action source/default argument/execution-setting edits with zero writes. Omission preserves source, original argument format/string, secrets and schedule. default_arguments {} deliberately clears saved defaults and sets JSON format. Bind the full private definition; any actual existing-definition update requires both grants because Core refreshes scheduling. No schedule fields accepted.",input_schema=schema_for_input::<crate::actions::PreviewInput>().expect("preview_action_update schema"),output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn preview_action_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_action_update") {
+            Ok(input) => crate::actions::preview_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Apply one previewed Action patch with configuration-edit plus operate for every nonempty update before Core I/O. Revalidate the full private baseline, preserve omissions, handle no-op, send one partial write and independently verify full saved config. Startup true enables execution on future Core starts; webhook/schedule races remain. No CAS, retry or RunAction submission.",input_schema=schema_for_input::<crate::actions::ApplyInput>().expect("apply_action_update schema"),output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn apply_action_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_action_update") {
+            Ok(input) => crate::actions::apply_update(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Run one exact saved Action with operate/Core Execute and explicit acknowledgement of Core administrator/host authority. Submit stable ID once and optional bounded JSON argument overrides; Core recursively merges objects, appends arrays and replaces scalars, rejecting incompatible object/array overrides. Never rewrite saved source/defaults. Return the shared receipt and safe structured command evidence; arbitrary stdout/stderr is omitted because it can contain secret arguments/admin credentials. Wait/recovery never replays or attributes concurrent candidates; successful scripts do not prove workload health.",input_schema=schema_for_input::<crate::action_operations::RunInput>().expect("run_action schema"),output_schema=inventory::output_schema::<crate::operations::SubmissionReceipt>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn run_action(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "run_action") {
+            Ok(input) => crate::action_operations::run(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Explicitly cancel one Action RunAction using required expected_update_id and operate/Core Execute. Validate selected Action, operation and update association in the handler AND shared transport; Core does not do this check. Always send the exact ID, allowing overlapping runs; never fall back to Core first-running-resource selection. Finished runs send nothing; token completion can race. Own cancellation ACK and original terminal state remain separate. Core kills the Deno process group, without rollback or cancellation of child Core operations. Local wait cancellation sends no remote cancellation.",input_schema=schema_for_input::<crate::action_operations::CancelInput>().expect("cancel_action schema"),output_schema=inventory::output_schema::<crate::operations::CancellationResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn cancel_action(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "cancel_action") {
+            Ok(input) => crate::action_operations::cancel(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description="List visible Procedures in bounded positive pages. Return stable IDs, configured stage count and cached run state; no scripts, execution arguments or secrets. Core stages are sequential and each enabled stage runs enabled executions in parallel.",input_schema=schema_for_input::<ListInput>().expect("list_procedures schema"),output_schema=inventory::output_schema::<Page<crate::procedures::ProcedureSummary>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn list_procedures(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_procedures") {

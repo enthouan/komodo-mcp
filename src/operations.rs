@@ -56,6 +56,7 @@ pub enum WorkloadKind {
     Repo,
     Build,
     Procedure,
+    Action,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -76,6 +77,7 @@ pub enum RequestedScope {
     WholeRepo {},
     WholeBuild {},
     WholeProcedure {},
+    WholeAction {},
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -164,6 +166,8 @@ pub struct ConfiguredEffects {
     pub build: Option<crate::build_operations::BuildEffects>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub procedure: Option<crate::procedures::ProcedureEffects>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<crate::actions::ActionEffects>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
@@ -228,6 +232,8 @@ pub struct CancellationResult {
     pub targeting: CancellationTargeting,
     pub outcome: CancellationOutcome,
     pub not_submitted_reason: Option<CancellationStop>,
+    /// For update targeting, this describes only the checked original ID, not
+    /// an exhaustive list of simultaneous runs.
     pub active_update_id: Option<String>,
     pub active_evidence_complete: bool,
     pub cancellation_receipt: Option<Box<SubmissionReceipt>>,
@@ -450,6 +456,7 @@ pub async fn stack_operation(
         repository: None,
         build: None,
         procedure: None,
+        action: None,
     };
     let target = resource(client, WorkloadKind::Stack, stack.id.clone(), &stack.name);
     let scope = input.scope.requested();
@@ -564,6 +571,7 @@ pub async fn deployment_operation(
         repository: None,
         build: None,
         procedure: None,
+        action: None,
     };
     let scope = RequestedScope::WholeDeployment {};
     let id = deployment.id;
@@ -678,6 +686,7 @@ where
                 WorkloadKind::Repo => ResourceTarget::Repo(receipt.resource.id.clone()),
                 WorkloadKind::Build => ResourceTarget::Build(receipt.resource.id.clone()),
                 WorkloadKind::Procedure => ResourceTarget::Procedure(receipt.resource.id.clone()),
+                WorkloadKind::Action => ResourceTarget::Action(receipt.resource.id.clone()),
             };
             if update.operation != core_operation
                 || update.target != expected

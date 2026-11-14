@@ -433,7 +433,9 @@ async fn solve(
                 "list_builds",
                 "get_build",
                 "list_procedures",
-                "get_procedure"
+                "get_procedure",
+                "list_actions",
+                "get_action"
             ]),
         "missing expected inventory tools"
     );

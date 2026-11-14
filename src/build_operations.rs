@@ -116,6 +116,7 @@ fn configured(b: &Build, e: BuildEffects) -> ConfiguredEffects {
         repository: None,
         build: Some(e),
         procedure: None,
+        action: None,
     }
 }
 pub async fn run(client: &CoreClient, input: RunInput) -> Result<SubmissionReceipt, AppError> {

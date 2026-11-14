@@ -8,6 +8,15 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Manage trusted Action source/default arguments with private typed previews and
+  full read-back, inert administrator-only creation and automatic-effect gates.
+  Run saved Actions once with bounded Core argument merging and shared read-only
+  recovery. Validate exact Action/run cancellation IDs in handlers and transport;
+  keep acknowledgement and termination separate. Disclose host/administrator
+  authority and omit arbitrary secret-bearing output while retaining structured
+  command/outcome evidence.
+  ([#26](https://github.com/enthouan/komodo-mcp/issues/26))
+
 - Manage typed trusted Procedure definitions with ordered sequential stages,
   parallel/disabled steps, private preview/read-back and automatic-effect gates.
   Run one saved Procedure with explicit Core administrator-authority acknowledgement,

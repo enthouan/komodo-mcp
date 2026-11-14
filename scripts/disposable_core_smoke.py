@@ -501,7 +501,7 @@ async def exercise(address, operator, reader, stack_id, deployment_id):
     async with await Mcp.start(address,reader,False) as observer:
         tools = (await observer.rpc('tools/list',{}))['tools']
         names = {tool['name'] for tool in tools}
-        require(len(names) == 25 and not any(name.startswith(('deploy_','start_','stop_','restart_','clone_','pull_','run_','cancel_')) for name in names), 'default read-only discovery must expose twenty-five readers')
+        require(len(names) == 27 and not any(name.startswith(('deploy_','start_','stop_','restart_','clone_','pull_','run_','cancel_')) for name in names), 'default read-only discovery must expose twenty-seven readers')
         diagnosis = await observer.tool('stack_diagnose',{'id':stack_id})
         fleet = await observer.tool('fleet_health',{})
         REPORT['final_health'] = {'stack_diagnosis':diagnosis['outcome'],
