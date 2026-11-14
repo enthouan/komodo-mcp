@@ -53,6 +53,7 @@ pub struct StackOperationInput {
 pub enum WorkloadKind {
     Stack,
     Deployment,
+    Repo,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -70,6 +71,7 @@ pub enum RequestedScope {
     WholeStack {},
     Service { service: String },
     WholeDeployment {},
+    WholeRepo {},
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -79,11 +81,13 @@ pub enum WorkloadOperation {
     Start,
     Stop,
     Restart,
+    Clone,
+    Pull,
 }
 
 impl WorkloadOperation {
-    pub(crate) fn stack_variants(self) -> (&'static str, Operation, Operation) {
-        match self {
+    pub(crate) fn stack_variants(self) -> Result<(&'static str, Operation, Operation), AppError> {
+        Ok(match self {
             WorkloadOperation::Deploy => (
                 "DeployStack",
                 Operation::DeployStack,
@@ -104,15 +108,17 @@ impl WorkloadOperation {
                 Operation::RestartStack,
                 Operation::RestartStackService,
             ),
-        }
+            _ => return Err(unsupported("StackExecution")),
+        })
     }
-    pub(crate) fn deployment_variant(self) -> (&'static str, Operation) {
-        match self {
+    pub(crate) fn deployment_variant(self) -> Result<(&'static str, Operation), AppError> {
+        Ok(match self {
             WorkloadOperation::Deploy => ("Deploy", Operation::Deploy),
             WorkloadOperation::Start => ("StartDeployment", Operation::StartDeployment),
             WorkloadOperation::Stop => ("StopDeployment", Operation::StopDeployment),
             WorkloadOperation::Restart => ("RestartDeployment", Operation::RestartDeployment),
-        }
+            _ => return Err(unsupported("DeploymentExecution")),
+        })
     }
 }
 
@@ -146,6 +152,8 @@ pub struct ConfiguredEffects {
     pub broader_effects_possible: bool,
     /// Lifecycle uses the deployed Compose project; deploy uses saved sources.
     pub compose_dependencies: Option<ComposeDependencies>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository: Option<crate::repositories::RepoEffects>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
@@ -328,7 +336,7 @@ pub async fn stack_operation(
     input: StackOperationInput,
     action: WorkloadOperation,
 ) -> Result<SubmissionReceipt, AppError> {
-    let (operation, whole, service) = action.stack_variants();
+    let (operation, whole, service) = action.stack_variants()?;
     require_operate(client, operation)?;
     input.scope.validate(operation)?;
     let (_, stack) = inventory::resolve_stack(&client.bounded_evidence(), input.target).await?;
@@ -350,7 +358,9 @@ pub async fn stack_operation(
             WorkloadOperation::Start => ComposeDependencies::StartExistingWithDependencies,
             WorkloadOperation::Stop => ComposeDependencies::StopSelectedOnly,
             WorkloadOperation::Restart => ComposeDependencies::RestartWithConfiguredDependents,
+            _ => return Err(unsupported(operation)),
         }),
+        repository: None,
     };
     let target = resource(client, WorkloadKind::Stack, stack.id.clone(), &stack.name);
     let scope = input.scope.requested();
@@ -419,6 +429,7 @@ pub async fn stack_operation(
             )
             .await
         }
+        _ => Err(unsupported(operation)),
     }
 }
 
@@ -434,7 +445,7 @@ pub async fn deployment_operation(
     input: DetailInput,
     action: WorkloadOperation,
 ) -> Result<SubmissionReceipt, AppError> {
-    let (operation, core_operation) = action.deployment_variant();
+    let (operation, core_operation) = action.deployment_variant()?;
     require_operate(client, operation)?;
     let (_, deployment) = inventory::resolve_deployment(&client.bounded_evidence(), input).await?;
     check_target(
@@ -461,6 +472,7 @@ pub async fn deployment_operation(
         saved_command_wrapper: false,
         broader_effects_possible: action == WorkloadOperation::Deploy,
         compose_dependencies: None,
+        repository: None,
     };
     let scope = RequestedScope::WholeDeployment {};
     let id = deployment.id;
@@ -521,10 +533,11 @@ pub async fn deployment_operation(
             )
             .await
         }
+        _ => Err(unsupported(operation)),
     }
 }
 
-async fn submit<T>(
+pub(crate) async fn submit<T>(
     client: &CoreClient,
     resource: OperationResource,
     requested_scope: RequestedScope,
@@ -571,6 +584,7 @@ where
             let expected = match receipt.resource.kind {
                 WorkloadKind::Stack => ResourceTarget::Stack(receipt.resource.id.clone()),
                 WorkloadKind::Deployment => ResourceTarget::Deployment(receipt.resource.id.clone()),
+                WorkloadKind::Repo => ResourceTarget::Repo(receipt.resource.id.clone()),
             };
             if update.operation != core_operation
                 || update.target != expected

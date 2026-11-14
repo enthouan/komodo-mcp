@@ -11,11 +11,11 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.9.0 SDK](https://docs.rs/rmcp/3.9.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Seventeen read-only tools list and inspect
-Servers, Stacks, and Deployments, summarize fleet health, inspect alerts/update
+exactly with optional features disabled. Nineteen read-only tools list and inspect
+Servers, Stacks, Deployments and Repos, summarize fleet health, inspect alerts/update
 history, read bounded logs, and diagnose a stack in one call.
-Optional operate-enabled tools deploy one existing workload and return its Core
-update receipt. See [workload operations](docs/operations.md).
+Optional operate-enabled tools deploy one existing workload or clone/pull a saved
+Repo and return its Core update receipt. See [workload operations](docs/operations.md).
 
 ## Fresh-checkout demo (synthetic Core)
 
@@ -120,7 +120,7 @@ The process reads two independent optional grants at startup:
 
 | Variable | Default | Enables |
 | --- | --- | --- |
-| `KOMODO_ALLOW_OPERATE` | `false` | Single-workload deployment tools |
+| `KOMODO_ALLOW_OPERATE` | `false` | Single-workload operations and explicit Repo clone/pull |
 | `KOMODO_ALLOW_CONFIGURATION_EDIT` | `false` | Typed configuration preview/apply tools |
 
 Each value must be exactly `true` or `false`. An unset variable means `false`;
@@ -134,7 +134,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All seventeen read tools remain locally available in every grant
+All nineteen read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -222,6 +222,8 @@ RUST_LOG=komodo_mcp=debug,rmcp=warn ./target/release/komodo-mcp
 | `get_stack` | Inspect one Stack, including its effective project name |
 | `list_deployments` | Page through visible Deployment summaries and active targets |
 | `get_deployment` | Inspect one Deployment by a stable identity |
+| `list_repos` | Page through visible Repos with configured branch and observed cached revision |
+| `get_repo` | Inspect a Repo definition and disclose saved hooks before clone/pull |
 
 Each tool advertises a JSON input schema, output schema, and read-only,
 idempotent, non-destructive annotations through MCP `tools/list`. Inventory and
@@ -317,6 +319,8 @@ plus the following fields:
 | Stack list item | `target` (object/null), `service_count` (nonnegative integer) |
 | Stack detail | Stack list fields plus `project_name` (string/null) |
 | Deployment list item and detail | `target` (object/null), `image` (string/null), `runtime_name` (string/null), `update_available` (boolean) |
+| Repo list item | `server_id` (string/null), `repo`, `provider`, `configured_branch`, `observed_cloned_revision` (string/null) |
+| Repo detail | Repo list fields plus redacted `definition` and `revision_evidence`; see [Repo semantics](docs/repositories.md) |
 
 `target` has exactly `kind` (`server` or `swarm`), `id`, and `name` (string/null).
 It is null for an unassigned workload. Swarm takes precedence when both target
@@ -369,6 +373,13 @@ require explicit whole-stack or exact service scope; Swarm supports whole deploy
 only. Each call submits once and returns an update receipt. Starting/restarting
 does not apply edited configuration or pull changed images. Read the
 [supported targets, dependency behavior and recovery walkthrough](docs/operations.md).
+
+Repo definitions and explicit clone/pull use the same preview, receipt and
+recovery foundations. Inspect saved hook presence with `get_repo` before running,
+and acknowledge those flags in the operation input. Clone can run on-clone and
+on-pull; pull can run on-pull. Definition creation defaults webhooks off, enabling
+them or changing execution-bearing Repo fields requires both local grants, and
+complete authoritative read-back verifies saves independently of execution. See [repositories](docs/repositories.md).
 
 ## Fleet health
 
@@ -508,7 +519,7 @@ to check its MCP application version. Release notes live in [CHANGELOG.md](CHANG
 maintainers use [the release skill](.agents/skills/komodo-mcp-release/SKILL.md)
 for validation, publication, and recovery.
 The subprocess smoke test launches Cargo's compiled binary and explicitly uses
-MCP **2025-11-25**: configured startup, initialization, ten-tool discovery, list
+MCP **2025-11-25**: configured startup, initialization, read-only tool discovery, list
 and ID/name detail calls in every family, inventory continuation to an exactly
 full final page, actionable failures, recovery, and stdin EOF shutdown. It also
 checks the SDK's unknown-tool protocol error. Both output streams are captured

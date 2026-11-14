@@ -19,9 +19,9 @@ the permission authority, including a denial recorded after acknowledgement.
    `KOMODO_API_SECRET`, `KOMODO_ALLOW_OPERATE=true` and
    `KOMODO_ALLOW_CONFIGURATION_EDIT=false`. These are process environment values;
    `.env` files are not loaded. Restart the child after changing capabilities.
-   With both optional grants disabled, discovery contains seventeen read tools,
+   With both optional grants disabled, discovery contains nineteen read tools,
    including exact [discovery by tag](tags.md).
-   Operate adds eight tools; configuration editing independently adds typed
+   Operate adds ten tools; configuration editing independently adds typed
    preview/apply tools. See [client configuration](../README.md#local-capabilities-and-core-permissions)
    and the [configuration workflow](configuration.md).
 2. Initialize your stdio client and call `tools/list`. Resolve an exact workload
@@ -91,12 +91,17 @@ the permission authority, including a denial recorded after acknowledgement.
    Complete/succeeded execution and healthy workload are separate conclusions;
    failed recent updates can also remain diagnosis evidence.
 
+Repo operators follow [the same inspection, explicit hook acknowledgement and
+receipt/recovery sequence](repositories.md#inspect-effects-before-one-clone-or-pull).
+The configured branch, current cached clone revision and per-update observed
+revision are distinct. Clone/pull never rewrite the saved Repo definition.
+
 ## Deterministic stdio validation
 
 From the repository root:
 
 ```sh
-cargo test --locked --test operations_stdio --test incident_stdio --test quickstart
+cargo test --locked --test operations_stdio --test incident_stdio --test quickstart --test repositories
 ```
 
 Cargo builds and launches the production binary with synthetic loopback Core

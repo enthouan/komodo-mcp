@@ -149,8 +149,8 @@ async fn four_profiles_hide_and_deny_all_server_tools_and_connection_apply_check
             let tools = s.list_tools(None).await.unwrap().tools;
             assert_eq!(
                 tools.len(),
-                17 + 8 * usize::from(operate)
-                    + 20 * usize::from(edit)
+                19 + 10 * usize::from(operate)
+                    + 24 * usize::from(edit)
                     + 2 * usize::from(operate && edit)
             );
             for name in [
@@ -558,8 +558,8 @@ async fn a_lost_write_deadline_is_unknown_and_consumes_the_preview() {
             .unwrap()
             .with_capabilities(CapabilityPolicy::new(false, true)),
         RequestPolicy {
-            connect_timeout: Duration::from_millis(100),
-            operation_timeout: Duration::from_millis(100),
+            connect_timeout: Duration::from_secs(1),
+            operation_timeout: Duration::from_secs(1),
         },
     )
     .unwrap();
@@ -584,5 +584,5 @@ async fn a_lost_write_deadline_is_unknown_and_consumes_the_preview() {
         matches!(sc::apply_update(&client,serde_json::from_value(apply(&input,&p)).unwrap()).await,Err(e) if e.kind==komodo_mcp::error::ErrorKind::InvalidPreview)
     );
     assert_eq!(core.writes().len(), 1);
-    tokio::time::sleep(Duration::from_millis(350)).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
 }

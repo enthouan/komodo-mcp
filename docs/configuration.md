@@ -12,6 +12,12 @@ The same store also serves [tag lifecycle and assignment](tags.md), including
 explicit replacement, clearing and additive preservation. Tag deletion uses the
 shared destructive gate.
 
+[Repo definitions](repositories.md) also use this store and typed partial-write
+contract. They add an authoritative complete configuration read-back after the
+write echo and require both grants for execution-bearing updates or enabling
+future webhook execution, independently of the currently observed webhook state.
+Clone and pull use the independent operation grant.
+
 Set `KOMODO_ALLOW_CONFIGURATION_EDIT=true` in the MCP child environment. The
 default is false. This trusted grant is independent of
 `KOMODO_ALLOW_OPERATE`; Core remains the permission authority. Preview needs

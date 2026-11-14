@@ -113,16 +113,24 @@ impl RecoveryInput {
         let invalid = || {
             AppError::arguments(
                 "reconcile_operation",
-                "Use the original stable Stack/Deployment ID, compatible explicit scope and nonnegative ordered submission-window bounds when available",
+                "Use the original stable resource ID, compatible operation/scope and nonnegative ordered submission-window bounds when available",
             )
         };
         if self.target.id.len() != 24 || !self.target.id.bytes().all(|c| c.is_ascii_hexdigit()) {
             return Err(invalid());
         }
         self.target.id.make_ascii_lowercase();
+        let repo_operation = matches!(
+            self.operation,
+            WorkloadOperation::Clone | WorkloadOperation::Pull
+        );
+        if repo_operation != (self.target.kind == WorkloadKind::Repo) {
+            return Err(invalid());
+        }
         match (&self.target.kind, &self.requested_scope) {
             (WorkloadKind::Stack, RequestedScope::WholeStack {})
             | (WorkloadKind::Deployment, RequestedScope::WholeDeployment {}) => (),
+            (WorkloadKind::Repo, RequestedScope::WholeRepo {}) => (),
             (WorkloadKind::Stack, RequestedScope::Service { service }) => StackScope::Service {
                 service: service.clone(),
             }
@@ -229,23 +237,35 @@ pub async fn reconcile_operation(
         kind: match input.target.kind {
             WorkloadKind::Stack => ResourceKind::Stack,
             WorkloadKind::Deployment => ResourceKind::Deployment,
+            WorkloadKind::Repo => ResourceKind::Repo,
         },
         id: input.target.id.clone(),
     };
     let expected_target = match input.target.kind {
         WorkloadKind::Stack => ResourceTarget::Stack(input.target.id.clone()),
         WorkloadKind::Deployment => ResourceTarget::Deployment(input.target.id.clone()),
+        WorkloadKind::Repo => ResourceTarget::Repo(input.target.id.clone()),
     };
     let operation = match input.target.kind {
         WorkloadKind::Stack => {
-            let (_, whole, service) = input.operation.stack_variants();
+            let (_, whole, service) = input.operation.stack_variants()?;
             if matches!(input.requested_scope, RequestedScope::Service { .. }) {
                 service
             } else {
                 whole
             }
         }
-        WorkloadKind::Deployment => input.operation.deployment_variant().1,
+        WorkloadKind::Deployment => input.operation.deployment_variant()?.1,
+        WorkloadKind::Repo => match input.operation {
+            WorkloadOperation::Clone => komodo_client::entities::Operation::CloneRepo,
+            WorkloadOperation::Pull => komodo_client::entities::Operation::PullRepo,
+            _ => {
+                return Err(AppError::arguments(
+                    "reconcile_operation",
+                    "Repo recovery requires clone or pull",
+                ));
+            }
+        },
     };
     let mut result = RecoveryResult {
         target: input.target,
