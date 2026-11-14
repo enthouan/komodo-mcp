@@ -247,11 +247,13 @@ async fn list_tools(process: &mut Process, id: &str) -> Result<()> {
                         "get_procedure",
                         "list_actions",
                         "get_action",
+                        "list_schedules",
+                        "get_schedule",
                     ])
                     .collect();
                 ensure!(
                     names == expected,
-                    "expected all twenty-seven read-only tools"
+                    "expected all twenty-nine read-only tools"
                 );
                 for tool in &result.tools {
                     ensure!(tool.output_schema.is_some(), "missing output schema");

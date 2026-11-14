@@ -1,7 +1,8 @@
 # Trusted Actions
 
 `list_actions` returns bounded pages of stable IDs, cached state and last
-successful-run time. `get_action` describes saved settings and execution effects.
+completed-run start time (successful or failed). `get_action` describes saved
+settings and execution effects.
 Source, default argument values and webhook secrets stay private. An Action can
 have multiple simultaneous runs.
 

@@ -19,7 +19,7 @@ the permission authority, including a denial recorded after acknowledgement.
    `KOMODO_API_SECRET`, `KOMODO_ALLOW_OPERATE=true` and
    `KOMODO_ALLOW_CONFIGURATION_EDIT=false`. These are process environment values;
    `.env` files are not loaded. Restart the child after changing capabilities.
-   With both optional grants disabled, discovery contains twenty-seven read tools,
+   With both optional grants disabled, discovery contains twenty-nine read tools,
    including exact [discovery by tag](tags.md).
    Operate adds sixteen tools; configuration editing independently adds typed
    preview/apply tools. See [client configuration](../README.md#local-capabilities-and-core-permissions)
@@ -210,3 +210,9 @@ inspect authority, preview/apply private source/default changes, then run the sa
 Action with bounded overrides. Retain its update ID; explicitly cancel that exact
 Action/run if needed and observe the original separately. No replay occurs after
 lost replies or restarted read-only recovery.
+
+For recurring trusted automation, follow [schedule inspection and changes](schedules.md).
+Check saved fields and the separate Core cache before and after apply. Use an
+explicit timezone for reproducible policy, retain Core next-run/error evidence,
+and verify the eventual run and workload health independently. Disabling a
+schedule does not cancel already dispatched/running automation.

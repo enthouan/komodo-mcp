@@ -156,7 +156,7 @@ struct Search {
     terms: Vec<String>,
 }
 
-async fn paginate<T, F, Fut>(
+pub(crate) async fn paginate<T, F, Fut>(
     input: ListInput,
     operation: &'static str,
     mut fetch: F,

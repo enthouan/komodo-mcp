@@ -26,6 +26,7 @@ pub mod procedure_operations;
 pub mod procedures;
 pub mod recovery;
 pub mod repositories;
+pub mod schedules;
 pub mod server;
 pub mod server_configuration;
 pub mod stack_configuration;

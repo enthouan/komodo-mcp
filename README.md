@@ -11,7 +11,7 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.9.0 SDK](https://docs.rs/rmcp/3.9.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Twenty-seven read-only tools list and inspect
+exactly with optional features disabled. Twenty-nine read-only tools list and inspect
 Servers, Stacks, Deployments, Repos, Builders, Builds, Procedures and Actions, summarize fleet health, inspect alerts/update
 history, read bounded logs, and diagnose a stack in one call.
 Optional operate-enabled tools deploy one existing workload or clone/pull a saved
@@ -136,7 +136,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All twenty-seven read tools remain locally available in every grant
+All twenty-nine read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -192,6 +192,13 @@ creation and explicit saved run/cancel. Scripts execute on the Core host with De
 recursive/array-appending merges without saved-definition writes. Cancellation
 validates the exact Action/run update ID; arbitrary secret-bearing output is
 omitted while structured Core outcomes remain available. See [trusted Actions](docs/actions.md).
+
+[Schedule tools](docs/schedules.md) list nonempty scheduled owners (including
+disabled/templates) and privately preview/apply five schedule fields while
+preserving the complete parent definition. Actual updates require both grants.
+Core owns Cron/English parsing, timezone defaults and next-run calculation; saved
+configuration and cached execution evidence remain separate. Disabling does not
+cancel already dispatched/running work. MCP runs no scheduler.
 
 Deliberate deletion adds `preview_resource_delete` for trusted configuration
 access and `apply_resource_delete` only when both local grants are enabled.
@@ -261,6 +268,7 @@ RUST_LOG=komodo_mcp=debug,rmcp=warn ./target/release/komodo-mcp
 | `list_builds` / `get_build` | Inspect Build source/image selectors and disclose execution effects |
 | `list_procedures` / `get_procedure` | Inspect ordered stages, parallel/disabled steps and trusted execution authority |
 | `list_actions` / `get_action` | Inspect safe Action settings and delegated host/administrator execution authority |
+| `list_schedules` / `get_schedule` | Inspect saved Action/Procedure schedules and separate Core cache/parse/next-run evidence |
 
 Each tool advertises a JSON input schema, output schema, and read-only,
 idempotent, non-destructive annotations through MCP `tools/list`. Inventory and
