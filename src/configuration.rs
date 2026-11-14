@@ -245,6 +245,7 @@ pub enum DefinitionPreview {
     Deployment(crate::deployment_configuration::DefinitionPreview),
     Server(crate::server_configuration::DefinitionPreview),
     Repo(crate::repositories::DefinitionPreview),
+    ResourceSync(Box<crate::resource_syncs::DefinitionPreview>),
     Builder(crate::builders::DefinitionPreview),
     Build(Box<crate::build_configuration::DefinitionPreview>),
     Procedure(Box<crate::procedures::DefinitionPreview>),
@@ -490,6 +491,8 @@ pub(crate) fn changes(client: &CoreClient, config: &Value, patch: &Value) -> Vec
                 key.as_str(),
                 "environment"
                     | "file_contents"
+                    | "webhook_secret"
+                    | "resource_path"
                     | "git_account"
                     | "image"
                     | "image_registry_account"

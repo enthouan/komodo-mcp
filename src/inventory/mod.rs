@@ -501,6 +501,16 @@ pub(crate) async fn list_repo_records(
     .await
 }
 
+pub(crate) async fn list_resource_sync_records(
+    client: &CoreClient,
+    input: ListInput,
+) -> Result<Page<ResourceSyncListItem>, AppError> {
+    paginate(input, "ListResourceSyncs", |page, limit| {
+        resource_syncs(client, Search::default(), page, limit)
+    })
+    .await
+}
+
 pub(crate) async fn list_builder_records(
     client: &CoreClient,
     input: ListInput,
