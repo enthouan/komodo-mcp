@@ -684,6 +684,8 @@ pub struct RepoEffects {
     pub definition: DefinitionSummary,
     pub runs_on_clone: bool,
     pub runs_on_pull: bool,
+    pub can_replace_working_directory: bool,
+    pub environment_file_write_possible: bool,
     pub configuration_race: &'static str,
 }
 pub async fn execute(
@@ -721,6 +723,8 @@ pub async fn execute(
         repository: Some(RepoEffects {
             runs_on_clone: action == WorkloadOperation::Clone && definition.on_clone_configured,
             runs_on_pull: definition.on_pull_configured,
+            can_replace_working_directory: action == WorkloadOperation::Clone,
+            environment_file_write_possible: definition.environment_configured,
             definition,
             configuration_race: "Saved definition inspected before submission; Core reads it again asynchronously. Hooks, source and target can change after inspection. No definition rewrite, execution replay or hook isolation is promised.",
         }),

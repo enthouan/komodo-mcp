@@ -99,7 +99,7 @@ async fn noop_and_explicit_clears_are_deliberate_partial_writes() {
     let preview = preview(&s, &input).await;
     let r = data(call(&s, "apply_repo_update", apply(&input, &preview)).await);
     assert_eq!(r["saved_configuration_verified"], true);
-    let w = &core.requests("write")[0].params["config"];
+    let w = core.requests("write")[0].params["config"].clone();
     assert_eq!(
         w,
         json!({"git_account":"","commit":"","path":"","environment":"","on_pull":{"path":"","command":"","shell_mode":false},"server_id":""})
@@ -311,6 +311,14 @@ async fn clone_and_pull_run_only_selected_saved_definitions_and_report_observed_
             name == "clone_repo"
         );
         assert_eq!(r["configured_effects"]["repository"]["runs_on_pull"], true);
+        assert_eq!(
+            r["configured_effects"]["repository"]["can_replace_working_directory"],
+            name == "clone_repo"
+        );
+        assert_eq!(
+            r["configured_effects"]["repository"]["environment_file_write_possible"],
+            true
+        );
         assert_eq!(
             r["configured_effects"]["repository"]["definition"]["source"]["branch"],
             "main"

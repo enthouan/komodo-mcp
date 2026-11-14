@@ -110,14 +110,21 @@ Supply both inspected hook flags explicitly:
 ```
 
 Clone can run **on-clone followed by on-pull**. Pull can run **on-pull only**.
+Core's clone deletes the existing configured Repo directory before cloning;
+uncommitted files there can be lost. Clone/pull modify the working tree and
+Periphery can write the configured environment file before hooks, including
+overwriting an existing file. Inspect custom destination paths in Core before
+operating a trusted Repo. The receipt reports these configured effects separately
+from evidence that they completed.
 Hooks/environment execute trusted saved code on the attached Server; selecting
 one Repo is not host/process isolation. A hook-presence mismatch requires fresh
 inspection and submits nothing. Core reads saved configuration asynchronously,
 so source, target or hook changes after this inspection still race.
 
 Each call resolves one stable Repo ID and submits at most one CloneRepo/PullRepo.
-It never rewrites definitions, edits Git files, commits, pushes or falls back to
-Repo-build. Templates and unassigned targets are rejected before submission.
+It never rewrites definitions or submits an additional Git-file editor, commit,
+push or Repo-build request. Templates and unassigned targets are rejected before
+submission.
 The shared receipt separates acknowledgement, terminal update outcome and
 observation failure, retains known update IDs and includes bounded sanitized
 failed-stage evidence. Successful clone/pull does not establish workload health.
