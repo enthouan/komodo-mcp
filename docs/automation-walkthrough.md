@@ -182,6 +182,11 @@ cargo test --locked --all-targets
 python3 -m unittest discover -s scripts -v
 ```
 
+The targeted Cargo dev/test override optimizes `aho-corasick` so the unchanged
+five-second stdio checks include bounded escaped-credential matcher construction
+on development machines. Release builds already optimize that dependency;
+production matching semantics and the test deadlines are unchanged.
+
 `tests/automation.rs` runs one production stdio session across Repo, Builder,
 Build, Procedure, Action, schedules and explicit deployment/independent health.
 The component suites add all local grant combinations, upstream denials, stale
