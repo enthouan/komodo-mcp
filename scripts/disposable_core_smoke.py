@@ -285,7 +285,8 @@ async def wait_final(mcp, update_id):
     for _ in range(10):
         remaining = int(end - time.monotonic())
         if remaining < 1: break
-        value = await mcp.tool('wait_for_update', {'id':update_id,'timeout_seconds':min(30,remaining)})
+        # Leave transport headroom within the fixture's thirty-second RPC bound.
+        value = await mcp.tool('wait_for_update', {'id':update_id,'timeout_seconds':min(20,remaining)})
         REPORT.setdefault('wait_end_reasons',[]).append(value['end'])
         if value['end'] == 'complete': return value
         if value['end'] not in ['deadline','poll_limit']: raise Failure('live update observation unavailable')

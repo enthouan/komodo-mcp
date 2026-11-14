@@ -79,6 +79,8 @@ RunBuild; webhooks and dependent redeployment policy can cause other effects.
    stage. Missing/truncated/ambiguous evidence stays unknown. A configured
    registry alone proves no push; independently inspect a registry/image when
    stronger proof is needed.
+   Retain at least one tag policy when pushing; disabling latest, version and
+   commit tags together can leave Core's build command without a push tag.
 5. Use a typed Deployment image reference to the selected Build and the explicit
    observed version. `0.0.0` deliberately means latest and may change. Preview,
    apply and read back the definition, then explicitly call `deploy_deployment`.
@@ -209,6 +211,8 @@ results. All original disposable operation/configuration/deletion tests also run
 The JSON report records versions, built commit/hash, selected resources, source
 revision, update IDs, image/version/digest, independent container contents/health,
 schedule cache observations, permission checks, fault/recovery evidence and gaps.
+Per-call transport counters require at most one mutation and zero mutations from
+read-only observation. Lost-reply concurrency uses two separate upstream users.
 It omits credentials, Action source/defaults/arguments and arbitrary Action logs.
 Failures retain a non-passing report. Before teardown the runner verifies owned
 identities and disables/clears automatic execution; failure of that step fails

@@ -54,6 +54,27 @@ def remember(kind, resource_id, name):
     s.REPORT['automation']['resources'].append({'kind': kind, 'id': resource_id, 'name': name})
 
 
+class AuditedMcp:
+    """Count actual mutation attempts around each serialized explicit tool call."""
+    def __init__(self, mcp, proxy):
+        self.mcp, self.proxy = mcp, proxy
+
+    async def tool(self, name, arguments):
+        executes, writes = self.proxy.execute_attempts, self.proxy.write_attempts
+        try:
+            return await self.mcp.tool(name, arguments)
+        finally:
+            delta = self.proxy.execute_attempts - executes
+            saved = self.proxy.write_attempts - writes
+            calls = s.REPORT['automation'].setdefault('per_call_mutation_audit', [])
+            s.require(len(calls) < 1000, 'automation call audit exceeded bound')
+            calls.append({'tool': name, 'execute_attempts': delta, 'write_attempts': saved})
+            s.require(delta <= 1 and saved <= 1 and delta + saved <= 1,
+                      'explicit tool call submitted more than one mutation')
+            if name.startswith(('get_', 'list_', 'preview_', 'wait_', 'reconcile_')) or name == 'fleet_health':
+                s.require(delta == saved == 0, 'read-only observation submitted a mutation')
+
+
 async def save(mcp, family, value, create=False):
     operation = family + ('_create' if create else '_update')
     preview = await mcp.tool('preview_' + operation, value)
@@ -278,35 +299,41 @@ async def schedule_cycle(mcp, kind, resource_id):
 
 
 async def lost_ack_and_concurrency(action_id):
-    async with s.LossProxy(CONTEXT['address'], CONTEXT['operator']) as proxy:
-        async def invoke():
-            async with await s.Mcp.start(proxy.address, CONTEXT['operator']) as mcp:
+    async with s.LossProxy(CONTEXT['address'], CONTEXT['operator']) as first_proxy, \
+            s.LossProxy(CONTEXT['address'], CONTEXT['editor']) as second_proxy:
+        async def invoke(proxy, credentials):
+            async with await s.Mcp.start(proxy.address, credentials) as mcp:
                 value = await arguments(mcp, 'action', action_id)
                 value['args'] = {'delay_ms': 1000}
                 result = await mcp.tool('run_action', value)
                 s.require(result['submission'] == 'unknown' and result['update_id'] is None and
                           not result['automatic_resubmission'], 'lost acknowledgement was attributed')
                 return result
-        receipts = await asyncio.gather(invoke(), invoke())
-        s.require(proxy.execute_attempts == len(proxy.ids) == 2 and len(set(proxy.ids)) == 2,
+        receipts = await asyncio.gather(invoke(first_proxy, CONTEXT['operator']),
+                                        invoke(second_proxy, CONTEXT['editor']))
+        ids = first_proxy.ids + second_proxy.ids
+        s.require(first_proxy.execute_attempts == second_proxy.execute_attempts == 1
+                  and len(ids) == len(set(ids)) == 2,
                   'concurrent explicit calls did not each submit exactly once')
         async with s.LossProxy(CONTEXT['address'], CONTEXT['reader'], False) as reader_proxy:
             async with await s.Mcp.start(reader_proxy.address, CONTEXT['reader'], False) as restarted:
                 recovery = await restarted.tool('reconcile_operation', {
                     'target': {'kind': 'action', 'id': action_id},
-                    'requested_scope': {'kind': 'whole_action'}, 'operation': 'run',
-                    'submission_window': receipts[0]['submission_window']})
+                    'requested_scope': {'kind': 'whole_action'}, 'operation': 'run'})
                 s.require(recovery['original_submission'] == 'unknown' and
                           recovery['attribution'] == 'unconfirmed' and not recovery['automatic_resubmission'],
                           'restart reconciliation falsely attributed another caller')
-                s.require(len(recovery['candidates']) >= 2, 'concurrent live candidates missing')
-                for update_id in proxy.ids:
+                found = {x['update']['id'] for x in recovery['candidates']}
+                s.require(set(ids) <= found, 'concurrent live candidates missing')
+                for update_id in ids:
                     s.require((await s.observe(restarted, update_id))['outcome'] == 'succeeded',
                               'instrumented concurrent Action failed')
             s.require(reader_proxy.execute_attempts == reader_proxy.write_attempts == 0,
                       'read-only recovery submitted work')
         s.REPORT['automation']['lost_ack_concurrent_actions'] = {'explicit_calls': 2,
-            'execute_attempts': proxy.execute_attempts, 'instrumented_update_ids': proxy.ids,
+            'execute_attempts': first_proxy.execute_attempts + second_proxy.execute_attempts,
+            'distinct_upstream_identities': 2, 'instrumented_update_ids': ids,
+            'submission_windows': [x['submission_window'] for x in receipts],
             'original_submission': 'unknown', 'attribution': 'unconfirmed',
             'recovery_candidates': len(recovery['candidates']), 'recovery_mutation_requests': 0}
 
@@ -448,7 +475,9 @@ async def exercise():
                   'if (ARGS.fail) throw new Error("owned child failure");\n')
         action_id = await create(creator, 'action', PREFIX + 'action', {'source': source})
     CONTEXT.update(builder_id=builder_id, action_id=action_id)
-    async with await s.Mcp.start(address, editor, True, True) as mcp:
+    async with s.LossProxy(address, editor, False) as mutation_proxy, \
+            await s.Mcp.start(mutation_proxy.address, editor, True, True) as raw_mcp:
+        mcp = AuditedMcp(raw_mcp, mutation_proxy)
         repo_id = await create(mcp, 'repo', PREFIX + 'repo', {'repo': REPOSITORY,
             'branch': 'main', 'git_provider': 'source', 'git_https': True,
             'target': {'kind': 'server', 'target': {'id': CONTEXT['server_id']}}})
@@ -464,10 +493,15 @@ async def exercise():
             'image_name': 'workload', 'image_registry': [{'domain': 'registry:5000',
                 'account': 'fixture', 'organization': 'owned-automation'}],
             'version': '0.0.1', 'auto_increment_version': True, 'include_latest_tag': False,
-            'include_version_tags': False, 'include_commit_tag': False,
+            'include_version_tags': True, 'include_commit_tag': False,
             'build_path': '.', 'dockerfile_path': 'Dockerfile'})
         CONTEXT['build_id'] = build_id
+        build_before = api(editor).read('GetBuild', {'build': build_id})['config']
         built = await run(mcp, 'build', build_id)
+        build_after = api(editor).read('GetBuild', {'build': build_id})['config']
+        s.require({k: v for k, v in build_before.items() if k != 'version'} ==
+                  {k: v for k, v in build_after.items() if k != 'version'},
+                  'RunBuild rewrote saved source/definition')
         observed = built.get('observed_revision', {}).get('revision', '')
         s.require(len(observed) >= 7 and CONTEXT['revision'].startswith(observed),
                   'Build observed short revision mismatch')
@@ -496,6 +530,7 @@ async def exercise():
             'clone_observed_revision': cloned['observed_revision'],
             'pull_observed_revision': pulled['observed_revision'],
             'build_observed_revision': built['observed_revision'],
+            'build_definition_preserved_except_core_version_advance': True,
             'builder_id': builder_id, 'server_ids': [CONTEXT['server_id']], 'build_id': build_id,
             'build_version': version, 'image': image, 'independent_repo_digests': digests,
             'deployment_id': deployment_id, 'explicit_deployment_update_id': deployed_receipt['update_id'],
@@ -552,6 +587,23 @@ async def exercise():
             'mcp_fleet_observation': next(x for x in fleet['deployments'] if x['id'] == deployment_id)}
         await patch(mcp, 'deployment', deployment_id, {'command': ''})
         await finish(mcp, await mcp.tool('deploy_deployment', {'id': deployment_id}))
+        s.poll(lambda: s.run([*s.COMPOSE, 'exec', '-T', 'docker', 'docker', 'inspect',
+            PREFIX + 'deployment', '--format', '{{.State.Health.Status}}']) == 'healthy',
+            'restored final workload Docker health', 30)
+        for _ in range(20):
+            fleet = await mcp.tool('fleet_health', {})
+            final = next(x for x in fleet['deployments'] if x['id'] == deployment_id)
+            if final['health'] == 'healthy':
+                break
+            await asyncio.sleep(1)
+        s.require(final['health'] == 'healthy', 'final MCP workload health not confirmed')
+        s.REPORT['automation']['final_health'] = {'docker_health': 'healthy', 'mcp_observation': final}
+    s.REPORT['automation']['mutation_audit_summary'] = {
+        'explicit_tool_calls': len(s.REPORT['automation']['per_call_mutation_audit']),
+        'execute_attempts': mutation_proxy.execute_attempts, 'write_attempts': mutation_proxy.write_attempts,
+        'maximum_mutations_per_call': max(x['execute_attempts'] + x['write_attempts']
+            for x in s.REPORT['automation']['per_call_mutation_audit']),
+        'read_only_mutation_attempts': 0}
     s.persist()
     print('Verified cross-family automation, source/image/deployment evidence and recovery.', flush=True)
 

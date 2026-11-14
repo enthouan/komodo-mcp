@@ -1,10 +1,11 @@
 """Automation fixture ownership, credential separation and teardown invariants."""
 import contextlib
+import asyncio
 import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import disposable_automation_smoke as automation
 import disposable_core_smoke as smoke
@@ -146,6 +147,41 @@ class AutomationScopeTests(unittest.TestCase):
         self.assertEqual(automation.OWNED, [])
         entry.assert_called_once_with(['arguments'], fixture_customizer=automation.customize,
             exercise_extension=automation.provision, before_cleanup=automation.disable_automatic_execution)
+
+    def test_mutation_audit_rejects_replay_and_read_only_mutation_but_allows_separate_calls(self):
+        for name, mutations, rejected in [
+            ('run_action', 2, True), ('get_update', 1, True), ('run_action', 1, False)]:
+            with self.subTest(name=name, mutations=mutations), patch.object(smoke, 'REPORT', {'automation': {}}):
+                proxy = Mock(execute_attempts=0, write_attempts=0)
+
+                async def tool(*_args):
+                    proxy.execute_attempts += mutations
+                    return {'safe': 'result'}
+
+                audited = automation.AuditedMcp(Mock(tool=tool), proxy)
+                if rejected:
+                    with self.assertRaises(smoke.Failure):
+                        asyncio.run(audited.tool(name, {}))
+                else:
+                    asyncio.run(audited.tool(name, {}))
+                    asyncio.run(audited.tool(name, {}))
+                    self.assertEqual(proxy.execute_attempts, 2)
+                calls = smoke.REPORT['automation']['per_call_mutation_audit']
+                self.assertEqual(calls[0]['execute_attempts'], mutations)
+                self.assertNotIn('arguments', calls[0])
+
+    def test_uncertain_created_id_remains_owned_without_create_replay(self):
+        resource_id, name = 'a' * 24, automation.PREFIX + 'action'
+        mcp = Mock(tool=AsyncMock(side_effect=[{'preview_id': 'one-use'}, {
+            'resource': {'id': resource_id, 'name': name}, 'outcome': 'unknown',
+            'writes_submitted': 1, 'saved_configuration_verified': False,
+            'observation_error': {'kind': 'unavailable'}}]))
+        with patch.object(smoke, 'REPORT', {'automation': {}}), patch.object(smoke, 'persist'):
+            with self.assertRaises(smoke.Failure):
+                asyncio.run(automation.save(mcp, 'action', {'name': name, 'config': {'source': ''}}, True))
+            self.assertEqual(automation.OWNED, [('Action', resource_id, name)])
+            self.assertEqual(mcp.tool.await_count, 2)
+            self.assertEqual(smoke.REPORT['automation']['configuration_results'][0]['outcome'], 'unknown')
 
 
 if __name__ == '__main__':
