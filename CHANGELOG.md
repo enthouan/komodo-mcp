@@ -8,6 +8,11 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+## v0.5.0
+
+Manage repositories, build workload images on existing Servers, and run trusted
+automation with explicit execution and health evidence.
+
 - Validate integrated Repo → Server Builder → Build → image → explicit Deployment
   evidence through production stdio, with separate terminal outcomes and workload
   health. Add cross-family deterministic fixtures, a reproducible automation
@@ -62,6 +67,87 @@ New changes go under `Unreleased` until the next release is prepared.
   webhook enabling with both local grants. Extend shared receipts/history/wait/
   recovery with observed revision evidence and no replay or automatic attribution after lost replies.
   ([#22](https://github.com/enthouan/komodo-mcp/issues/22))
+
+### Permissions and Core effects
+
+Read-only remains the default. `KOMODO_ALLOW_OPERATE=true` and
+`KOMODO_ALLOW_CONFIGURATION_EDIT=true` grant independent local capabilities;
+execution-bearing edits and schedule updates require both. Core remains the
+permission authority: running a saved resource requires its Execute permission,
+editing requires Write, and observation/reference validation needs the relevant
+Read/Inspect/Logs/Attach access. Core creation policy and Build creation permission
+still apply; Builder and Action creation require an administrator. The same caller
+is used throughout, with no privileged fallback.
+
+Direct Builder writes and Build runs support explicit existing-Server Builders
+only, preserving ordered fallback. AWS configuration/provisioning and direct URL
+Builder writes/execution remain unsupported. Hooks and Dockerfiles are trusted
+executable configuration. Procedures run children with Core's built-in
+administrator identity; Actions run Deno `--allow-all` on the Core host with a
+temporary administrator API key. Their configured behavior is not sandboxed by
+the direct Build tools' Server-only restriction.
+
+Definition saves can refresh Git/Dockerfile caches, enable automatic execution
+or change later webhook/startup/schedule behavior. Build execution can push
+images and trigger configured dependent redeployments. A definition-only MCP
+request can still cause Core effects. Action per-run arguments follow Core's
+recursive object merge and array append; empty objects/arrays do not clear saved
+values per run. Arbitrary Action output is omitted because it can contain secrets.
+
+### Execution, cancellation and schedules
+
+Acknowledgement, terminal command outcome and workload health remain separate.
+Observed revision/image evidence does not establish an asynchronous dependent
+deployment link or healthy workload. Local wait cancellation/expiry ends only
+observation; known update IDs remain resumable. Lost or invalid acknowledgements
+retain unknown acceptance, and history candidates remain unconfirmed even when
+only one matches. Writes and executions are never automatically replayed.
+
+Remote cancellation is explicit. Build and Procedure cancellation target the
+resource and retain a final replacement-run race; Procedures check between stages
+and current children can finish. Action cancellation requires the verified exact
+Action/run update IDs. Cancellation acknowledgement does not prove the original
+run stopped, roll back effects or cancel arbitrary child operations.
+
+Core owns Cron/English parsing, timezone handling and dispatch. Cron includes
+seconds; an empty timezone inherits Core configuration or Core host local time.
+Saved configuration, cached next/last-run values and parser errors are separate
+evidence. Invalid expressions may save with cache errors, and cache entries have
+no atomic generation link to definitions. Disabling/clearing does not cancel
+dispatched work; an in-flight run can reschedule from an older captured policy.
+The MCP server adds no scheduler.
+
+### Evidence and distribution limits
+
+Verification includes production stdio workflows, deterministic Core 2.3.2 wire
+fixtures and owned disposable Core/Periphery 2.3.2 acceptance recorded in the
+[release tracker](https://github.com/enthouan/komodo-mcp/issues/94) and
+[integration evidence](https://github.com/enthouan/komodo-mcp/issues/93).
+Live scope covers a private Git source, one existing Server Builder, workload
+image build/push to a dotted private registry hostname, an explicit Deployment
+and independent final container/MCP health, plus hook/build/push/partial-child
+failures, cancellation, permissions and concurrent lost-reply recovery. Repo
+clone's Core HTML revision is a short observed hash, not full-hash attestation;
+the live image digest is independently inspected. Cleanup is ownership-scoped
+and verified.
+
+Ordered fallback, unsupported Builder variants, the full timing/error matrix
+and timezone/DST behavior retain deterministic fixture/source coverage. Live
+schedule evidence verifies saved policy and Core cache, not an actual scheduled
+trigger. See the [automation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/docs/automation-walkthrough.md)
+for minimum permissions, effect disclosures and recovery steps. The pinned
+`komodo_client =2.3.2` and `rmcp =3.9.0` remain unchanged; archived benchmark
+measurements retain their original source, executable and application identities.
+This release cut claims no new performance baseline.
+
+Release artifacts remain an annotated source tag and GitHub Release notes.
+Build the stdio executable from source using the
+[installation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/README.md#fresh-checkout-demo-synthetic-core).
+komodo-mcp container/native distribution and artifact verification remain in
+[#41](https://github.com/enthouan/komodo-mcp/issues/41),
+[#42](https://github.com/enthouan/komodo-mcp/issues/42) and
+[#51](https://github.com/enthouan/komodo-mcp/issues/51); building/pushing user
+workload images does not publish komodo-mcp.
 
 ## v0.4.0
 
