@@ -552,8 +552,11 @@ async def exercise():
         merged = json.loads(line)['automation_args']
         s.require(merged['nested'] == {'saved': sentinel, 'run': True} and merged['array'] == ['saved', 'run']
                   and before == after, 'Action runtime merge or definition preservation failed')
-        s.require(sentinel not in json.dumps(action_update) and all(not x.get('stdout') and
-            not x.get('stderr') for x in action_update['stages']), 'Action private logs escaped MCP omission')
+        encoded = json.dumps(action_update)
+        s.require(sentinel not in encoded and 'automation_args' not in encoded
+            and action_update['observed_action_result']['output_omitted']
+            and all(not x.get('stdout') for x in action_update['stages']),
+            'Action private logs escaped MCP omission')
         s.REPORT['automation']['action_arguments'] = {'saved_definition_unchanged': True,
             'nested_object_merge_verified': True, 'arrays_append_verified': True,
             'raw_action_output_omitted_from_mcp': True, 'update_id': action_update['id']}
