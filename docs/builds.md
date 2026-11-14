@@ -189,7 +189,7 @@ simulates permissions; it does not implement Core's authorization engine.
 
 The integrated live Core/Periphery test and final source → build → image →
 deployment/health proof belong to [#93](https://github.com/enthouan/komodo-mcp/issues/93).
-Build execution/cancellation is the subsequent [#24](https://github.com/enthouan/komodo-mcp/issues/24).
+Build execution/cancellation is described below ([#24](https://github.com/enthouan/komodo-mcp/issues/24)).
 
 Pinned Core 2.3.2 sources: [Builder types/defaults](https://github.com/moghtech/komodo/blob/v2.3.2/client/core/rs/src/entities/builder.rs),
 [Builder permissions and write hooks](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/resource/builder.rs),
@@ -198,3 +198,95 @@ Pinned Core 2.3.2 sources: [Builder types/defaults](https://github.com/moghtech/
 [cache refresh](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/write/build.rs),
 [credential/config reads](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/read/provider.rs),
 and [build-triggered redeployment](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/execute/build.rs).
+
+## Run one saved Build
+
+`run_build` is exposed with `KOMODO_ALLOW_OPERATE=true`; configuration-edit
+access is independent and unnecessary. The same Core identity needs Read access
+to the Build, actual Builder and its ordered Server definitions, and Core Execute
+on the Build. No elevated credentials are substituted.
+
+First call `get_build` and inspect `configured_effects`: the saved trusted
+pre-build command, source/image settings, registry pushes, visible linked
+Deployments and visibility gaps. Copy its `acknowledgement` object into the
+explicit execution call:
+
+```json
+{"name":"run_build","arguments":{"target":{"name":"my-build"},"expected_effects":{"pre_build":true,"registry_pushes":true,"dependent_redeployments_possible":true}}}
+```
+
+Use the actual returned flags. `dependent_redeployments_possible` must always be
+acknowledged: hidden, new or concurrently changed dependents can exist. Core may
+run those Deployments under its built-in automatic-redeploy identity. Linked
+Repo clone/pull hooks are explicitly suppressed in this Build execution path;
+the Build's own pre-build command and Docker instructions remain trusted code.
+
+The tool resolves the exact saved Build, checks an explicit nonempty Server
+Builder and preserves Server order. Immediately before one stable-ID RunBuild,
+the shared transport rereads the actual association, Builder type and Servers.
+AWS/URL variants and templates are rejected without execution. Core chooses
+cached-healthy Servers by least current usage, breaking ties by configured order;
+its update does not attest the chosen Server. Another operator can change the
+Builder, source, hooks or policy after preflight. Core has no CAS here; this is
+not cloud isolation against concurrent configuration changes.
+
+No definition write or per-run override is sent. Core can auto-increment the
+attempted version and save `config.version` on successful completion. The shared
+receipt separates `submission` from the observed update's terminal outcome and
+workload health. Retain `update_id` and use `get_update` / `wait_for_update` to
+resume read-only observation after deadlines or process restart. A lost/invalid
+acknowledgement stays unknown; `reconcile_operation` with `kind:"build"`,
+`whole_build` and `operation:"run"` returns unconfirmed history candidates,
+even when only one matches. It never replays execution or assigns another
+operator's concurrent run to this call.
+
+Build update evidence uses structured commit/version fields when available.
+`observed_build_result.version` is an attempted version, including on failure.
+Image references/digests come only from a bounded unique Docker Build stage's
+recognizable Docker/BuildKit tag or manifest-push reports. Configured tags,
+commands and arbitrary output are not image evidence; missing, conflicting and
+truncated evidence stays explicit. A reported manifest push is not an independent
+registry verification. Build and push failures can share the Docker Build stage;
+`registry_push_failure_reported` identifies a recognizable engine push error.
+
+Core 2.3.2 starts dependent redeployments asynchronously and returns no child
+Deployment update IDs/results in a Build update. Inspect the disclosed Deployment
+IDs, their history and runtime health separately. Timing or a successful Build
+never proves that a particular Deployment ran or became healthy.
+
+## Explicit cancellation and its race
+
+```json
+{"name":"cancel_build","arguments":{"target":{"id":"000000000000000000000011"},"expected_update_id":"000000000000000000000100"}}
+```
+
+Supply the selected original RunBuild ID, not an example ID. Operate and Core
+Execute are required. MCP validates its resource and operation, checks bounded
+nonterminal RunBuild history plus Core's building state, and rechecks both before
+one CancelBuild. Completed originals, replacement/different active runs,
+ambiguous history, truncated active evidence and nonbuilding state submit zero
+cancellations. Later completed busy/denied RunBuild updates do not substitute for
+the active run. Read failures stop preflight without an execution submission.
+
+**Core accepts only a Build ID, with no expected update ID.** Another run can
+replace the original after the final reads, so cancellation can affect that run.
+`expected_update_id` is a local check, not an atomic Core guard. The result reports
+this race, the known original ID, active evidence and replacement observations.
+
+`cancellation_receipt` describes submission/observation of the CancelBuild update;
+`original_update` and `original_terminal_confirmed` describe the original RunBuild
+separately. Core marks its cancellation update complete when queued, or during
+its timeout cleanup; this does not prove the original stopped. A terminal
+original can have succeeded before cancellation took effect. No rollback or
+cancellation of a specific historical invocation is claimed. Lost replies stay
+unknown and never repeat CancelBuild; read-only recovery uses `operation:"cancel"`.
+Cancelling a local `wait_for_update` or terminating the MCP process sends **no**
+remote cancellation.
+
+`cargo test --locked --test build_operations` covers these contracts through the
+compiled production stdio server: success and observed evidence, failed hooks/
+build/push, upstream denial, all local grants, unsupported/raced Builders,
+concurrent calls, missing/lost/corrupt acknowledgements, restart/recovery,
+bounded waits, explicit cancellation, completed originals and replacement races.
+The fixture is deterministic; the live environment and registry/deployment proof
+remain required in #93.

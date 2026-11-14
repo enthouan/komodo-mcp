@@ -120,17 +120,31 @@ impl RecoveryInput {
             return Err(invalid());
         }
         self.target.id.make_ascii_lowercase();
-        let repo_operation = matches!(
-            self.operation,
-            WorkloadOperation::Clone | WorkloadOperation::Pull
-        );
-        if repo_operation != (self.target.kind == WorkloadKind::Repo) {
+        let compatible = match self.target.kind {
+            WorkloadKind::Repo => matches!(
+                self.operation,
+                WorkloadOperation::Clone | WorkloadOperation::Pull
+            ),
+            WorkloadKind::Build => matches!(
+                self.operation,
+                WorkloadOperation::Run | WorkloadOperation::Cancel
+            ),
+            _ => matches!(
+                self.operation,
+                WorkloadOperation::Deploy
+                    | WorkloadOperation::Start
+                    | WorkloadOperation::Stop
+                    | WorkloadOperation::Restart
+            ),
+        };
+        if !compatible {
             return Err(invalid());
         }
         match (&self.target.kind, &self.requested_scope) {
             (WorkloadKind::Stack, RequestedScope::WholeStack {})
             | (WorkloadKind::Deployment, RequestedScope::WholeDeployment {}) => (),
             (WorkloadKind::Repo, RequestedScope::WholeRepo {}) => (),
+            (WorkloadKind::Build, RequestedScope::WholeBuild {}) => (),
             (WorkloadKind::Stack, RequestedScope::Service { service }) => StackScope::Service {
                 service: service.clone(),
             }
@@ -238,6 +252,7 @@ pub async fn reconcile_operation(
             WorkloadKind::Stack => ResourceKind::Stack,
             WorkloadKind::Deployment => ResourceKind::Deployment,
             WorkloadKind::Repo => ResourceKind::Repo,
+            WorkloadKind::Build => ResourceKind::Build,
         },
         id: input.target.id.clone(),
     };
@@ -245,6 +260,7 @@ pub async fn reconcile_operation(
         WorkloadKind::Stack => ResourceTarget::Stack(input.target.id.clone()),
         WorkloadKind::Deployment => ResourceTarget::Deployment(input.target.id.clone()),
         WorkloadKind::Repo => ResourceTarget::Repo(input.target.id.clone()),
+        WorkloadKind::Build => ResourceTarget::Build(input.target.id.clone()),
     };
     let operation = match input.target.kind {
         WorkloadKind::Stack => {
@@ -256,6 +272,16 @@ pub async fn reconcile_operation(
             }
         }
         WorkloadKind::Deployment => input.operation.deployment_variant()?.1,
+        WorkloadKind::Build => match input.operation {
+            WorkloadOperation::Run => komodo_client::entities::Operation::RunBuild,
+            WorkloadOperation::Cancel => komodo_client::entities::Operation::CancelBuild,
+            _ => {
+                return Err(AppError::arguments(
+                    "reconcile_operation",
+                    "Build recovery requires run or cancel",
+                ));
+            }
+        },
         WorkloadKind::Repo => match input.operation {
             WorkloadOperation::Clone => komodo_client::entities::Operation::CloneRepo,
             WorkloadOperation::Pull => komodo_client::entities::Operation::PullRepo,

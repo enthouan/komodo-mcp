@@ -85,7 +85,7 @@ fn create_schema(g: &mut schemars::SchemaGenerator) -> schemars::Schema {
     schemars::json_schema!({"allOf":[g.subschema_for::<ServerPatch>()],"required":["servers"],"properties":{"servers":{"minItems":1,"maxItems":16}}})
 }
 
-#[derive(Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct BuilderSummary {
     pub id: String,
     pub name: String,
@@ -94,7 +94,7 @@ pub struct BuilderSummary {
     pub supported: bool,
     pub support_limit: &'static str,
 }
-#[derive(Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct DefinitionSummary {
     pub builder_type: &'static str,
     pub supported: bool,
@@ -109,7 +109,7 @@ pub struct BuilderDetail {
     pub summary: BuilderSummary,
     pub definition: DefinitionSummary,
 }
-#[derive(Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct DefinitionPreview {
     pub before: Option<DefinitionSummary>,
     pub after: DefinitionSummary,

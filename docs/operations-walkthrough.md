@@ -21,7 +21,7 @@ the permission authority, including a denial recorded after acknowledgement.
    `.env` files are not loaded. Restart the child after changing capabilities.
    With both optional grants disabled, discovery contains twenty-three read tools,
    including exact [discovery by tag](tags.md).
-   Operate adds ten tools; configuration editing independently adds typed
+   Operate adds twelve tools; configuration editing independently adds typed
    preview/apply tools. See [client configuration](../README.md#local-capabilities-and-core-permissions)
    and the [configuration workflow](configuration.md).
 2. Initialize your stdio client and call `tools/list`. Resolve an exact workload

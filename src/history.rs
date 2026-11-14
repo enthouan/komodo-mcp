@@ -182,6 +182,8 @@ pub struct UpdateDetail {
     pub stages_truncated: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_revision: Option<RevisionObservation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_build_result: Option<crate::build_observation::BuildObservation>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -478,6 +480,41 @@ pub async fn list_updates(
     })
 }
 
+/// Fixed internal cancellation filter, never an arbitrary caller-supplied query.
+/// This avoids mistaking another operator's later, busy/failed run for the
+/// currently active run. Truncation or multiple active IDs prevents cancellation.
+pub(crate) async fn active_runs(
+    client: &CoreClient,
+    target: HistoryTarget,
+    operation: komodo_client::entities::Operation,
+) -> Result<HistoryPage<UpdateSummary>, AppError> {
+    if !valid_target(&target) {
+        return Err(invalid("ListUpdates"));
+    }
+    let response=client.read(ListUpdates {query:Some(serde_json::from_value(json!({"target.type":target.kind.core_name(),"target.id":target.id,"operation":operation,"status":{"$in":["Queued","InProgress"]}})).expect("fixed filter")),page:0}).await?;
+    check_page(0, response.updates.len(), response.next_page, "ListUpdates")?;
+    let items = response
+        .updates
+        .iter()
+        .map(|u| {
+            let item = project_update(u)?;
+            if item.target != target
+                || u.operation != operation
+                || matches!(item.status, UpdateStatus::Complete)
+            {
+                return Err(invalid("ListUpdates"));
+            }
+            Ok(item)
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
+    Ok(HistoryPage {
+        items,
+        page: 0,
+        page_size: HISTORY_PAGE_SIZE,
+        next_page: response.next_page,
+    })
+}
+
 fn bounded(client: &CoreClient, text: &str, max: usize) -> (String, bool) {
     let safe = crate::logs::redact_log(client, text);
     // Git failures can echo URL-embedded credentials without assignment labels.
@@ -563,5 +600,6 @@ pub(crate) fn project_update_detail(
         stages,
         stages_truncated: update.logs.len() > MAX_UPDATE_STAGES,
         observed_revision: observed_revision(client, update),
+        observed_build_result: crate::build_observation::project(client, update),
     })
 }

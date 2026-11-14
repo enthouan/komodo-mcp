@@ -48,7 +48,8 @@ impl KomodoServer {
                 | "find_resources_by_tag" => Some(Capability::Read),
                 "deploy_stack" | "deploy_deployment" | "start_stack" | "stop_stack"
                 | "restart_stack" | "start_deployment" | "stop_deployment"
-                | "restart_deployment" | "clone_repo" | "pull_repo" => Some(Capability::Operate),
+                | "restart_deployment" | "clone_repo" | "pull_repo" | "run_build"
+                | "cancel_build" => Some(Capability::Operate),
                 "apply_resource_delete" | "apply_tag_delete" => Some(Capability::Destructive),
                 "preview_stack_update"
                 | "apply_stack_update"
@@ -90,6 +91,24 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="Run exactly one saved Build by exact ID/name with operate and Core Execute. FIRST inspect get_build.configured_effects and copy its acknowledgement flags: trusted pre-build/Dockerfile/arguments, configured pushes and possible hidden/concurrent dependent redeployments. Revalidate the actual Build-to-Builder association and reject AWS/URL, templates or an empty Server list before submission, including in shared transport. Core chooses a cached-healthy least-used Server, with configured order breaking ties; the update does not attest the actual runner. Submit the stable Build ID once without config edits. Core can advance/store its version on success. Return shared receipt, bounded stages/revision/version and image output reports when available. Definitions can race after reads. Resume/reconcile read-only; never replay timeout/lost ACK or infer deployment health.",input_schema=schema_for_input::<crate::build_operations::RunInput>().expect("run_build schema"),output_schema=inventory::output_schema::<crate::operations::SubmissionReceipt>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn run_build(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "run_build") {
+            Ok(input) => crate::build_operations::run(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Explicitly request cancellation of one saved Server-backed Build. Requires operate, Core Execute and expected_update_id of the selected original RunBuild. Validate that ID's target/operation, inspect current Server Builder, bounded nonterminal history and Core action state, and recheck before at most one CancelBuild. Already-finished, different/ambiguous or incomplete active evidence submits nothing. Core accepts ONLY the resource ID: it cannot atomically bind cancellation to this historical update, and a replacement can race after reads. Return cancellation ACK/update separately from the original run's latest observed outcome; a complete cancellation update only acknowledges queuing or cleanup. No rollback, automatic retry or remote cancellation from a local wait. Lost replies retain uncertainty; use read-only wait/reconciliation.",input_schema=schema_for_input::<crate::build_operations::CancelInput>().expect("cancel_build schema"),output_schema=inventory::output_schema::<crate::operations::CancellationResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn cancel_build(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "cancel_build") {
+            Ok(input) => crate::build_operations::cancel(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description = "List visible Builders using bounded positive pages and name order. Identify Server/AWS/URL support without credentials. Direct writes and Build execution support explicit existing-Server builders only; AWS provisioning/configuration is deferred and URL writes are unsupported.", input_schema = schema_for_input::<ListInput>().expect("list_builders schema"), output_schema = inventory::output_schema::<Page<crate::builders::BuilderSummary>>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
     async fn list_builders(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_builders") {
@@ -153,7 +172,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description = "Inspect one saved Build by exact ID/name with safe source/image/registry and trusted-hook presence. Identify its actual Builder support or an explicit observation gap. Configured source/version/image and cached observed revision are separate. AWS/URL Builders are inspectable but unsupported for direct definition writes and Build execution. Saving/inspection does not prove a build or healthy deployment.", input_schema = schema_for_input::<DetailInput>().expect("get_build schema"), output_schema = inventory::output_schema::<crate::build_configuration::BuildDetail>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
+    #[tool(description = "Inspect one saved Build by exact ID/name with safe source/image/registry and trusted-hook presence. Inspect configured_effects and copy its acknowledgement flags before run_build; it discloses possible hidden/concurrent dependent redeployments. Identify its actual Builder support or an explicit observation gap. Configured source/version/image and cached observed revision are separate. AWS/URL Builders are inspectable but unsupported for direct definition writes and Build execution. Saving/inspection does not prove a build or healthy deployment.", input_schema = schema_for_input::<DetailInput>().expect("get_build schema"), output_schema = inventory::output_schema::<crate::build_configuration::BuildDetail>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
     async fn get_build(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "get_build") {
             Ok(input) => crate::build_configuration::get(&self.client, input).await,

@@ -1,6 +1,8 @@
 //! Read-only Core inventory, bounded fleet observations, and safe reporting.
 
 pub mod build_configuration;
+pub mod build_observation;
+pub mod build_operations;
 pub mod builders;
 pub mod capabilities;
 pub mod client;

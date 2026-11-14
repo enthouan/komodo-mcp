@@ -8,6 +8,14 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Run one saved Server-backed Build with explicit effect acknowledgement and
+  shared bounded receipts, revision/version/image evidence, wait and read-only
+  recovery. Add deliberate Build cancellation with active-run rechecks and
+  separate acknowledgement/original outcome reporting; disclose Core's
+  resource-level race and unavailable dependent-result links. Never replay an
+  uncertain execution or infer deployment health from Build success.
+  ([#24](https://github.com/enthouan/komodo-mcp/issues/24))
+
 - Add bounded Builder/Build inspection and shared typed definition preview/apply.
   Support explicit existing-Server Builders with ordered fallback, preserve
   omitted secrets, revalidate references and verify complete saved configuration.

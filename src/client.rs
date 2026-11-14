@@ -327,7 +327,10 @@ impl CoreClient {
 
     /// One explicit typed submission, over the existing authenticated pool.
     /// Every uncertain failure is returned without retrying or changing credentials.
-    pub(crate) async fn execute<T>(&self, request: T) -> Result<T::Response, AppError>
+    pub(crate) async fn execute<T>(
+        &self,
+        request: T,
+    ) -> Result<Result<T::Response, AppError>, AppError>
     where
         T: Serialize + KomodoExecuteRequest,
         T::Response: DeserializeOwned,
@@ -343,6 +346,8 @@ impl CoreClient {
             "RestartDeployment" => "RestartDeployment",
             "CloneRepo" => "CloneRepo",
             "PullRepo" => "PullRepo",
+            "RunBuild" => "RunBuild",
+            "CancelBuild" => "CancelBuild",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "execute", None)),
         };
         if !self.capabilities().allows(Capability::Operate) {
@@ -352,12 +357,15 @@ impl CoreClient {
                 None,
             ));
         }
-        tokio::time::timeout(
+        let params = serde_json::to_value(&request)
+            .map_err(|_| AppError::arguments(operation, "Use a typed execution request"))?;
+        crate::build_operations::guard_execute(self, operation, &params).await?;
+        Ok(tokio::time::timeout(
             self.0.policy.operation_timeout,
             self.request_bounded_body(&self.0.execute_request, request, T::req_type(), operation),
         )
         .await
-        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
+        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None))))
     }
 
     /// Keep diagnosis inputs bounded without changing existing inventory calls.
@@ -427,6 +435,7 @@ impl CoreClient {
             "ListRepos" => "ListRepos",
             "GetBuild" => "GetBuild",
             "ListBuilds" => "ListBuilds",
+            "GetBuildActionState" => "GetBuildActionState",
             "GetBuilder" => "GetBuilder",
             "ListBuilders" => "ListBuilders",
             "GetAlerter" => "GetAlerter",
@@ -601,6 +610,44 @@ mod write_policy_tests {
             stack::PartialStackConfig,
         },
     };
+
+    #[tokio::test]
+    async fn shared_build_execute_requires_operate_before_preflight_io() {
+        use komodo_client::api::execute::{CancelBuild, RunBuild};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        for edit in [false, true] {
+            let client = CoreClient::new(
+                Config::parse(
+                    &format!("http://{}", listener.local_addr().unwrap()),
+                    "fixture-key",
+                    "fixture-secret",
+                )
+                .unwrap()
+                .with_capabilities(CapabilityPolicy::new(false, edit)),
+                RequestPolicy::default(),
+            )
+            .unwrap();
+            for r in [
+                client
+                    .execute(RunBuild {
+                        build: "000000000000000000000011".into(),
+                    })
+                    .await,
+                client
+                    .execute(CancelBuild {
+                        build: "000000000000000000000011".into(),
+                    })
+                    .await,
+            ] {
+                assert!(matches!(r,Err(e) if e.kind==ErrorKind::CapabilityDisabled));
+            }
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err()
+        );
+    }
 
     #[tokio::test]
     async fn shared_delete_transport_requires_both_grants_without_opening_a_connection() {

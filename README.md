@@ -11,11 +11,12 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.9.0 SDK](https://docs.rs/rmcp/3.9.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Nineteen read-only tools list and inspect
-Servers, Stacks, Deployments and Repos, summarize fleet health, inspect alerts/update
+exactly with optional features disabled. Twenty-three read-only tools list and inspect
+Servers, Stacks, Deployments, Repos, Builders and Builds, summarize fleet health, inspect alerts/update
 history, read bounded logs, and diagnose a stack in one call.
 Optional operate-enabled tools deploy one existing workload or clone/pull a saved
-Repo and return its Core update receipt. See [workload operations](docs/operations.md).
+Repo, or run/cancel a saved Server-backed Build, and return its Core update receipt.
+See [workload operations](docs/operations.md) and [Build operations](docs/builds.md#run-one-saved-build).
 
 ## Fresh-checkout demo (synthetic Core)
 
@@ -169,6 +170,13 @@ edits require both grants. These definition tools submit zero build executions.
 See [Builders and Build definitions](docs/builds.md) for credential evidence,
 registry/redeployment effects, supported sources and read-back limits.
 
+`run_build` requires operate and Core Execute, with prior acknowledgement of the
+effects shown by `get_build`. It submits the saved Build once, rechecking its
+actual Server Builder before execution. `cancel_build` is an explicit resource-level
+request with a local original-update check; Core cannot enforce that update guard.
+Bounded shared receipts, history and read-only recovery keep submission, observed
+image results, cancellation and deployment health separate. See [Build operations](docs/builds.md#run-one-saved-build).
+
 Deliberate deletion adds `preview_resource_delete` for trusted configuration
 access and `apply_resource_delete` only when both local grants are enabled.
 Select one exact Stack/Deployment/Server kind and stable ID with `action=delete`.
@@ -233,6 +241,8 @@ RUST_LOG=komodo_mcp=debug,rmcp=warn ./target/release/komodo-mcp
 | `get_deployment` | Inspect one Deployment by a stable identity |
 | `list_repos` | Page through visible Repos with configured branch and observed cached revision |
 | `get_repo` | Inspect a Repo definition and disclose saved hooks before clone/pull |
+| `list_builders` / `get_builder` | Inspect supported Server Builders and safe unsupported-type summaries |
+| `list_builds` / `get_build` | Inspect Build source/image selectors and disclose execution effects |
 
 Each tool advertises a JSON input schema, output schema, and read-only,
 idempotent, non-destructive annotations through MCP `tools/list`. Inventory and

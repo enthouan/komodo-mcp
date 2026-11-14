@@ -258,7 +258,7 @@ pub struct CreateApplyInput {
 fn create_schema(g: &mut schemars::SchemaGenerator) -> schemars::Schema {
     schemars::json_schema!({"allOf":[g.subschema_for::<BuildPatch>()],"required":["builder","source","image_name","image_registry"]})
 }
-#[derive(Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct SourceSummary {
     pub kind: &'static str,
     pub selector_evidence: &'static str,
@@ -272,13 +272,13 @@ pub struct SourceSummary {
     pub custom_build_path_configured: bool,
     pub custom_dockerfile_path_configured: bool,
 }
-#[derive(Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct RegistrySummary {
     pub domain: String,
     pub organization: String,
     pub credential_reference_configured: bool,
 }
-#[derive(Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct DefinitionSummary {
     pub builder_id: Option<String>,
     pub source: SourceSummary,
@@ -315,9 +315,10 @@ pub struct BuildDetail {
     pub definition: DefinitionSummary,
     pub builder: Option<builders::DefinitionSummary>,
     pub builder_observation_error: Option<AppError>,
+    pub configured_effects: Option<crate::build_operations::BuildEffects>,
     pub evidence_limit: &'static str,
 }
-#[derive(Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct CredentialObservation {
     pub kind: &'static str,
     pub registry_index: Option<usize>,
@@ -325,20 +326,20 @@ pub struct CredentialObservation {
     pub sources_complete: bool,
     pub evidence_limit: &'static str,
 }
-#[derive(Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct DependentDeployment {
     pub id: String,
     pub name: String,
     pub redeploy_on_build: bool,
 }
-#[derive(Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct DependentEffects {
     pub visible: Vec<DependentDeployment>,
     pub has_more: bool,
     pub observation_error: Option<AppError>,
     pub evidence_limit: &'static str,
 }
-#[derive(Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct DefinitionPreview {
     pub before: Option<DefinitionSummary>,
     pub after: DefinitionSummary,
@@ -505,11 +506,17 @@ pub async fn get(client: &CoreClient, input: DetailInput) -> Result<BuildDetail,
         Ok(b) => (Some(b), None),
         Err(e) => (None, Some(e)),
     };
+    let configured_effects = if let Some(ref builder) = builder {
+        Some(crate::build_operations::effects(&bounded, &b, builder.clone()).await)
+    } else {
+        None
+    };
     Ok(BuildDetail {
         summary: item(client, listed),
         definition: summary(client, &b.config),
         builder,
         builder_observation_error,
+        configured_effects,
         evidence_limit: "Configured selectors/version/image are desired state. Built/latest revisions are Core caches and do not prove a particular run or deployment health. AWS/URL builders can be inspected but are unsupported for direct writes/execution. Scripts, arguments, accounts, file contents and private cache errors are omitted.",
     })
 }
@@ -758,7 +765,7 @@ async fn credential(
         json!(evidence),
     ))
 }
-async fn dependents(client: &CoreClient, build: Option<&str>) -> DependentEffects {
+pub(crate) async fn dependents(client: &CoreClient, build: Option<&str>) -> DependentEffects {
     let limit = "Only visible linked Deployments are inspected, at most 16; hidden/new/concurrent dependents may exist. redeploy_on_build is configured future behavior, not a submission or proof of deployment/health. Core's first registry is used for attached Deployments.";
     let mut result = DependentEffects {
         visible: vec![],
