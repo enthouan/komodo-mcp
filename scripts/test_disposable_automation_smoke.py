@@ -47,6 +47,20 @@ class AutomationScopeTests(unittest.TestCase):
             'config': {'webhook_enabled': False, 'schedule': '',
                        'schedule_enabled': False, 'run_at_startup': False}})
 
+    def test_definition_editor_receives_explicit_reference_attachment_permission(self):
+        provisioner = Mock()
+        automation.CONTEXT.update(provisioner=provisioner, users=[
+            {'id': 'operator', 'workload_permission': 'Execute'},
+            {'id': 'reader', 'workload_permission': 'Read'},
+            {'id': 'editor', 'workload_permission': 'Write'}])
+        for kind in ['Builder', 'Repo', 'Build']:
+            provisioner.reset_mock()
+            automation.grant(kind, 'a' * 24)
+            permissions = [call.args[1]['permission'] for call in provisioner.write.call_args_list]
+            self.assertEqual(permissions, [
+                {'level': 'Execute', 'specific': []}, {'level': 'Read', 'specific': []},
+                {'level': 'Write', 'specific': ['Attach']}])
+
     def test_changed_owner_identity_blocks_cleanup_write(self):
         for changed in ['id', 'name']:
             with self.subTest(changed=changed):

@@ -42,7 +42,9 @@ def grant(kind, resource_id):
         CONTEXT['provisioner'].write('UpdatePermissionOnTarget', {
             'user_target': {'type': 'User', 'id': user['id']},
             'resource_target': {'type': kind, 'id': resource_id},
-            'permission': {'level': user['workload_permission'], 'specific': []}})
+            'permission': {'level': user['workload_permission'],
+                'specific': ['Attach'] if kind in ['Builder', 'Repo', 'Build']
+                    and user['workload_permission'] == 'Write' else []}})
 
 
 def remember(kind, resource_id, name):
@@ -56,6 +58,18 @@ async def save(mcp, family, value, create=False):
     operation = family + ('_create' if create else '_update')
     preview = await mcp.tool('preview_' + operation, value)
     result = await mcp.tool('apply_' + operation, dict(value, preview_id=preview['preview_id']))
+    s.REPORT['automation'].setdefault('configuration_results', []).append({
+        'operation': operation, 'resource': result['resource'], 'outcome': result['outcome'],
+        'writes_submitted': result['writes_submitted'],
+        'saved_configuration_verified': result['saved_configuration_verified'],
+        'observation_error': result.get('observation_error')})
+    # A known created ID remains owned even when verification fails. Retain it
+    # for policy disabling; never retry an uncertain create automatically.
+    if create and not result['saved_configuration_verified'] and result['resource'].get('id'):
+        name = value['name']
+        s.require(name.startswith(PREFIX), 'unverified resource outside owned name prefix')
+        OWNED.append((family.title(), result['resource']['id'], name))
+    s.persist()
     s.require(result['saved_configuration_verified'], 'authoritative ' + operation + ' readback unavailable')
     s.require(result['writes_submitted'] <= 1, 'configuration was submitted more than once')
     return result
