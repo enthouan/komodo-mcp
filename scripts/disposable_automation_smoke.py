@@ -17,6 +17,7 @@ CONTEXT = {}
 OWNED = []
 ACTIVE = []
 PREFIX = 'mcp-automation-'
+REPOSITORY = 'fixture/workload.git'
 
 
 def customize(config):
@@ -112,7 +113,7 @@ async def run(mcp, family, resource_id, expected='succeeded', **extra):
 
 
 def source_fixture():
-    # Core's Git selector is HTTPS or SSH. Trust a private fixture CA explicitly;
+    # Trust a private fixture CA explicitly for HTTPS Git;
     # do not disable certificate verification or expose the source on host ports.
     cert, key = s.ROOT / 'source-ca.crt', s.ROOT / 'source.key'
     config = s.ROOT / 'source-openssl.cnf'
@@ -189,7 +190,7 @@ def provision(context):
     revision, marker = source_fixture()
     CONTEXT['revision'], CONTEXT['marker'] = revision, marker
     s.REPORT['automation']['source'] = {'revision': revision, 'provider': 'source',
-        'repository': 'fixture/workload', 'branch': 'main'}
+        'repository': REPOSITORY, 'branch': 'main'}
     asyncio.run(exercise())
 
 
@@ -334,7 +335,7 @@ async def exercise():
         action_id = await create(creator, 'action', PREFIX + 'action', {'source': source})
     CONTEXT.update(builder_id=builder_id, action_id=action_id)
     async with await s.Mcp.start(address, editor, True, True) as mcp:
-        repo_id = await create(mcp, 'repo', PREFIX + 'repo', {'repo': 'fixture/workload',
+        repo_id = await create(mcp, 'repo', PREFIX + 'repo', {'repo': REPOSITORY,
             'branch': 'main', 'git_provider': 'source', 'git_https': True,
             'target': {'kind': 'server', 'target': {'id': CONTEXT['server_id']}}})
         CONTEXT['repo_id'] = repo_id
