@@ -2,6 +2,7 @@
 //! projections. Tokens are process-local, bounded, expiring and single-use.
 
 use std::{
+    any::Any,
     collections::BTreeMap,
     hash::BuildHasher,
     sync::Mutex,
@@ -272,12 +273,10 @@ impl<R> Preview<R> {
         }
     }
 }
-// All mutation families share the same capacity, expiry and single-use space.
-enum StoredResult {
-    Configuration(Box<ConfigurationResult>),
-    Destructive(Box<crate::deletion::DeletionResult>),
-    Tags(Box<crate::tags::TagResult>),
-}
+// All preview/review families share capacity, expiry and single use. The private
+// concrete result type is checked on consumption in addition to operation/input
+// binding. No stored value implements a display or serialization escape hatch.
+type StoredResult = Box<dyn Any + Send>;
 struct Entries {
     nonce: String,
     next: u64,
@@ -303,23 +302,23 @@ impl Default for Entries {
 pub(crate) struct PreviewStore(Mutex<Entries>);
 
 impl PreviewStore {
-    pub(crate) fn insert_tags(
+    pub(crate) fn insert_entry<R: Send + 'static>(
         &self,
-        entry: Preview<crate::tags::TagResult>,
-    ) -> Result<crate::tags::TagResult, AppError> {
-        let mut result = entry.result.clone();
-        result.preview_id = Some(self.put(entry.map(|r| StoredResult::Tags(Box::new(r))))?);
-        Ok(result)
+        entry: Preview<R>,
+    ) -> Result<String, AppError> {
+        self.put(entry.map(|result| Box::new(result) as StoredResult))
     }
-    pub(crate) fn take_tags(
+
+    pub(crate) fn take_for<R: Send + 'static>(
         &self,
         token: &str,
         input: &Value,
-    ) -> Result<Preview<crate::tags::TagResult>, AppError> {
+    ) -> Result<Preview<R>, AppError> {
         let entry = self.take_entry(token, input)?;
-        let StoredResult::Tags(result) = entry.result else {
-            return Err(invalid_preview());
-        };
+        let result = entry
+            .result
+            .downcast::<R>()
+            .map_err(|_| invalid_preview())?;
         Ok(Preview {
             created: entry.created,
             input: entry.input,
@@ -327,6 +326,22 @@ impl PreviewStore {
             prepared: entry.prepared,
             result: *result,
         })
+    }
+
+    pub(crate) fn insert_tags(
+        &self,
+        entry: Preview<crate::tags::TagResult>,
+    ) -> Result<crate::tags::TagResult, AppError> {
+        let mut result = entry.result.clone();
+        result.preview_id = Some(self.insert_entry(entry)?);
+        Ok(result)
+    }
+    pub(crate) fn take_tags(
+        &self,
+        token: &str,
+        input: &Value,
+    ) -> Result<Preview<crate::tags::TagResult>, AppError> {
+        self.take_for(token, input)
     }
     fn put(&self, entry: Preview<StoredResult>) -> Result<String, AppError> {
         let mut entries = self.0.lock().map_err(|_| invalid_preview())?;
@@ -351,8 +366,7 @@ impl PreviewStore {
         } else {
             ConfigurationOutcome::Preview
         };
-        result.preview_id =
-            Some(self.put(entry.map(|r| StoredResult::Configuration(Box::new(r))))?);
+        result.preview_id = Some(self.insert_entry(entry)?);
         Ok(result)
     }
 
@@ -361,7 +375,7 @@ impl PreviewStore {
         entry: Preview<crate::deletion::DeletionResult>,
     ) -> Result<crate::deletion::DeletionResult, AppError> {
         let mut result = entry.result.clone();
-        result.preview_id = Some(self.put(entry.map(|r| StoredResult::Destructive(Box::new(r))))?);
+        result.preview_id = Some(self.insert_entry(entry)?);
         Ok(result)
     }
 
@@ -380,17 +394,7 @@ impl PreviewStore {
     }
 
     pub(crate) fn take(&self, token: &str, input: &Value) -> Result<Preview, AppError> {
-        let entry = self.take_entry(token, input)?;
-        let StoredResult::Configuration(result) = entry.result else {
-            return Err(invalid_preview());
-        };
-        Ok(Preview {
-            created: entry.created,
-            input: entry.input,
-            baseline: entry.baseline,
-            prepared: entry.prepared,
-            result: *result,
-        })
+        self.take_for(token, input)
     }
 
     pub(crate) fn take_destructive(
@@ -398,17 +402,7 @@ impl PreviewStore {
         token: &str,
         input: &Value,
     ) -> Result<Preview<crate::deletion::DeletionResult>, AppError> {
-        let entry = self.take_entry(token, input)?;
-        let StoredResult::Destructive(result) = entry.result else {
-            return Err(invalid_preview());
-        };
-        Ok(Preview {
-            created: entry.created,
-            input: entry.input,
-            baseline: entry.baseline,
-            prepared: entry.prepared,
-            result: *result,
-        })
+        self.take_for(token, input)
     }
 }
 
@@ -960,5 +954,55 @@ mod tests {
         }
         assert!(store.insert(entry()).is_ok());
         assert_eq!(store.0.lock().unwrap().values.len(), 1);
+    }
+
+    #[test]
+    fn review_records_bind_concrete_type_operation_and_scope_and_consume_before_validation() {
+        let store = PreviewStore::default();
+        let input = bound_input(
+            "resource_sync_apply",
+            &json!({"sync_id":"owned","selection":"whole_sync"}),
+        );
+        let make = || Preview {
+            created: Instant::now(),
+            input: input.clone(),
+            baseline: json!({"raw_private_source":"secret-one"}),
+            prepared: json!({"stable_id":"owned"}),
+            result: 7_u32,
+        };
+        let token = store.insert_entry(make()).unwrap();
+        assert!(!token.contains("secret-one"));
+        assert!(
+            matches!(store.take_for::<String>(&token,&input),Err(e) if e.kind==ErrorKind::InvalidPreview)
+        );
+        assert!(store.take_for::<u32>(&token, &input).is_err());
+        for wrong in [
+            bound_input(
+                "other_operation",
+                &json!({"sync_id":"owned","selection":"whole_sync"}),
+            ),
+            bound_input(
+                "resource_sync_apply",
+                &json!({"sync_id":"other","selection":"whole_sync"}),
+            ),
+            bound_input(
+                "resource_sync_apply",
+                &json!({"sync_id":"owned","selection":"server"}),
+            ),
+        ] {
+            let token = store.insert_entry(make()).unwrap();
+            assert!(store.take_for::<u32>(&token, &wrong).is_err());
+            assert!(store.take_for::<u32>(&token, &input).is_err());
+        }
+        let token = store.insert_entry(make()).unwrap();
+        let private = store.take_for::<u32>(&token, &input).unwrap();
+        assert_eq!(private.baseline["raw_private_source"], "secret-one");
+        assert_eq!(private.result, 7);
+        assert!(store.take_for::<u32>(&token, &input).is_err());
+        for _ in 0..MAX_PREVIEWS - 1 {
+            store.insert(entry()).unwrap();
+        }
+        store.insert_entry(make()).unwrap();
+        assert!(store.insert(entry()).is_err());
     }
 }

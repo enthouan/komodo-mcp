@@ -181,9 +181,7 @@ impl MockCore {
                         let state = Arc::clone(&state_task);
                         let changed = Arc::clone(&changed_task);
                         connections.spawn(async move {
-                            if let Err(error) = timeout(Duration::from_secs(30), serve(stream, &state, &changed)).await {
-                                state.lock().unwrap().errors.push(format!("fixture connection deadline: {error}"));
-                            }
+                            serve(stream, &state, &changed).await;
                         });
                     }
                     Some(joined) = connections.join_next(), if !connections.is_empty() => {
@@ -255,7 +253,14 @@ async fn serve(stream: TcpStream, state: &Mutex<State>, changed: &Notify) {
     let (read, mut write) = stream.into_split();
     let mut read = BufReader::new(read);
     loop {
-        let request = async {
+        // A pooled connection can legitimately sit idle while MCP rejects many
+        // local inputs. Bound idle lifetime separately from request processing;
+        // an idle close is not a malformed or stalled request.
+        match timeout(Duration::from_secs(30), read.fill_buf()).await {
+            Ok(Ok(bytes)) if !bytes.is_empty() => {}
+            _ => return,
+        }
+        let request = timeout(Duration::from_secs(30), async {
             let mut start = String::new();
             if read.read_line(&mut start).await? == 0 {
                 return Ok(None);
@@ -323,38 +328,44 @@ async fn serve(stream: TcpStream, state: &Mutex<State>, changed: &Notify) {
                 "incorrect SDK request envelope for {operation}"
             );
             Ok::<_, anyhow::Error>(Some(step.reply))
-        }
+        })
         .await;
         changed.notify_one();
         let reply = match request {
-            Ok(Some(reply)) => reply,
-            Ok(None) => return,
-            Err(error) => {
+            Ok(Ok(Some(reply))) => reply,
+            Ok(Ok(None)) => return,
+            Ok(Err(error)) => {
                 state.lock().unwrap().errors.push(error.to_string());
                 return;
             }
+            Err(_) => {
+                state
+                    .lock()
+                    .unwrap()
+                    .errors
+                    .push("fixture request deadline".into());
+                return;
+            }
         };
-        sleep(reply.header_delay).await;
-        let location = reply
-            .location
-            .map(|location| format!("Location: {location}\r\n"))
-            .unwrap_or_default();
-        let header = format!(
-            "HTTP/1.1 {} Fixture\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{location}\r\n",
-            reply.status,
-            reply.body.len()
-        );
-        if write.write_all(header.as_bytes()).await.is_err() {
-            return;
-        }
-        if write.flush().await.is_err() {
-            return;
-        }
-        sleep(reply.body_delay).await;
-        if write.write_all(reply.body.as_bytes()).await.is_err() {
-            return;
-        }
-        if write.flush().await.is_err() {
+        let response = async {
+            sleep(reply.header_delay).await;
+            let location = reply
+                .location
+                .map(|location| format!("Location: {location}\r\n"))
+                .unwrap_or_default();
+            let header = format!(
+                "HTTP/1.1 {} Fixture\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{location}\r\n",
+                reply.status,
+                reply.body.len()
+            );
+            write.write_all(header.as_bytes()).await?;
+            write.flush().await?;
+            sleep(reply.body_delay).await;
+            write.write_all(reply.body.as_bytes()).await?;
+            write.flush().await?;
+            Ok::<_, std::io::Error>(())
+        };
+        if !matches!(timeout(Duration::from_secs(30), response).await, Ok(Ok(()))) {
             return;
         }
     }

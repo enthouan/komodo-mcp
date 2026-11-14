@@ -11,7 +11,7 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.9.0 SDK](https://docs.rs/rmcp/3.9.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Thirty read-only tools list and inspect
+exactly with optional features disabled. Thirty-four read-only tools list and inspect
 Servers, Stacks, Deployments, Repos, Builders, Builds, Procedures and Actions, summarize fleet health, inspect alerts/update
 history, read bounded logs, and diagnose a stack in one call.
 The [scoped TOML export](docs/export.md) returns a sanitized inspection document
@@ -141,7 +141,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All thirty-two read tools remain locally available in every grant
+All thirty-four read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -175,6 +175,14 @@ require both local grants. Saving can refresh pending/source caches and alerts,
 but submits no RunSync or external source write-back. Inspect managed deletion,
 empty tag filters and desired-state omission/reset behavior in
 [ResourceSync definitions](docs/resource-syncs.md).
+
+`get_resource_sync_pending` reads cached changes without mutations.
+`refresh_resource_sync_pending` requires operate and Core Execute, and makes one
+explicit source/cache/alert refresh. `review_resource_sync_pending` audits an
+explicit whole-sync, resource-type or named selection and returns a private
+single-use reference only when coverage is complete. See
+[pending plans](docs/resource-syncs.md#pending-plans-and-explicit-refresh) for
+freshness, metadata and deployment limits. Desired-state application is separate.
 
 Builders and Builds add `list_builders`/`get_builder`, `list_builds`/`get_build`
 and typed create/update preview/apply tools. Direct writes support explicit
@@ -284,9 +292,12 @@ RUST_LOG=komodo_mcp=debug,rmcp=warn ./target/release/komodo-mcp
 | `list_actions` / `get_action` | Inspect safe Action settings and delegated host/administrator execution authority |
 | `list_schedules` / `get_schedule` | Inspect saved Action/Procedure schedules and separate Core cache/parse/next-run evidence |
 | `export_resources_toml` | Export explicit resources/groups and optional all-variable metadata as sanitized, incomplete inspection TOML |
+| `get_resource_sync_pending` | Inspect cached desired-state changes, deployment intent and distinct errors without mutations |
+| `review_resource_sync_pending` | Audit an explicit selection and retain a bounded private review reference without Core mutations |
 
-Each tool advertises a JSON input schema, output schema, and read-only,
-idempotent, non-destructive annotations through MCP `tools/list`. Inventory and
+Each tool advertises a JSON input schema, output schema, and effect annotations
+through MCP `tools/list`. Read tools are non-destructive; scoped review is
+non-idempotent because it retains a new process-local reference. Inventory and
 diagnostic tools issue only Core reads. Optional deployment tools carry mutation
 and non-idempotency annotations. Discovery pagination is handled by rmcp and is
 separate from the inventory page fields below.

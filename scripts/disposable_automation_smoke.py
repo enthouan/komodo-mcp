@@ -237,7 +237,7 @@ async def permission_profiles(repo_id, action_id):
         async with s.LossProxy(CONTEXT['address'], CONTEXT['editor'], False) as proxy:
             async with await s.Mcp.start(proxy.address, CONTEXT['editor'], operate, edit) as mcp:
                 names = {x['name'] for x in (await mcp.rpc('tools/list', {}))['tools']}
-                s.require(len(names) == 32 + 16 * operate + 46 * edit + 2 * (operate and edit),
+                s.require(len(names) == 34 + 17 * operate + 46 * edit + 2 * (operate and edit),
                           'capability discovery changed')
                 for name, allowed in [('run_action', operate), ('apply_schedule_update', edit)]:
                     if allowed:

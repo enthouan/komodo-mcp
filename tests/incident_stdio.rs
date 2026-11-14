@@ -34,7 +34,7 @@ const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(15);
 const SCENARIO_TIMEOUT: Duration = Duration::from_secs(45);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const STDERR_BYTES: usize = 1024 * 1024;
-const TOOLS: [&str; 32] = [
+const TOOLS: [&str; 34] = [
     "list_servers",
     "get_server",
     "list_stacks",
@@ -67,6 +67,8 @@ const TOOLS: [&str; 32] = [
     "export_resources_toml",
     "list_resource_syncs",
     "get_resource_sync",
+    "get_resource_sync_pending",
+    "review_resource_sync_pending",
 ];
 
 type Session = RunningService<RoleClient, ClientConfig>;
@@ -280,14 +282,14 @@ async fn discover_and_reject(session: &Session, core: &IncidentCore) -> Result<(
     let actual: BTreeSet<_> = listed.tools.iter().map(|t| t.name.as_ref()).collect();
     ensure!(
         actual == BTreeSet::from(TOOLS),
-        "expected all thirty-two read-only tools"
+        "expected all thirty-four read-only tools"
     );
     let reads = core.requests().len();
     for tool in &listed.tools {
         let annotations = tool.annotations.as_ref().context("missing annotations")?;
         ensure!(
             annotations.read_only_hint == Some(true)
-                && annotations.idempotent_hint == Some(true)
+                && annotations.idempotent_hint == Some(tool.name != "review_resource_sync_pending")
                 && annotations.destructive_hint == Some(false),
             "unsafe tool annotations on {}",
             tool.name

@@ -40,7 +40,7 @@ pub enum Kind {
     ResourceSync,
 }
 impl Kind {
-    fn header(self) -> &'static str {
+    pub(crate) fn header(self) -> &'static str {
         match self {
             Self::Server => "server",
             Self::Swarm => "swarm",
@@ -133,7 +133,7 @@ fn too_large() -> AppError {
         ..AppError::new(ErrorKind::ResponseTooLarge, OP, None)
     }
 }
-fn validate_selector(input: &DetailInput) -> Result<(), AppError> {
+pub(crate) fn validate_selector(input: &DetailInput) -> Result<(), AppError> {
     match (&input.id, &input.name) {
         (Some(id), None) if crate::deletion::object_id(id) => Ok(()),
         (None, Some(name))
@@ -150,7 +150,7 @@ fn validate_selector(input: &DetailInput) -> Result<(), AppError> {
     }
 }
 
-async fn select(client: &CoreClient, target: Target) -> Result<Selected, AppError> {
+pub(crate) async fn select(client: &CoreClient, target: Target) -> Result<Selected, AppError> {
     macro_rules! resolve {
         ($f:ident) => {{
             let (summary, _) = inventory::$f(client, target.target).await?;
