@@ -285,7 +285,8 @@ async def wait_final(mcp, update_id):
     for _ in range(10):
         remaining = int(end - time.monotonic())
         if remaining < 1: break
-        value = await mcp.tool('wait_for_update', {'id':update_id,'timeout_seconds':min(30,remaining)})
+        # Leave transport headroom within the fixture's thirty-second RPC bound.
+        value = await mcp.tool('wait_for_update', {'id':update_id,'timeout_seconds':min(20,remaining)})
         REPORT.setdefault('wait_end_reasons',[]).append(value['end'])
         if value['end'] == 'complete': return value
         if value['end'] not in ['deadline','poll_limit']: raise Failure('live update observation unavailable')
@@ -1130,7 +1131,7 @@ async def exercise_deletion(address, admin, deleter, reader, deleter_id, reader_
     print('Verified running Stack/Deployment deletion, Core/local denial, Server detachment and surviving host workloads.',flush=True)
 
 
-def exercise_environment():
+def exercise_environment(extension=None):
     addresses = run([*COMPOSE, 'port', 'core', '9120']).splitlines()
     if len(addresses) != 1 or not re.fullmatch(r'127\.0\.0\.1:\d+', addresses[0]):
         raise Failure('Core is not published exclusively on the expected loopback endpoint')
@@ -1204,6 +1205,13 @@ def exercise_environment():
     poll(lambda: {'web','db'} <= {s['service_name'] for s in admin.read('GetStack', {'stack': stack_id})['info']['latest_services']}, 'latest saved Compose services')
     persist()
     REPORT['compose_version'] = run([*COMPOSE, 'exec', '-T', 'periphery', 'docker', 'compose', 'version', '--short'])
+    if extension is not None:
+        # Run additional acceptance before the legacy tests remove/retarget
+        # resources, and fail early while retaining all legacy checks on success.
+        extension({'address':address,'provisioner':admin,'server_id':server_id,
+            'alternate_server_id':alternate_server_id,'periphery':periphery,
+            'operator':credentials[0],'reader':credentials[1],'editor':credentials[2],
+            'deleter':credentials[3],'users':REPORT['scope']['non_admin_identities']})
     asyncio.run(exercise(address, credentials[0],credentials[1],stack_id,deployment_id))
     asyncio.run(exercise_configuration(address,credentials[2],stack_id))
     asyncio.run(exercise_stack_definitions(address,credentials[2],stack_id,server_id,alternate_server_id))
@@ -1246,7 +1254,7 @@ def cleanup():
         (ROOT/filename).unlink(missing_ok=True)
     print('Verified cleanup: no project containers, networks or volumes remain.', flush=True)
 
-def bootstrap():
+def bootstrap(customize=None):
     global RESERVED
     for args in [['ps','-aq'], ['network','ls','-q'], ['volume','ls','-q']]:
         if run([*DOCKER, *args, '--filter', 'label=com.docker.compose.project='+PROJECT]):
@@ -1257,6 +1265,10 @@ def bootstrap():
     for key,value in values.items():
         template = template.replace(key,value)
         SECRETS.append(value)
+    if customize is not None:
+        config = json.loads(template)
+        customize(config)
+        template = json.dumps(config)
     for name,content in [('compose.json',template), ('provisioning.json',json.dumps({'admin_username':'smoke-provisioner','admin_password':values['__ADMIN_PASSWORD__']}))]:
         fd=os.open(ROOT/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
         with os.fdopen(fd,'w') as output: output.write(content)
@@ -1291,7 +1303,7 @@ def build_candidate():
     return expected
 
 
-def entry(argv=None):
+def entry(argv=None, *, fixture_customizer=None, exercise_extension=None, before_cleanup=None):
     global ROOT, PROJECT, OWNER, DOCKER, COMPOSE, BINARY, EVIDENCE, RESERVED
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--docker-context',required=True,help='explicit local Unix-socket Docker context')
@@ -1324,10 +1336,16 @@ def entry(argv=None):
         BINARY = build_candidate()
         REPORT['phase'] = 'provisioning'
         persist()
-        bootstrap()
+        if fixture_customizer is None:
+            bootstrap()
+        else:
+            bootstrap(fixture_customizer)
         REPORT['phase'] = 'exercising'
         persist()
-        exercise_environment()
+        if exercise_extension is None:
+            exercise_environment()
+        else:
+            exercise_environment(exercise_extension)
     except BaseException as error:
         result = 1
         REPORT['passed'] = False
@@ -1346,6 +1364,14 @@ def entry(argv=None):
             REPORT['evidence_error'] = type(error).__name__
         try:
             if RESERVED:
+                if before_cleanup is not None:
+                    try:
+                        before_cleanup()
+                    except BaseException as error:
+                        result = 1
+                        REPORT['passed'] = False
+                        REPORT['automatic_execution_cleanup_error'] = (
+                            str(error) if isinstance(error, Failure) else type(error).__name__)
                 cleanup()
             else:
                 REPORT.update(cleanup_verified=True,cleanup_action='no resources created')

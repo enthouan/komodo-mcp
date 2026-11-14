@@ -160,7 +160,9 @@ Observed revisions use a validated hexadecimal `Update.commit_hash` when Core
 returns it. Core 2.3.2's clone handler drops that structured hash; its specific
 successful `Latest Commit` stage can provide the observed short hash instead.
 The projection decodes only that bounded, unambiguous pinned stage, including
-its ANSI formatting, and never returns unrestricted stdout or commit messages.
+Core's exact HTML hash-line wrapper and narrow ANSI/plain forms. It never
+returns unrestricted stdout or commit messages. Core uses `rev-parse --short`;
+retain the abbreviated evidence rather than claiming a full hash was returned.
 Unparseable/missing revision evidence stays absent. URL-bearing history tokens
 are redacted because Git failures can echo embedded credentials.
 

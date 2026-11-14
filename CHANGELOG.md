@@ -8,6 +8,13 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Validate integrated Repo → Server Builder → Build → image → explicit Deployment
+  evidence through production stdio, with separate terminal outcomes and workload
+  health. Add cross-family deterministic fixtures, a reproducible automation
+  walkthrough and opt-in disposable pinned Core/Periphery acceptance with scoped
+  identities, private Git/registry workloads, recovery evidence and verified cleanup.
+  ([#93](https://github.com/enthouan/komodo-mcp/issues/93))
+
 - Inspect Core Action/Procedure schedules with bounded pagination and separate
   saved configuration, cache, parse-error and next/last-run evidence. Preview and
   apply typed Cron/English/timezone/enable/alert edits through the shared private

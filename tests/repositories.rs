@@ -627,3 +627,51 @@ async fn missing_or_ambiguous_revision_evidence_stays_unknown_and_stage_output_i
     assert_eq!(core.requests("execute").len(), 1);
     finish(p, s).await;
 }
+
+#[tokio::test]
+async fn pinned_html_revision_is_narrow_and_plain_sgr_and_restarted_lookup_remain_supported() {
+    let core = Core::start().await;
+    let (p, s) = Process::start_profile(&core.address, true, false).await;
+    let r = data(call(&s, "clone_repo", execution()).await);
+    let id = r["update_id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        r["latest_update"]["observed_revision"]["revision"],
+        "a1b2c3d"
+    );
+    finish(p, s).await;
+    let (p, s) = Process::start_profile(&core.address, false, false).await;
+    for (line, expected) in [
+        ("hash: abc1234", Some("abc1234")),
+        (
+            "\u{1b}[2mhash:\u{1b}[0m \u{1b}[1mabc1234\u{1b}[0m",
+            Some("abc1234"),
+        ),
+        (
+            "<span style=\"color: var(--mantine-color-dimmed)\">hash:</span> <span style=\"font-weight: bolder\">abc1234</span>",
+            Some("abc1234"),
+        ),
+        ("<b>hash: abc1234</b>", None),
+        (
+            "<span style=\"color: var(--mantine-color-dimmed)\">hash:</span> <span style=\"font-weight: bolder\">abc1234</span>tail",
+            None,
+        ),
+        (
+            "<span style=\"color: var(--mantine-color-dimmed)\">hash:</span> <span style=\"font-weight: bolder\">abc1234",
+            None,
+        ),
+        ("hash: abc1234\u{1b}]8;;https://private.invalid\u{7}", None),
+    ] {
+        core.data.lock().unwrap().updates.get_mut(&id).unwrap()["logs"][0]["stdout"] = json!(
+            format!("{line}\nmessage: never-return-private-commit-message")
+        );
+        let observed = data(call(&s, "get_update", json!({"id":id})).await);
+        assert_eq!(observed["observed_revision"]["revision"].as_str(), expected);
+        assert!(
+            !serde_json::to_string(&observed)
+                .unwrap()
+                .contains("never-return-private-commit-message")
+        );
+    }
+    assert_eq!(core.requests("execute").len(), 1);
+    finish(p, s).await;
+}

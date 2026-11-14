@@ -1,5 +1,12 @@
 # Disposable production-stdio smoke fixture
 
+The automation extension, `scripts/disposable_automation_smoke.py`, adds real
+Repo/Server Builder/Build/registry/Deployment and Procedure/Action/schedule
+acceptance while retaining the original checks below. See the
+[automation walkthrough](../../../docs/automation-walkthrough.md) for separate
+admin test authority, private HTTPS Git, runtime evidence and policy disabling
+before verified teardown. The coverage exclusions below describe the base runner.
+
 Used only by `python3 scripts/disposable_core_smoke.py` with an explicit local
 Docker context and unused `komodo-mcp-smoke-...` project. Standard CI runs the
 synthetic Rust scenarios and runner safety tests; it does not start Docker/Core.

@@ -28,3 +28,9 @@ croner = "=3.0.1"
 english-to-cron = "=0.1.7"
 rmcp = { version = "=3.9.0", default-features = false, features = ["client", "transport-async-rw"] }
 tokio = { version = "1", features = ["io-util", "net", "process", "signal", "sync", "time"] }
+
+# Strict stdio tests keep a five-second handshake deadline even for the bounded
+# megabyte escaped-credential automaton. Avoid measuring its unoptimized build
+# machinery; production release builds already optimize this dependency.
+[profile.dev.package.aho-corasick]
+opt-level = 1
