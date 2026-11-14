@@ -413,6 +413,8 @@ async fn deployment_execution_coverage_rejects_filters_and_disabled_resources() 
         (typed(), json!([]), true, false),
         (whole(), json!(["owned"]), true, false),
         (whole(), json!([]), false, false),
+        (whole(), json!(["nonmatching"]), true, false),
+        (whole(), json!(["nonmatching"]), false, false),
     ] {
         let core = Core::start().await;
         let source = "[[stack]]\nname='app'\ndeploy=true\ntags=['owned']\nafter=['database']\n[[deployment]]\nname='database'\ndeploy=true\ntags=['owned']\n";
@@ -420,9 +422,10 @@ async fn deployment_execution_coverage_rejects_filters_and_disabled_resources() 
         {
             let mut d = core.data.lock().unwrap();
             let s = d.syncs.get_mut(SYNC).unwrap();
+            let cached_rows = include && tags.as_array().unwrap().iter().all(|tag| tag == "owned");
             s["config"]["match_tags"] = tags;
             s["config"]["include_resources"] = json!(include);
-            if include {
+            if cached_rows {
                 s["info"]["resource_updates"] = json!([
                     resource("Stack", "", create("stack", "app")),
                     resource("Deployment", "", create("deployment", "database"))
@@ -437,6 +440,34 @@ async fn deployment_execution_coverage_rejects_filters_and_disabled_resources() 
         } else {
             no_ref(&v, "deployment_execution_scope_differs_from_cached_view");
         }
+        read_only(&core);
+        finish(p, s).await;
+    }
+}
+
+#[tokio::test]
+async fn source_tag_ids_with_name_filters_never_authorize_unresolved_metadata_coverage() {
+    for tags in [
+        "'aaaaaaaaaaaaaaaaaaaaaaaa'",
+        "'owned','aaaaaaaaaaaaaaaaaaaaaaaa'",
+    ] {
+        let core = Core::start().await;
+        seed(
+            &core,
+            &format!("[[server]]\nname='existing'\ntemplate=false\ntags=[{tags}]\n"),
+        );
+        {
+            let mut d = core.data.lock().unwrap();
+            d.syncs.get_mut(SYNC).unwrap()["config"]["match_tags"] = json!(["owned"]);
+            d.server["template"] = json!(true);
+        }
+        let (p, s) = Process::start_profile(&core.address, false, false).await;
+        let v = data(call(&s, "review_resource_sync_pending", review(whole())).await);
+        no_ref(
+            &v,
+            "objectid_shaped_source_tags_require_authoritative_resolution",
+        );
+        assert_eq!(v["plan"]["cached_status"], "clean");
         read_only(&core);
         finish(p, s).await;
     }

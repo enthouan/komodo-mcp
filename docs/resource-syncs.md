@@ -201,6 +201,13 @@ differently for filtered runs, including when resources are disabled. A source
 requesting any Stack/Deployment `deploy=true` therefore permits a review reference
 only for whole-sync, `include_resources:true` and an empty resource-tag filter.
 Other combinations remain inspectable with an explicit coverage gap.
+This conservative deployment-intent check covers every source row before tag
+filtering, including rows absent from Core's cached deployment list.
+
+With a nonempty tag filter, ID-shaped tags in source resources also withhold the
+reference. Core has an initial literal source filter and a later ID-to-name tag
+predicate; review does not assume those stages are interchangeable or infer tag
+identity from a clean cache. Use source tag names for review authorization.
 
 A reference is issued only for inspected Core **2.3.2**, complete evidence and
 an exact displayable selection. It shares the 16-entry process-local preview

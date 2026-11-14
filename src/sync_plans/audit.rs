@@ -16,7 +16,6 @@ struct DesiredResource {
     kind: Kind,
     name: String,
     template: bool,
-    deploy: bool,
     after: Vec<String>,
 }
 struct Desired {
@@ -84,18 +83,29 @@ fn has_whole(scope: &ExecutionScope) -> bool {
     matches!(scope, ExecutionScope::WholeSync {})
 }
 fn add_resources<C: Default>(
-    out: &mut Vec<DesiredResource>,
+    out: &mut Desired,
     rows: &[ResourceToml<C>],
     kind: Kind,
     config: &ResourceSyncConfig,
+    gaps: &mut Vec<&'static str>,
 ) {
     for row in rows {
+        // Coverage policy considers every source row before literal source-tag
+        // filtering. Never let a filtered cache imply no deployment intent.
+        if matches!(kind, Kind::Stack | Kind::Deployment) && row.deploy {
+            out.deploy_requested = true;
+        }
+        if !config.match_tags.is_empty() && row.tags.iter().any(|tag| valid_id(tag)) {
+            gap(
+                gaps,
+                "objectid_shaped_source_tags_require_authoritative_resolution",
+            );
+        }
         if config.match_tags.iter().all(|tag| row.tags.contains(tag)) {
-            out.push(DesiredResource {
+            out.resources.push(DesiredResource {
                 kind,
                 name: row.name.clone(),
                 template: row.template,
-                deploy: row.deploy,
                 after: row.after.clone(),
             });
         }
@@ -147,7 +157,7 @@ fn desired(sync: &ResourceSync, gaps: &mut Vec<&'static str>) -> Option<Desired>
             gap(gaps, "source_document_unparseable_or_unsupported");
             return None;
         };
-        macro_rules! extend {($(($field:ident,$kind:ident)),* $(,)?)=>{$(add_resources(&mut desired.resources,&doc.$field,Kind::$kind,&sync.config);)*};}
+        macro_rules! extend {($(($field:ident,$kind:ident)),* $(,)?)=>{$(add_resources(&mut desired,&doc.$field,Kind::$kind,&sync.config,gaps);)*};}
         extend!(
             (servers, Server),
             (swarms, Swarm),
@@ -179,12 +189,7 @@ fn desired(sync: &ResourceSync, gaps: &mut Vec<&'static str>) -> Option<Desired>
                 "inline_or_unconfigured_nested_sync_definitions_ignored_by_core",
             );
         }
-        add_resources(
-            &mut desired.resources,
-            &syncs,
-            Kind::ResourceSync,
-            &sync.config,
-        );
+        add_resources(&mut desired, &syncs, Kind::ResourceSync, &sync.config, gaps);
         for v in doc.variables {
             if !name_ok(&v.name) || !variable_names.insert(v.name.clone()) {
                 gap(gaps, "duplicate_or_unbounded_source_variable");
@@ -211,9 +216,6 @@ fn desired(sync: &ResourceSync, gaps: &mut Vec<&'static str>) -> Option<Desired>
         {
             gap(gaps, "duplicate_or_unbounded_source_resource");
             return None;
-        }
-        if matches!(resource.kind, Kind::Stack | Kind::Deployment) && resource.deploy {
-            desired.deploy_requested = true;
         }
     }
     Some(desired)
