@@ -425,7 +425,9 @@ async fn solve(
                 "get_deployment_logs",
                 "get_stack_logs",
                 "stack_diagnose",
-                "find_resources_by_tag"
+                "find_resources_by_tag",
+                "list_repos",
+                "get_repo"
             ]),
         "missing expected inventory tools"
     );

@@ -153,10 +153,12 @@ impl CoreClient {
         let parameters = serde_json::to_value(request).map_err(|_| {
             AppError::arguments(operation, "Use a supported typed configuration request")
         })?;
-        crate::repositories::require_webhook_operate(
+        crate::repositories::require_execution_effect_operate(
             self,
             (operation == "CreateRepo" && parameters["config"]["webhook_enabled"] != false)
-                || (operation == "UpdateRepo" && parameters["config"]["webhook_enabled"] == true),
+                || (operation == "UpdateRepo"
+                    && crate::repositories::update_requires_operate(&parameters["config"])),
+            operation,
         )?;
         // Enforce Core's implicit execution boundary at the shared transport too.
         // Do not rely on a previously observed auto_update policy: it can race.
@@ -705,16 +707,25 @@ mod write_policy_tests {
                     .await;
                 assert!(matches!(result,Err(e)if e.kind==ErrorKind::CapabilityDisabled));
             }
-            let result = client
-                .write(UpdateRepo {
-                    id: "00000000000000000000000a".into(),
-                    config: PartialRepoConfig {
-                        webhook_enabled: Some(true),
-                        ..Default::default()
-                    },
-                })
-                .await;
-            assert!(matches!(result,Err(e)if e.kind==ErrorKind::CapabilityDisabled));
+            for config in [
+                serde_json::json!({"webhook_enabled":true}),
+                serde_json::json!({"repo":"fixture/changed"}),
+                serde_json::json!({"branch":"next"}),
+                serde_json::json!({"server_id":"000000000000000000000001"}),
+                serde_json::json!({"git_account":"changed-reference"}),
+                serde_json::json!({"path":"changed"}),
+                serde_json::json!({"environment":"TOKEN=[[REFERENCE]]"}),
+                serde_json::json!({"on_pull":{"path":"","command":"printf changed","shell_mode":true}}),
+                serde_json::json!({"webhook_enabled":false,"on_clone":{"path":"","command":"printf changed","shell_mode":true}}),
+            ] {
+                let result = client
+                    .write(UpdateRepo {
+                        id: "00000000000000000000000a".into(),
+                        config: serde_json::from_value::<PartialRepoConfig>(config).unwrap(),
+                    })
+                    .await;
+                assert!(matches!(result,Err(e)if e.kind==ErrorKind::CapabilityDisabled));
+            }
             for config in [
                 PartialStackConfig {
                     repo: Some(String::new()),

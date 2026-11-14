@@ -378,8 +378,8 @@ Repo definitions and explicit clone/pull use the same preview, receipt and
 recovery foundations. Inspect saved hook presence with `get_repo` before running,
 and acknowledge those flags in the operation input. Clone can run on-clone and
 on-pull; pull can run on-pull. Definition creation defaults webhooks off, enabling
-them requires both local grants, and complete authoritative read-back verifies
-saves independently of execution. See [repositories](docs/repositories.md).
+them or changing execution-bearing Repo fields requires both local grants, and
+complete authoritative read-back verifies saves independently of execution. See [repositories](docs/repositories.md).
 
 ## Fleet health
 

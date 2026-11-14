@@ -594,8 +594,8 @@ async fn deadline_keeps_submission_unknown_even_when_later_reads_observe_removal
             .unwrap()
             .with_capabilities(CapabilityPolicy::new(true, true)),
         RequestPolicy {
-            connect_timeout: Duration::from_millis(100),
-            operation_timeout: Duration::from_millis(100),
+            connect_timeout: Duration::from_secs(1),
+            operation_timeout: Duration::from_secs(1),
         },
     )
     .unwrap();
@@ -626,7 +626,7 @@ async fn deadline_keeps_submission_unknown_even_when_later_reads_observe_removal
         "definition_absent_at_direct_read"
     );
     assert_eq!(r["observation_errors"][0]["kind"], "timeout");
-    tokio::time::sleep(Duration::from_millis(350)).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
     assert_eq!(core.writes().len(), 1);
 }
 

@@ -43,7 +43,7 @@ async fn preview(s: &Session, input: &Value) -> Value {
 #[tokio::test]
 async fn create_inspect_and_one_field_edits_preserve_private_and_unrelated_configuration() {
     let core = Core::start().await;
-    let (p, s) = Process::start_profile(&core.address, false, true).await;
+    let (p, s) = Process::start_profile(&core.address, true, true).await;
     let input = json!({"name":"new-repo","config":{"target":{"kind":"server","target":{"id":SERVER}},"repo":"fixture/new-workload","branch":"main","git_account":"new-private-account"}});
     let proposed = data(call(&s, "preview_repo_create", input.clone()).await);
     assert!(core.requests("write").is_empty());
@@ -84,7 +84,7 @@ async fn create_inspect_and_one_field_edits_preserve_private_and_unrelated_confi
 #[tokio::test]
 async fn noop_and_explicit_clears_are_deliberate_partial_writes() {
     let core = Core::start().await;
-    let (p, s) = Process::start_profile(&core.address, false, true).await;
+    let (p, s) = Process::start_profile(&core.address, true, true).await;
     for patch in [json!({}), json!({"branch":"main"})] {
         let input = edit(patch);
         let preview = preview(&s, &input).await;
@@ -116,7 +116,7 @@ async fn noop_and_explicit_clears_are_deliberate_partial_writes() {
 async fn private_baseline_and_reference_changes_invalidate_consumed_previews() {
     for reference in [false, true] {
         let core = Core::start().await;
-        let (p, s) = Process::start_profile(&core.address, false, true).await;
+        let (p, s) = Process::start_profile(&core.address, true, true).await;
         let input = edit(if reference {
             json!({"target":{"kind":"server","target":{"id":SERVER}}})
         } else {
@@ -144,7 +144,7 @@ async fn private_baseline_and_reference_changes_invalidate_consumed_previews() {
         finish(p, s).await;
     }
     let core = Core::start().await;
-    let (p, s) = Process::start_profile(&core.address, false, true).await;
+    let (p, s) = Process::start_profile(&core.address, true, true).await;
     let input = edit(json!({"branch":"next"}));
     let preview = preview(&s, &input).await;
     let mut changed = apply(&input, &preview);
@@ -169,7 +169,7 @@ async fn save_errors_and_authoritative_readback_failures_never_retry() {
         WriteFault::ReadBackDenied,
     ] {
         let core = Core::start().await;
-        let (p, s) = Process::start_profile(&core.address, false, true).await;
+        let (p, s) = Process::start_profile(&core.address, true, true).await;
         let input = edit(json!({"branch":"next"}));
         let preview = preview(&s, &input).await;
         core.data.lock().unwrap().write_fault = fault;
@@ -258,6 +258,71 @@ async fn independent_grants_guard_discovery_direct_dispatch_and_webhook_enable_b
             finish(p, s).await;
         }
     }
+}
+
+#[tokio::test]
+async fn edit_only_cannot_change_execution_fields_under_active_or_racing_webhooks() {
+    for active in [false, true] {
+        let core = Core::start().await;
+        core.data.lock().unwrap().repos.get_mut(REPO).unwrap()["config"]["webhook_enabled"] =
+            json!(active);
+        let (p, s) = Process::start_profile(&core.address, false, true).await;
+        for patch in [
+            json!({"repo":"fixture/changed"}),
+            json!({"branch":"next"}),
+            json!({"git_provider":"source.invalid"}),
+            json!({"git_https":false}),
+            json!({"git_account":"new-reference"}),
+            json!({"commit":"abcd1234"}),
+            json!({"path":"owned/path"}),
+            json!({"target":{"kind":"server","target":{"id":SERVER}}}),
+            json!({"environment":"TOKEN=[[REFERENCE]]"}),
+            json!({"on_clone":{"path":"","command":"printf changed","shell_mode":true}}),
+            json!({"on_pull":{"path":"","command":"printf changed","shell_mode":true}}),
+            json!({"webhook_enabled":false,"branch":"next"}),
+        ] {
+            let input = edit(patch);
+            let preview = preview(&s, &input).await;
+            assert_eq!(
+                preview["definition"]["details"]["requires_operate_to_apply"],
+                true
+            );
+            let before = core.requests("read").len();
+            assert_eq!(
+                error(call(&s, "apply_repo_update", apply(&input, &preview)).await)["kind"],
+                "capability_disabled"
+            );
+            assert_eq!(core.requests("read").len(), before);
+            assert!(core.requests("write").is_empty());
+        }
+        // A genuine empty no-op and removing the automatic-execution capability
+        // remain possible with edit alone; neither grants permission to execute.
+        let empty = edit(json!({}));
+        let empty_preview = preview(&s, &empty).await;
+        assert_eq!(
+            data(call(&s, "apply_repo_update", apply(&empty, &empty_preview)).await)["outcome"],
+            "no_op"
+        );
+        let disable = edit(json!({"webhook_enabled":false}));
+        let disable_preview = preview(&s, &disable).await;
+        let saved = data(call(&s, "apply_repo_update", apply(&disable, &disable_preview)).await);
+        assert_eq!(saved["saved_configuration_verified"], true);
+        assert_eq!(core.requests("write").len(), usize::from(active));
+        assert!(core.requests("execute").is_empty());
+        finish(p, s).await;
+    }
+    let core = Core::start().await;
+    let (p, s) = Process::start_profile(&core.address, false, true).await;
+    let input = json!({"name":"inert-repo","config":{"target":{"kind":"server","target":{"id":SERVER}},"repo":"fixture/inert","branch":"main","on_pull":{"path":"","command":"printf trusted","shell_mode":true}}});
+    let preview = data(call(&s, "preview_repo_create", input.clone()).await);
+    let saved = data(call(&s, "apply_repo_create", apply(&input, &preview)).await);
+    assert_eq!(saved["outcome"], "saved");
+    assert_eq!(
+        saved["definition"]["details"]["after"]["webhook_enabled"],
+        false
+    );
+    assert!(core.requests("execute").is_empty());
+    finish(p, s).await;
 }
 
 #[tokio::test]

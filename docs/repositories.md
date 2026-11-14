@@ -63,6 +63,14 @@ Builder associations and other configuration, are preserved.
 | `environment` | Complete secret-bearing replacement string; `""` clears |
 | `webhook_enabled` | Boolean; supplying `true` requires both local grants at apply |
 
+Every execution-bearing **update** requires both local grants: source, branch,
+provider/HTTPS, credential reference, commit, target, path, hooks and environment.
+This includes supplied unchanged fields, explicit clears and a patch that also
+disables webhooks. A saved webhook can already be active or can be enabled after
+our last read; a configuration-only caller cannot replace its executable inputs.
+Configuration-only access still permits all previews, creation with webhooks off,
+an empty no-op and a webhook-disable-only update.
+
 Omission preserves; JSON null, unknown fields and display redaction markers are
 rejected. Patches are bounded to 16384 serialized JSON bytes. Commands/environment
 use the pinned Core newline normalization before comparison and submission.
@@ -90,10 +98,11 @@ The inspected Core 2.3.2 definition-write hooks refresh caches without invoking
 clone/pull or running configured hooks. The SDK warns about old-Server cleanup;
 the inspected update path does not perform it, so old files can remain. Inspect
 both Servers after moving a Repo. Enabling webhooks permits future Core-defined
-clone/pull/Repo-build executions with the saved trusted configuration. It needs
-both independent local grants in tool handlers and the shared transport, including
-creation; it does not submit an execution itself. This surface neither changes
-the saved Builder association nor exposes Repo-build execution.
+clone/pull/Repo-build executions with the saved trusted configuration. Enabling
+it and every execution-bearing update need both independent local grants in tool
+handlers and the shared transport. These writes submit no separate execution
+request. This surface neither changes the saved Builder association nor exposes
+Repo-build execution.
 
 ## Inspect effects before one clone or pull
 

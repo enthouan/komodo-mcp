@@ -331,8 +331,8 @@ async fn write_deadline_retains_unknown_acceptance_and_direct_apis_enforce_polic
                 .unwrap()
                 .with_capabilities(CapabilityPolicy::new(true, edit)),
             RequestPolicy {
-                connect_timeout: Duration::from_millis(100),
-                operation_timeout: Duration::from_millis(100),
+                connect_timeout: Duration::from_secs(1),
+                operation_timeout: Duration::from_secs(1),
             },
         )
         .unwrap()
@@ -366,7 +366,7 @@ async fn write_deadline_retains_unknown_acceptance_and_direct_apis_enforce_polic
     assert_eq!(result["observation_error"]["kind"], "timeout");
     assert_eq!(core.writes().len(), 1);
     // The owned connection completes before the fixture server is dropped.
-    tokio::time::sleep(Duration::from_millis(350)).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
 }
 
 fn creation(name: &str, source: Value, swarm: bool) -> Value {

@@ -10,9 +10,9 @@ New changes go under `Unreleased` until the next release is prepared.
 
 - Add bounded Repo inspection, typed definition preview/apply and explicit
   clone/pull with prior hook acknowledgement. Preserve omitted secrets, verify
-  authoritative saved configuration and gate webhook enabling with both local
-  grants. Extend shared receipts/history/wait/recovery with observed revision
-  evidence and no replay or automatic attribution after lost replies.
+  authoritative saved configuration and gate execution-bearing updates and
+  webhook enabling with both local grants. Extend shared receipts/history/wait/
+  recovery with observed revision evidence and no replay or automatic attribution after lost replies.
   ([#22](https://github.com/enthouan/komodo-mcp/issues/22))
 
 ## v0.4.0

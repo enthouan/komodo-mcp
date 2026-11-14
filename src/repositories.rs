@@ -390,14 +390,31 @@ impl RepoPatch {
         }
     }
 }
-pub(crate) fn require_webhook_operate(client: &CoreClient, enabled: bool) -> Result<(), AppError> {
-    if enabled && !client.capabilities().allows(Capability::Operate) {
+/// Fail closed for execution-bearing edits even when a preview saw webhooks
+/// disabled: another operator can enable them after the final read. Only empty
+/// patches, ordinary links and explicit webhook disabling avoid enabling or
+/// replacing executable inputs.
+pub(crate) fn update_requires_operate(config: &Value) -> bool {
+    config.as_object().is_none_or(|fields| {
+        fields.iter().any(|(key, value)| match key.as_str() {
+            "links" => false,
+            "webhook_enabled" => value != false,
+            _ => true,
+        })
+    })
+}
+pub(crate) fn require_execution_effect_operate(
+    client: &CoreClient,
+    required: bool,
+    operation: &'static str,
+) -> Result<(), AppError> {
+    if required && !client.capabilities().allows(Capability::Operate) {
         return Err(AppError {
             field: Some("KOMODO_ALLOW_OPERATE"),
             correction: Some(
-                "Enabling Repo webhooks permits future trusted execution and requires both local grants. No Core request was submitted.",
+                "Execution-bearing Repo updates and enabling webhooks require both local grants. A webhook can already be active or be enabled concurrently; source, target, credentials, hooks, environment and paths can affect future execution. No Core request was submitted.",
             ),
-            ..AppError::new(ErrorKind::CapabilityDisabled, "UpdateRepo", None)
+            ..AppError::new(ErrorKind::CapabilityDisabled, operation, None)
         });
     }
     Ok(())
@@ -469,14 +486,18 @@ fn result(
         effects: vec![
             "Repo hooks, environment interpolation and destination paths are trusted executable configuration on the attached Server. Clone runs on-clone then on-pull; pull runs on-pull. Saving does not prove any hook or clone completed.",
             "The inspected Core 2.3.2 CreateRepo/UpdateRepo hooks refresh state caches without cloning, pulling or running hooks. MCP submits no execute or Git-file/commit request. The SDK warns about old-Server cleanup, but the inspected update path leaves old files in place; inspect both Servers separately.",
-            "Creation defaults webhooks off explicitly. Supplying webhook_enabled=true requires both local grants, including generic writes, because it enables future trusted execution. Other writers and webhook/execution requests can race after final inspection.",
+            "Creation defaults webhooks off explicitly. Enabling webhooks or applying any execution-bearing Repo update requires both local grants, including generic writes, independently of the observed webhook state. Only empty patches and explicit webhook disabling are exempt on this typed surface. This prevents changing executable configuration under already-active or concurrently enabled webhooks.",
             "Core enforces creation policy, Write on an existing Repo and Read/Attach on a supplied Server. Visible Server definitions/trust are bound privately and revalidated. Credential references are preserved, never disclosed or resolved with elevated credentials; token availability in Core/Periphery is not verified by this preview.",
             "Shared previews expire after ten minutes and are consumed on apply before I/O. No-op and stale previews submit zero writes. At most one typed partial write is followed by an independent authoritative read-back. Core has no compare-and-swap: a concurrent final-read/write race remains, and an ambiguous write is never retried.",
         ],
         definition: Some(common::DefinitionPreview::Repo(DefinitionPreview {
             before: current.map(|c| summary(client, c)),
             after: summary(client, &after),
-            requires_operate_to_apply: p.webhook_enabled == Some(true),
+            requires_operate_to_apply: if current.is_some() {
+                update_requires_operate(&patch)
+            } else {
+                p.webhook_enabled == Some(true)
+            },
             reference_validation: "Selected Server definition and pinned trust where readable; Core decides Attach and credential availability. Omitted references are preserved, not claimed as revalidated.",
         })),
     })
@@ -543,7 +564,11 @@ pub async fn apply_update(
     input: ApplyInput,
 ) -> Result<ConfigurationResult, AppError> {
     common::require_edit(client)?;
-    require_webhook_operate(client, input.patch.webhook_enabled == Some(true))?;
+    require_execution_effect_operate(
+        client,
+        update_requires_operate(&serde_json::to_value(&input.patch).expect("typed patch")),
+        "UpdateRepo",
+    )?;
     input.patch.validate(client)?;
     let submitted = PreviewInput {
         target: input.target.clone(),
@@ -641,7 +666,11 @@ pub async fn apply_create(
     input: CreateApplyInput,
 ) -> Result<ConfigurationResult, AppError> {
     common::require_edit(client)?;
-    require_webhook_operate(client, input.config.webhook_enabled == Some(true))?;
+    require_execution_effect_operate(
+        client,
+        input.config.webhook_enabled == Some(true),
+        "CreateRepo",
+    )?;
     let input_config = CreateInput {
         name: input.name,
         config: input.config,

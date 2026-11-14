@@ -569,7 +569,9 @@ async fn write(
         WriteReply::WriteDenied => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":format!("User does not have required permissions on this {}. Must have at least Write permissions",if value["type"].as_str().unwrap().ends_with("Deployment"){"Deployment"}else if value["type"].as_str().unwrap().ends_with("Server"){"Server"}else{"Stack"}),"trace":[format!("{KEY} {SECRET}")]}))).into_response(),
         WriteReply::AttachDenied => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"User does not have required permissions on this Server. Must have at least Read permissions, as well as these specific permissions: [Attach]","trace":[format!("{KEY} {SECRET}")]}))).into_response(),
         WriteReply::Delayed => {
-            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            // Deadline tests use a one-second request budget: give setup reads
+            // scheduling margin, while this write deterministically exceeds it.
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
             Json(saved).into_response()
         }
         WriteReply::Denied => (
