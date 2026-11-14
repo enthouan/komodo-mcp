@@ -1204,6 +1204,13 @@ def exercise_environment(extension=None):
     poll(lambda: {'web','db'} <= {s['service_name'] for s in admin.read('GetStack', {'stack': stack_id})['info']['latest_services']}, 'latest saved Compose services')
     persist()
     REPORT['compose_version'] = run([*COMPOSE, 'exec', '-T', 'periphery', 'docker', 'compose', 'version', '--short'])
+    if extension is not None:
+        # Run additional acceptance before the legacy tests remove/retarget
+        # resources, and fail early while retaining all legacy checks on success.
+        extension({'address':address,'provisioner':admin,'server_id':server_id,
+            'alternate_server_id':alternate_server_id,'periphery':periphery,
+            'operator':credentials[0],'reader':credentials[1],'editor':credentials[2],
+            'deleter':credentials[3],'users':REPORT['scope']['non_admin_identities']})
     asyncio.run(exercise(address, credentials[0],credentials[1],stack_id,deployment_id))
     asyncio.run(exercise_configuration(address,credentials[2],stack_id))
     asyncio.run(exercise_stack_definitions(address,credentials[2],stack_id,server_id,alternate_server_id))
@@ -1214,13 +1221,6 @@ def exercise_environment(extension=None):
     if not {'web','db'} <= {s['service'] for s in services}:
         raise Failure('requested service/dependency were not observed')
     asyncio.run(exercise_tags(address,credentials[2],credentials[1],stack_id))
-    if extension is not None:
-        # Extensions use explicitly designated identities in this owned Core.
-        # The provisioning client remains setup/teardown authority only.
-        extension({'address':address,'provisioner':admin,'server_id':server_id,
-            'alternate_server_id':alternate_server_id,'periphery':periphery,
-            'operator':credentials[0],'reader':credentials[1],'editor':credentials[2],
-            'deleter':credentials[3],'users':REPORT['scope']['non_admin_identities']})
     # Server removal is last: it deliberately detaches the original workloads.
     asyncio.run(exercise_deletion(address,admin,credentials[3],credentials[1],
         REPORT['scope']['non_admin_identities'][3]['id'],REPORT['scope']['non_admin_identities'][1]['id'],

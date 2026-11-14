@@ -24,9 +24,11 @@ def customize(config):
               'komodo-mcp.test.scope': 'disposable-stdio-smoke'}
     config['services']['docker']['command'] = ['--insecure-registry=registry:5000']
     config['services']['core']['environment']['KOMODO_TIMEZONE'] = 'Asia/Tokyo'
+    for service in ['core', 'periphery']:
+        config['services'][service]['environment']['GIT_SSL_CAINFO'] = '/tmp/automation-source-ca.crt'
     config['services']['registry'] = {'image': 'registry:2.8.3', 'labels': dict(labels)}
-    config['services']['source'] = {'image': 'busybox:1.37.0', 'labels': dict(labels),
-        'command': ['sh', '-c', 'mkdir -p /www && exec httpd -f -p 8080 -h /www']}
+    config['services']['source'] = {'image': 'nginx:1.27.5-alpine', 'labels': dict(labels),
+        'command': ['sh', '-c', 'while [ ! -f /etc/nginx/automation-ready ]; do sleep 1; done; exec nginx -g "daemon off;"']}
 
 
 def api(credentials):
@@ -87,16 +89,17 @@ async def finish(mcp, receipt, expected='succeeded'):
     update_id = receipt['update_id']
     ACTIVE.append((receipt['resource']['kind'], receipt['resource']['id'], update_id))
     update = await s.observe(mcp, update_id)
-    s.require(update['outcome'] == expected, 'unexpected terminal execution outcome for ' + receipt['core_operation'])
     ACTIVE.remove((receipt['resource']['kind'], receipt['resource']['id'], update_id))
     evidence = {'operation': receipt['core_operation'], 'resource': receipt['resource'],
         'update_id': update_id, 'submission': receipt['submission'], 'outcome': update['outcome'],
-        'stages': [{'name': x['stage'], 'success': x['success']} for x in update['stages']]}
+        'stages': [{'name': x['stage'], 'success': x['success'], 'stderr': x.get('stderr')}
+                   for x in update['stages']]}
     for key in ['observed_revision', 'observed_build_result', 'observed_procedure_result', 'observed_action_result']:
         if update.get(key) is not None:
             evidence[key] = update[key]
     s.REPORT['automation']['executions'].append(evidence)
     s.persist()
+    s.require(update['outcome'] == expected, 'unexpected terminal execution outcome for ' + receipt['core_operation'])
     print('Verified automation execution:', receipt['core_operation'], expected, flush=True)
     return update
 
@@ -109,6 +112,27 @@ async def run(mcp, family, resource_id, expected='succeeded', **extra):
 
 
 def source_fixture():
+    # Core's Git selector is HTTPS or SSH. Trust a private fixture CA explicitly;
+    # do not disable certificate verification or expose the source on host ports.
+    cert, key = s.ROOT / 'source-ca.crt', s.ROOT / 'source.key'
+    config = s.ROOT / 'source-openssl.cnf'
+    config.write_text('[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n'
+        '[dn]\nCN=source\n[ext]\nsubjectAltName=DNS:source\nbasicConstraints=critical,CA:TRUE\n'
+        'keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\n')
+    s.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+        '-keyout', str(key), '-out', str(cert), '-config', str(config)])
+    nginx = s.ROOT / 'source-nginx.conf'
+    nginx.write_text('events {}\nhttp { server { listen 443 ssl; server_name source; '
+        'ssl_certificate /etc/nginx/source-ca.crt; ssl_certificate_key /etc/nginx/source.key; '
+        'root /www; } }\n')
+    source_container = s.run([*s.COMPOSE, 'ps', '-q', 'source'])
+    for source, destination in [(cert, '/etc/nginx/source-ca.crt'), (key, '/etc/nginx/source.key'),
+                                (nginx, '/etc/nginx/nginx.conf')]:
+        s.run([*s.DOCKER, 'cp', str(source), source_container + ':' + destination])
+    for service in ['core', 'periphery']:
+        container = s.run([*s.COMPOSE, 'ps', '-q', service])
+        s.run([*s.DOCKER, 'cp', str(cert), container + ':/tmp/automation-source-ca.crt'])
+    s.run([*s.COMPOSE, 'exec', '-T', 'source', 'touch', '/etc/nginx/automation-ready'])
     directory = s.ROOT / 'workload'
     directory.mkdir()
     marker = 'owned-revision-' + secrets.token_hex(12)
@@ -164,7 +188,7 @@ def provision(context):
         'username': 'fixture', 'token': token}})
     revision, marker = source_fixture()
     CONTEXT['revision'], CONTEXT['marker'] = revision, marker
-    s.REPORT['automation']['source'] = {'revision': revision, 'provider': 'source:8080',
+    s.REPORT['automation']['source'] = {'revision': revision, 'provider': 'source',
         'repository': 'fixture/workload', 'branch': 'main'}
     asyncio.run(exercise())
 
@@ -311,7 +335,7 @@ async def exercise():
     CONTEXT.update(builder_id=builder_id, action_id=action_id)
     async with await s.Mcp.start(address, editor, True, True) as mcp:
         repo_id = await create(mcp, 'repo', PREFIX + 'repo', {'repo': 'fixture/workload',
-            'branch': 'main', 'git_provider': 'source:8080', 'git_https': False,
+            'branch': 'main', 'git_provider': 'source', 'git_https': True,
             'target': {'kind': 'server', 'target': {'id': CONTEXT['server_id']}}})
         CONTEXT['repo_id'] = repo_id
         cloned = await run(mcp, 'repo', repo_id)
@@ -427,7 +451,7 @@ def disable_automatic_execution():
             patch_value.update(schedule='', schedule_enabled=False)
         if kind == 'Action':
             patch_value['run_at_startup'] = False
-        admin.write('Update' + kind, {kind.lower(): resource_id, 'config': patch_value})
+        admin.write('Update' + kind, {'id': resource_id, 'config': patch_value})
         checked = admin.read('Get' + kind, {kind.lower(): resource_id})['config']
         s.require(all(checked[k] == v for k, v in patch_value.items()),
                   'automatic execution was not disabled before teardown')

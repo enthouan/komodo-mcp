@@ -1,6 +1,5 @@
 """Automation fixture ownership, credential separation and teardown invariants."""
 import contextlib
-import copy
 import json
 from pathlib import Path
 import tempfile
@@ -44,7 +43,7 @@ class AutomationScopeTests(unittest.TestCase):
             automation.disable_automatic_execution()
             self.assertTrue(smoke.REPORT['automatic_execution_cleanup']['verified'])
             self.assertTrue(smoke.REPORT['automatic_execution_cleanup']['before_compose_down'])
-        provisioner.write.assert_called_once_with('UpdateAction', {'action': resource_id,
+        provisioner.write.assert_called_once_with('UpdateAction', {'id': resource_id,
             'config': {'webhook_enabled': False, 'schedule': '',
                        'schedule_enabled': False, 'run_at_startup': False}})
 
