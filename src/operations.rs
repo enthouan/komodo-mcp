@@ -54,6 +54,7 @@ pub enum WorkloadKind {
     Stack,
     Deployment,
     Repo,
+    Build,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -72,6 +73,7 @@ pub enum RequestedScope {
     Service { service: String },
     WholeDeployment {},
     WholeRepo {},
+    WholeBuild {},
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -83,6 +85,8 @@ pub enum WorkloadOperation {
     Restart,
     Clone,
     Pull,
+    Run,
+    Cancel,
 }
 
 impl WorkloadOperation {
@@ -154,6 +158,8 @@ pub struct ConfiguredEffects {
     pub compose_dependencies: Option<ComposeDependencies>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repository: Option<crate::repositories::RepoEffects>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build: Option<crate::build_operations::BuildEffects>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
@@ -182,6 +188,83 @@ pub struct SubmissionReceipt {
     pub submission_error: Option<AppError>,
     pub configured_effects: ConfiguredEffects,
     pub automatic_resubmission: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CancellationTargeting {
+    Resource,
+    Update,
+}
+#[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CancellationOutcome {
+    NotSubmitted,
+    Acknowledged,
+    Rejected,
+    Unknown,
+}
+#[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CancellationStop {
+    OriginalComplete,
+    NotActive,
+    ReplacementRun,
+    AmbiguousActiveRuns,
+    IncompleteActiveEvidence,
+}
+
+/// Reused across resource-specific cancellation APIs. The cancellation's own
+/// receipt and the original update are independent observations, never rollback.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CancellationResult {
+    pub resource: OperationResource,
+    pub original_update_id: String,
+    pub targeting: CancellationTargeting,
+    pub outcome: CancellationOutcome,
+    pub not_submitted_reason: Option<CancellationStop>,
+    pub active_update_id: Option<String>,
+    pub active_evidence_complete: bool,
+    pub cancellation_receipt: Option<Box<SubmissionReceipt>>,
+    pub original_update: Option<UpdateDetail>,
+    pub original_observation_error: Option<AppError>,
+    pub original_terminal_confirmed: bool,
+    pub replacement_run_observed: bool,
+    pub remote_cancellation_requested: bool,
+    pub automatic_resubmission: bool,
+    pub targeting_limit: &'static str,
+}
+impl CancellationResult {
+    pub(crate) fn bound(mut self, client: &CoreClient) -> Self {
+        self.original_terminal_confirmed = self
+            .original_update
+            .as_ref()
+            .is_some_and(|u| u.summary.status == history::UpdateStatus::Complete);
+        while serde_json::to_vec(&inventory::projected_value(client, &self))
+            .expect("cancellation JSON")
+            .len()
+            > MAX_RECEIPT_BYTES
+        {
+            if let Some(original) = self.original_update.as_mut()
+                && original.stages.pop().is_some()
+            {
+                original.stages_truncated = true;
+                continue;
+            }
+            if let Some(latest) = self
+                .cancellation_receipt
+                .as_mut()
+                .and_then(|r| r.latest_update.as_mut())
+                && latest.stages.pop().is_some()
+            {
+                latest.stages_truncated = true;
+                continue;
+            }
+            unreachable!("bounded fixed cancellation fields fit their budget");
+        }
+        self
+    }
 }
 
 fn now_ms() -> Option<i64> {
@@ -361,6 +444,7 @@ pub async fn stack_operation(
             _ => return Err(unsupported(operation)),
         }),
         repository: None,
+        build: None,
     };
     let target = resource(client, WorkloadKind::Stack, stack.id.clone(), &stack.name);
     let scope = input.scope.requested();
@@ -473,6 +557,7 @@ pub async fn deployment_operation(
         broader_effects_possible: action == WorkloadOperation::Deploy,
         compose_dependencies: None,
         repository: None,
+        build: None,
     };
     let scope = RequestedScope::WholeDeployment {};
     let id = deployment.id;
@@ -550,7 +635,7 @@ where
     T: Serialize + KomodoExecuteRequest<Response = Update>,
 {
     let started_ts = now_ms();
-    let reply = client.execute(request).await;
+    let reply = client.execute(request).await?;
     let mut receipt = SubmissionReceipt {
         resource,
         requested_scope,
@@ -585,6 +670,7 @@ where
                 WorkloadKind::Stack => ResourceTarget::Stack(receipt.resource.id.clone()),
                 WorkloadKind::Deployment => ResourceTarget::Deployment(receipt.resource.id.clone()),
                 WorkloadKind::Repo => ResourceTarget::Repo(receipt.resource.id.clone()),
+                WorkloadKind::Build => ResourceTarget::Build(receipt.resource.id.clone()),
             };
             if update.operation != core_operation
                 || update.target != expected

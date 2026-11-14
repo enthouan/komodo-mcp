@@ -6,9 +6,14 @@ saved hooks first, then acknowledge their presence in the explicit operation
 input. Repo recovery uses target kind `repo`, scope `whole_repo` and operation
 `clone` or `pull`; a history match never establishes caller attribution.
 
+[Build run/cancel](builds.md#run-one-saved-build) uses the same receipt/history/wait/
+recovery contracts with target kind `build`, scope `whole_build`, and operation
+`run` or `cancel`. Inspect `get_build` first. Image output reports are bounded
+observations; Build success does not prove a dependent deployment or its health.
+
 Set `KOMODO_ALLOW_OPERATE=true` in the MCP server's process environment and
 restart it. The default remains read-only. `KOMODO_ALLOW_CONFIGURATION_EDIT`
-is independent and exposes no production configuration-edit tools yet. Use an
+is independent and exposes the typed configuration tools. Use an
 enabled non-admin Core identity with Read visibility and Execute permission on
 the selected Stack or Deployment. Core remains authoritative; local grants never
 change credentials or supply missing upstream permissions.

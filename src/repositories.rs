@@ -742,6 +742,7 @@ pub async fn execute(
         ));
     }
     let effects = ConfiguredEffects {
+        build: None,
         pre_deploy_hook: false,
         post_deploy_hook: false,
         auto_pull: None,
