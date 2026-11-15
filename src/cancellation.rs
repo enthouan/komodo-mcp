@@ -48,6 +48,7 @@ fn history_target(r: &OperationResource) -> HistoryTarget {
             WorkloadKind::Stack => ResourceKind::Stack,
             WorkloadKind::Deployment => ResourceKind::Deployment,
             WorkloadKind::Repo => ResourceKind::Repo,
+            WorkloadKind::ResourceSync => ResourceKind::ResourceSync,
         },
         id: r.id.clone(),
     }

@@ -8,6 +8,15 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Apply an exact reviewed ResourceSync selection with both local grants, one
+  counted fresh-plan refresh, private definition/source/dependency comparisons
+  and at most one RunSync. Preserve unknown acknowledgements, known IDs and
+  read-only restart recovery without inferred selector/caller attribution or
+  replay. Withhold raw sync errors and distinguish parent batch reports,
+  independent resource observations, child deployment uncertainty and health.
+  Retain Core's final-read/source-reread race and deferred external write-back.
+  ([#31](https://github.com/enthouan/komodo-mcp/issues/31))
+
 - Inspect cached ResourceSync changes and distinct source/deployment errors,
   explicitly refresh with operate/Core Execute, and review exact selections
   against private source/plan/reference baselines. Audit template-only and

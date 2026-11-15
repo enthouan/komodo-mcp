@@ -36,6 +36,7 @@ impl KomodoServer {
                 | "get_resource_sync"
                 | "get_resource_sync_pending"
                 | "review_resource_sync_pending"
+                | "wait_for_resource_sync_update"
                 | "list_builders"
                 | "get_builder"
                 | "list_builds"
@@ -74,7 +75,9 @@ impl KomodoServer {
                 | "run_action"
                 | "cancel_action"
                 | "refresh_resource_sync_pending" => Some(Capability::Operate),
-                "apply_resource_delete" | "apply_tag_delete" => Some(Capability::Destructive),
+                "apply_resource_delete" | "apply_tag_delete" | "apply_resource_sync" => {
+                    Some(Capability::Destructive)
+                }
                 "preview_stack_update"
                 | "apply_stack_update"
                 | "preview_repo_create"
@@ -129,6 +132,36 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="Apply exactly one reviewed ResourceSync and exact apply_binding. Requires BOTH configuration-edit and operate before Core I/O; Core Execute remains authoritative. Consume the ten-minute process-local review once, privately recheck definition/dependencies/full plan/source, submit one explicit pending-cache refresh, reject any drift/errors/incomplete evidence, then submit at most one RunSync. Refresh can fetch source/cache and affect alerts; RunSync can internally refresh and act through Core's built-in administrator sync identity. Whole/type/named scopes stay explicit; filtered runs exclude variables/groups. Managed OR delete permits deletion; empty tags are unrestricted. Core rereads sources without expected revision: a final-read race remains, with no frozen plan, exactly-once guarantee, rollback or remote cancellation. Return separate refresh/RunSync counts, accepted/rejected/unknown receipt, known update ID/window, bounded follow-up, safe batch reports and independent resource observations. Parent success does not verify child deployment success or workload health. No replay or authoritative Git/host write-back.",input_schema=schema_for_input::<crate::sync_plans::ApplyInput>().expect("apply sync schema"),output_schema=inventory::output_schema::<crate::sync_plans::ApplyResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn apply_resource_sync(
+        &self,
+        context: RequestContext<RoleServer>,
+        arguments: JsonObject,
+    ) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_resource_sync") {
+            Ok(input) => {
+                crate::sync_plans::apply(&self.client, input, context.ct.cancelled()).await
+            }
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Resume one explicitly known RunSync update ID with the retained sync/scope binding, including after MCP restart. Read-only; no refresh, execute, replay or remote cancellation. Validate stable sync ID and RunSync operation on EVERY poll, preserve matching prior evidence on mismatch/read failure, and stop within 1–30 seconds or ten polls. Core history does not record reliable selectors or invocation ownership; retained selection is an expectation, never inferred attribution. Unknown-ID recovery candidates from reconcile_operation remain unconfirmed. Parent completion/batch success does not verify child deployments or workload health; inspect resources and health independently. Raw sync output/errors/TOML are withheld.",input_schema=schema_for_input::<crate::sync_plans::FollowInput>().expect("sync follow schema"),output_schema=inventory::output_schema::<crate::sync_plans::FollowResult>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn wait_for_resource_sync_update(
+        &self,
+        context: RequestContext<RoleServer>,
+        arguments: JsonObject,
+    ) -> CallToolResult {
+        let result = match inventory::parse(arguments, "wait_for_resource_sync_update") {
+            Ok(input) => {
+                crate::sync_plans::follow(&self.client, input, context.ct.cancelled()).await
+            }
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description="Read one ResourceSync's cached pending creates, updates, deletions, variable/group changes, deployment intent and distinct pending/deployment/source-file errors. Return bounded sanitized summaries; never return raw TOML, source contents, variable values or error snippets. Distinguish cached observations and available Git revision from actual current source freshness; inline/host have no Git hash. This calls only Core read APIs and submits zero mutations. Core's cached view can omit template-only and variable-secret-flag effects; use explicit scoped review for apply coverage. Display truncation or a cached clean state never authorizes RunSync.",input_schema=schema_for_input::<DetailInput>().expect("cached pending schema"),output_schema=inventory::output_schema::<crate::sync_plans::PendingOutput>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn get_resource_sync_pending(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "get_resource_sync_pending") {

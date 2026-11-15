@@ -242,3 +242,119 @@ Pinned semantics: [cached resource view](https://github.com/moghtech/komodo/blob
 [resource execution](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/sync/execute.rs),
 [variable execution](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/sync/variables.rs),
 [deployment planning](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/sync/deploy.rs).
+
+## Apply a reviewed selection
+
+Enable both `KOMODO_ALLOW_CONFIGURATION_EDIT=true` and
+`KOMODO_ALLOW_OPERATE=true`, and use a Core identity with Execute on this sync.
+Copy the exact `review_reference` and complete `apply_binding` returned by
+`review_resource_sync_pending` into this call. The following IDs/reference are
+illustrative, not reusable authorization:
+
+```json
+{"name":"apply_resource_sync","arguments":{"review_reference":"configuration-process-nonce-1","binding":{"sync_id":"00000000000000000000000b","selection":{"kind":"resources","resource_type":"server","targets":[{"kind":"existing","id":"000000000000000000000001","name":"owned-server"}]}},"wait_timeout_seconds":3}}
+```
+
+The binding includes the sync ID, explicit whole/type/named scope, stable IDs
+and reviewed names for existing resources, and exact pending-create names for
+new resources. Missing or empty lists never become an unfiltered run. Core
+converts existing IDs to names; review rejects missing, ambiguous, duplicated,
+normalized or unsupported selectors. Filtered runs exclude variables/groups;
+resource tags do not isolate all delegated effects. Desired-state omissions can
+reset saved fields, managed OR delete permits deletion, and empty tags remove
+the resource restriction. These are privileged operations through Core's
+built-in administrator sync identity, not a per-resource permission sandbox.
+
+Apply consumes the process-local reference before Core I/O. It then checks the
+current Core version, full definition, private cached source/plan and relevant
+references; makes one separately counted `RefreshResourceSyncPending`; compares
+that authoritative reply; and independently rereads/audits the resulting state
+immediately before constructing the one-use RunSync authority. Every mismatch,
+pending error, denied refresh, incomplete response or uncertain refresh requires
+a new review and submits no RunSync. Refresh can fetch/clone Core's cache and
+change pending alerts even when application is rejected. RunSync can perform an
+additional internal refresh; the returned counts describe MCP's explicit
+requests, not every internal Core effect.
+
+Private reference checks cover the active source Repo and selected desired
+attachment/source/image dependencies (Server, Swarm, Builder, Repo, Build and
+explicit Alerter targets and static Procedure-step targets), recursively up to
+32 references. Disabled steps are included. Known CommitSync Procedure steps
+withhold review authority to preserve the deferred external write-back boundary.
+Full visible raw configurations, including secret-only changes, stay private. New dependencies
+created within the same selection require an exact pending-create name and a
+compatible Core creation order. Missing/invisible/template/oversized dependency
+evidence withholds authorization. Arbitrary trusted code, hooks, future automatic
+execution and their dynamic dependencies cannot be frozen or statically resolved.
+Review also bounds the metadata/dependency audit to 30 seconds; apply bounds its
+whole preflight to 45 seconds. No credential fallback occurs.
+
+For direct Git and linked Repos, refreshed revisions and full cached file/plan
+content are compared. Inline and host sources compare authoritative observed
+content and changes, with no assumed Git hash. An unchanged old cached hash alone
+never establishes freshness. **Core rereads the source after this preflight and
+accepts no expected revision.** Another writer/source change can race after the
+final reads. This is no atomic compare-and-swap, exactly-once guarantee, rollback,
+source freeze or remote cancellation. MCP does not commit/push Git or rewrite
+Core-host files.
+
+The result separates `preflight.refresh_requests_submitted` (0 or 1),
+`run_sync_requests_submitted` (0 or 1), and the shared receipt's accepted,
+rejected or unknown submission. A known update ID is retained, together with the
+local submission window. Core can acknowledge a task before its asynchronous
+Execute/busy check fails, so accepted does not imply successful execution. A lost,
+timed-out or invalid acknowledgement remains unknown and consumes authorization;
+never repeat execution automatically. Follow-up defaults to three seconds
+(1–10 allowed). Receipts and waits each bound evidence to 64 KiB; the combined
+apply result is bounded to 512 KiB with at most eight independent resource reads.
+
+Parent update batch reports expose fixed stage names, success flags and failure
+counts, with **all raw sync stdout/stderr, commands, TOML, values and error
+snippets omitted**, including through generic history after restart. A failed
+batch can contain successful changes. Core 2.3.2's `Sync Deploy` stage checks the
+child Result but does not inspect the success flag of an `Ok` child update; even
+a successful parent can hide a failed deployment. It records no reliable child-ID
+association or RunSync selector identity. No pending/last-sync hash is claimed as
+the revision actually applied by this update.
+
+After a terminal parent, bounded independent resource reads report visible
+before/after definition changes without returning configuration. These do not
+prove causation or complete desired-state equality; unreadable/missing resources
+never establish deletion. Cached post-sync pending state is separate evidence,
+not execution proof. Use `get_stack`, `get_deployment`, `fleet_health` and
+`stack_diagnose` to verify affected workloads independently. Parent completion,
+resource saves, deployment outcomes and health are distinct observations.
+
+## Resume and reconcile without replay
+
+Retain an acknowledged update ID and the exact binding outside the MCP process:
+
+```json
+{"name":"wait_for_resource_sync_update","arguments":{"binding":{"sync_id":"00000000000000000000000b","selection":{"kind":"whole_sync"}},"update_id":"10000000000000000000000b","timeout_seconds":10}}
+```
+
+This works with read-only local grants after restart. Each poll checks the
+expected sync ID and `RunSync` operation. A later mismatch/read failure preserves
+only the previous matching evidence and known ID. A local deadline, cancellation
+or ten-poll limit is resumable and does not cancel Core. The retained selection
+is an expectation: history does not verify selectors or caller ownership.
+
+Without an acknowledged ID, use the existing bounded read-only search:
+
+```json
+{"name":"reconcile_operation","arguments":{"target":{"kind":"resource_sync","id":"00000000000000000000000b"},"requested_scope":{"kind":"resource_sync","selection":{"kind":"whole_sync"}},"operation":"run","submission_window":{"started_ts":1760000000000,"ended_ts":1760000015000}}}
+```
+
+Use actual retained UTC millisecond bounds or omit unknown bounds. Searches
+retain their three-page/five-candidate/ten-second limits. Every RunSync candidate
+has unavailable selector evidence and unconfirmed attribution, even a single
+whole-sync candidate from the same Core actor. Concurrent operators can issue
+identical runs. No candidate is selected, refreshed, cancelled or resubmitted.
+Zero candidates does not prove non-acceptance. Resume only an explicitly known
+ID; otherwise keep the original submission unknown and inspect resources/health.
+
+`cargo test --locked --test sync_apply --test sync_plans --test resource_syncs`
+exercises the compiled production stdio server with deterministic source/ref
+drift, permissions, counted refresh/submission, concurrent consumption, private
+errors, partial results, deadlines and restart recovery. The final integrated
+live workflow and retained full automation evidence belong to #103.

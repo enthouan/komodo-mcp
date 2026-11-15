@@ -1,6 +1,14 @@
 //! Cached Core observations, explicit refresh, and private scoped review records.
-//! This module cannot submit RunSync or write authoritative source files.
+//! Apply consumes a private review before a fresh preflight and one RunSync.
 mod audit;
+mod execution;
+mod follow;
+mod observe;
+mod references;
+pub(crate) use execution::validate_scope as validate_recovery_scope;
+pub use execution::{ApplyInput, ApplyResult, apply};
+pub(crate) use execution::{AuthorizedSync, validate_request};
+pub use follow::{FollowInput, FollowResult, follow};
 
 use crate::{
     capabilities::Capability,
@@ -46,13 +54,13 @@ pub enum Selection {
         targets: Vec<DetailInput>,
     },
 }
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResolvedTarget {
     Existing { id: String, name: String },
     Create { name: String },
 }
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ExecutionScope {
     WholeSync {},
@@ -64,7 +72,7 @@ pub enum ExecutionScope {
         targets: Vec<ResolvedTarget>,
     },
 }
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ApplyBinding {
     pub sync_id: String,
@@ -770,6 +778,66 @@ fn canonical(snapshot: &Snapshot, references: Value, metadata: Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn expired_review_is_consumed_before_preflight_or_execution() {
+        let client = CoreClient::new(
+            crate::config::Config::parse("http://127.0.0.1:1", "fixture-key", "fixture-secret")
+                .unwrap()
+                .with_capabilities(crate::capabilities::CapabilityPolicy::new(true, true)),
+            crate::client::RequestPolicy::default(),
+        )
+        .unwrap();
+        let sync = ResourceSync {
+            id: "00000000000000000000000b".into(),
+            name: "owned".into(),
+            ..Default::default()
+        };
+        let identity = SyncIdentity {
+            id: sync.id.clone(),
+            name: sync.name.clone(),
+        };
+        let plan = snapshot(
+            &client,
+            serde_json::to_value(sync).unwrap(),
+            &identity,
+            "cached",
+        )
+        .unwrap()
+        .output;
+        let binding = ApplyBinding {
+            sync_id: identity.id,
+            selection: ExecutionScope::WholeSync {},
+        };
+        let reference = client
+            .previews()
+            .insert_entry(Preview {
+                created: Instant::now() - Duration::from_secs(601),
+                input: common::bound_input("resource_sync_apply", &binding),
+                baseline: Value::Null,
+                prepared: serde_json::to_value(&binding).unwrap(),
+                result: plan,
+            })
+            .unwrap();
+        for _ in 0..2 {
+            let result = apply(
+                &client,
+                ApplyInput {
+                    review_reference: reference.clone(),
+                    binding: binding.clone(),
+                    wait_timeout_seconds: 1,
+                },
+                std::future::pending(),
+            )
+            .await;
+            assert!(matches!(
+                result,
+                Err(AppError {
+                    kind: ErrorKind::InvalidPreview,
+                    ..
+                })
+            ));
+        }
+    }
     #[test]
     fn deletion_metadata_describes_only_the_before_state() {
         let data = DiffData::Delete {

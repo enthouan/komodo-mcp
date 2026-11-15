@@ -408,6 +408,26 @@ impl CoreClient {
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None))))
     }
 
+    /// Single-use reviewed sync transport; unavailable to generic execute<T>.
+    pub(crate) async fn execute_reviewed_sync(
+        &self,
+        authorized: crate::sync_plans::AuthorizedSync,
+    ) -> Result<Result<komodo_client::entities::update::Update, AppError>, AppError> {
+        // RunSync remains absent from generic execute<T>. This one-use private
+        // authority can only be constructed after consuming and rechecking a
+        // complete review; both immutable local grants are checked here too.
+        crate::configuration::require_edit(self)?;
+        crate::operations::require_operate(self, "RunSync")?;
+        let request = authorized.into_request();
+        crate::sync_plans::validate_request(&request)?;
+        Ok(tokio::time::timeout(
+            self.0.policy.operation_timeout,
+            self.request_bounded_body(&self.0.execute_request, request, "RunSync", "RunSync"),
+        )
+        .await
+        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, "RunSync", None))))
+    }
+
     /// Keep diagnosis inputs bounded without changing existing inventory calls.
     pub(crate) fn bounded_evidence(&self) -> Self {
         Self(Arc::clone(&self.0), true)
@@ -699,6 +719,17 @@ mod write_policy_tests {
                     })
                     .await
                     .is_err()
+            );
+            assert!(
+                client
+                    .execute(komodo_client::api::execute::RunSync {
+                        sync: "00000000000000000000000b".into(),
+                        resource_type: None,
+                        resources: None
+                    })
+                    .await
+                    .is_err(),
+                "generic execution must never mint reviewed sync authority"
             );
         }
         assert!(

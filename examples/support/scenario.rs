@@ -442,7 +442,8 @@ async fn solve(
                 "list_resource_syncs",
                 "get_resource_sync",
                 "get_resource_sync_pending",
-                "review_resource_sync_pending"
+                "review_resource_sync_pending",
+                "wait_for_resource_sync_update"
             ]),
         "missing expected inventory tools"
     );

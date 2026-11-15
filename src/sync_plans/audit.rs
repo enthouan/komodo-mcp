@@ -17,6 +17,7 @@ struct DesiredResource {
     name: String,
     template: bool,
     after: Vec<String>,
+    config: Value,
 }
 struct Desired {
     resources: Vec<DesiredResource>,
@@ -28,6 +29,7 @@ struct Metadata {
     id: String,
     name: String,
     template: bool,
+    baseline: Value,
 }
 
 pub(super) fn validate_selection(selection: &Selection) -> Result<(), AppError> {
@@ -82,7 +84,7 @@ fn source_selected(scope: &ExecutionScope, resource: &DesiredResource) -> bool {
 fn has_whole(scope: &ExecutionScope) -> bool {
     matches!(scope, ExecutionScope::WholeSync {})
 }
-fn add_resources<C: Default>(
+fn add_resources<C: Default + Serialize>(
     out: &mut Desired,
     rows: &[ResourceToml<C>],
     kind: Kind,
@@ -107,6 +109,7 @@ fn add_resources<C: Default>(
                 name: row.name.clone(),
                 template: row.template,
                 after: row.after.clone(),
+                config: serde_json::to_value(&row.config).expect("typed desired config"),
             });
         }
     }
@@ -220,11 +223,11 @@ fn desired(sync: &ResourceSync, gaps: &mut Vec<&'static str>) -> Option<Desired>
     }
     Some(desired)
 }
-async fn metadata(
+pub(super) async fn read_resource(
     client: &CoreClient,
     kind: Kind,
     selector: DetailInput,
-) -> Result<Metadata, AppError> {
+) -> Result<Value, AppError> {
     let resolved = export::select(
         client,
         export::Target {
@@ -255,13 +258,25 @@ async fn metadata(
     if raw["_id"]["$oid"].as_str() != Some(&resolved.id)
         || raw["name"].as_str() != Some(&resolved.name)
         || !raw["template"].is_boolean()
+        || !raw["config"].is_object()
     {
         return Err(invalid());
     }
+    Ok(
+        json!({"kind":kind,"id":resolved.id,"name":resolved.name,"template":raw["template"],"config":raw["config"],"tags":raw["tags"]}),
+    )
+}
+async fn metadata(
+    client: &CoreClient,
+    kind: Kind,
+    selector: DetailInput,
+) -> Result<Metadata, AppError> {
+    let baseline = read_resource(client, kind, selector).await?;
     Ok(Metadata {
-        id: resolved.id,
-        name: resolved.name,
-        template: raw["template"].as_bool().expect("checked"),
+        id: baseline["id"].as_str().ok_or_else(invalid)?.into(),
+        name: baseline["name"].as_str().ok_or_else(invalid)?.into(),
+        template: baseline["template"].as_bool().ok_or_else(invalid)?,
+        baseline,
     })
 }
 fn all_changes(snapshot: &Snapshot) -> Vec<Change> {
@@ -531,7 +546,7 @@ pub(super) async fn prepare(
                 }
             };
             if let Some(m) = m {
-                audit_metadata.push(json!({"resource_type":resource.kind,"id":m.id,"name":m.name,"template":m.template}));
+                audit_metadata.push(m.baseline);
                 if m.template != resource.template {
                     rows.push(Change {
                         resource_type: Some(resource.kind),
@@ -612,7 +627,7 @@ pub(super) async fn prepare(
             }
         }
     }
-    let references =
+    let source_reference =
         if !snapshot.sync.config.files_on_host && !snapshot.sync.config.linked_repo.is_empty() {
             let repo = &snapshot.sync.config.linked_repo;
             let selector = if valid_id(repo) {
@@ -644,6 +659,34 @@ pub(super) async fn prepare(
         } else {
             Value::Null
         };
+    let desired_configs = if snapshot.sync.config.include_resources {
+        desired
+            .resources
+            .iter()
+            .filter(|r| source_selected(&scope, r))
+            .map(|r| (r.kind, r.name.clone(), r.config.clone()))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let reference_result = super::references::collect(
+        &bounded_client,
+        &scope,
+        &rows,
+        desired_configs,
+        source_reference,
+    )
+    .await;
+    let references = match reference_result {
+        Ok(v) => v,
+        Err(error) => {
+            gap(&mut gaps, "desired_references_not_authoritatively_observed");
+            if errors.len() < 8 {
+                errors.push(error);
+            }
+            Value::Null
+        }
+    };
     rows.retain(|r| {
         r.resource_type.is_some_and(|kind| {
             selected(

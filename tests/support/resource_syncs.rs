@@ -18,7 +18,7 @@ use komodo_client::entities::{
 };
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     sync::{Arc, Mutex},
 };
 use tokio::net::TcpListener;
@@ -43,6 +43,20 @@ pub enum Fault {
     ReadBackDenied,
     MissingRaw,
 }
+#[derive(Clone, Copy, Default)]
+pub enum ExecuteFault {
+    #[default]
+    None,
+    Denied,
+    TaskDenied,
+    Lost,
+    Timeout,
+    WrongTarget,
+    Partial,
+    ChildFailed,
+    Running,
+}
+pub const UPDATE: &str = "10000000000000000000000b";
 pub struct Data {
     pub syncs: BTreeMap<String, Value>,
     pub repo: Value,
@@ -58,6 +72,12 @@ pub struct Data {
     pub deny_refresh: bool,
     pub refresh_reply: Option<Value>,
     pub version: String,
+    pub execute_fault: ExecuteFault,
+    pub updates: BTreeMap<String, Value>,
+    pub update_reads: VecDeque<Value>,
+    pub deny_history: bool,
+    pub resources: BTreeMap<String, (Value, Value)>,
+    pub repo_after_refresh: Option<Value>,
 }
 pub struct Core {
     pub address: String,
@@ -116,6 +136,12 @@ impl Core {
             deny_refresh: false,
             refresh_reply: None,
             version: "2.3.2".into(),
+            execute_fault: ExecuteFault::None,
+            updates: BTreeMap::new(),
+            update_reads: VecDeque::new(),
+            deny_history: false,
+            resources: BTreeMap::new(),
+            repo_after_refresh: None,
         }));
         let app = Router::new()
             .route("/read", post(read))
@@ -208,7 +234,32 @@ async fn read(
     record(&mut d, &headers, "read", &v);
     let p = &v["params"];
     match v["type"].as_str().unwrap() {
+        "GetUpdate" => {
+            if d.deny_history {
+                return denied();
+            }
+            let value = d.update_reads.pop_front().unwrap_or_else(|| {
+                d.updates
+                    .get(p["id"].as_str().unwrap())
+                    .cloned()
+                    .unwrap_or(Value::Null)
+            });
+            Json(value).into_response()
+        }
+        "ListUpdates" => {
+            if d.deny_history {
+                return denied();
+            }
+            let page = p["page"].as_u64().unwrap() as usize;
+            let mut updates=d.updates.values().filter(|u|p["query"]["target.type"]==u["target"]["type"]&&p["query"]["target.id"]==u["target"]["id"]).map(|u|json!({"id":u["_id"]["$oid"],"operation":u["operation"],"start_ts":u["start_ts"],"success":u["success"],"username":PRIVATE[2],"operator":u["operator"],"target":u["target"],"status":u["status"],"other_data":PRIVATE[2]})).collect::<Vec<_>>();
+            updates.sort_by_cached_key(|v| v["id"].as_str().unwrap().to_owned());
+            let next = (updates.len() > (page + 1) * 100).then_some(page + 1);
+            Json(json!({"updates":updates.into_iter().skip(page*100).take(100).collect::<Vec<_>>(),"next_page":next})).into_response()
+        }
         "GetVersion" => Json(json!({"version":d.version})).into_response(),
+        "GetServerState" => Json(json!({"status":"Ok"})).into_response(),
+        "GetSystemStats" => denied(),
+        "ListStacks" if !d.resources.contains_key("ListStacks") => Json(json!([])).into_response(),
         "ListResourceSyncs" => {
             Json(filtered(d.syncs.values().map(item).collect(), p)).into_response()
         }
@@ -253,7 +304,18 @@ async fn read(
             }
             Json(d.server.clone()).into_response()
         }
-        other => panic!("unexpected read {other}"),
+        other => {
+            if let Some((item, _)) = d.resources.get(other) {
+                return Json(filtered(vec![item.clone()], p)).into_response();
+            }
+            if let Some((_, detail)) = d
+                .resources
+                .get(&format!("List{}s", other.trim_start_matches("Get")))
+            {
+                return Json(detail.clone()).into_response();
+            }
+            panic!("unexpected read {other}")
+        }
     }
 }
 async fn write(
@@ -270,6 +332,9 @@ async fn write(
             return denied();
         }
         let id = p["sync"].as_str().unwrap();
+        if let Some(repo) = d.repo_after_refresh.take() {
+            d.repo = repo;
+        }
         if let Some(reply) = d.refresh_reply.clone() {
             d.syncs.insert(id.into(), reply.clone());
             return Json(reply).into_response();
@@ -321,6 +386,68 @@ async fn execute(
     headers: HeaderMap,
     Json(v): Json<Value>,
 ) -> Response {
-    record(&mut data.lock().unwrap(), &headers, "execute", &v);
-    panic!("definition editing must not submit any execute request")
+    let (fault, reply) = {
+        let mut d = data.lock().unwrap();
+        record(&mut d, &headers, "execute", &v);
+        assert_eq!(v["type"], "RunSync");
+        let _: komodo_client::api::execute::RunSync =
+            serde_json::from_value(v["params"].clone()).unwrap();
+        assert_eq!(v["params"]["sync"], SYNC);
+        let fault = d.execute_fault;
+        if matches!(fault, ExecuteFault::Denied) {
+            return denied();
+        }
+        let mut update: Value =
+            serde_json::from_str(include_str!("../fixtures/core-2.3.2/incident-wire.json"))
+                .unwrap();
+        let mut u = update["update"].take();
+        u["_id"] = json!({"$oid":UPDATE});
+        u["target"] = json!({"type":"ResourceSync","id":SYNC});
+        u["operation"] = json!("RunSync");
+        u["status"] = json!(if matches!(fault, ExecuteFault::Running) {
+            "InProgress"
+        } else {
+            "Complete"
+        });
+        u["success"] = json!(!matches!(
+            fault,
+            ExecuteFault::Partial | ExecuteFault::TaskDenied
+        ));
+        u["start_ts"] = json!(1000);
+        u["end_ts"] = if matches!(fault, ExecuteFault::Running) {
+            Value::Null
+        } else {
+            json!(2000)
+        };
+        let stage = if matches!(fault, ExecuteFault::TaskDenied) {
+            "Task Error"
+        } else {
+            "Update Servers"
+        };
+        let log = |stage: &str, success: bool| json!({"stage":stage,"success":success,"start_ts":1000,"end_ts":2000,"command":PRIVATE[2],"stdout":PRIVATE[2],"stderr":format!("{} {}",PRIVATE[2],PRIVATE[3])});
+        u["logs"] = json!([
+            log(
+                stage,
+                !matches!(fault, ExecuteFault::Partial | ExecuteFault::TaskDenied)
+            ),
+            log("Sync Deploy", true),
+            log(PRIVATE[2], true)
+        ]);
+        u["other_data"] = json!(PRIVATE[2]);
+        d.updates.insert(UPDATE.into(), u.clone());
+        if !matches!(fault, ExecuteFault::TaskDenied | ExecuteFault::Running) {
+            d.server["config"]["enabled"] = json!(false);
+        }
+        if matches!(fault, ExecuteFault::WrongTarget) {
+            u["target"]["id"] = json!("000000000000000000000099");
+        }
+        (fault, u)
+    };
+    if matches!(fault, ExecuteFault::Timeout) {
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+    }
+    if matches!(fault, ExecuteFault::Lost) {
+        return (StatusCode::OK, "lost private acknowledgement").into_response();
+    }
+    Json(reply).into_response()
 }
