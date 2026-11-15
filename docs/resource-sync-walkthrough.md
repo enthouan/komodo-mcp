@@ -115,7 +115,10 @@ Restarting MCP invalidates unused references. Tampered bindings are rejected.
 
 Apply checks full private definitions, cached content and referenced resources,
 makes at most one separately authorized preflight refresh, and rereads/audits
-the fresh state. Changed inline/host content, Git revisions, definitions or
+the fresh state. For Git/linked Repo sources it first waits 5.1 seconds for
+Core 2.3.2's five-second pull cache to expire, recorded separately as
+`preflight.git_pull_cache_wait_ms`. Standalone refresh can reuse that cache.
+Changed inline/host content, Git revisions, definitions or
 secret-only dependencies require a **new review** and submit zero RunSync.
 Successful preflight permits at most one RunSync, with no automatic retry.
 Record `preflight.refresh_requests_submitted` separately from
@@ -173,7 +176,9 @@ python3 -m unittest discover -s scripts -v
 `resource_sync_workflow` composes the existing wire fixtures behind one
 authenticated endpoint. It runs the actual binary through all four sources,
 export/define/refresh/review/apply/inspect, omission resets, denial, source drift,
-lost acknowledgement and read-only restart recovery. Component suites additionally
+lost acknowledgement and read-only restart recovery. It also models Core's Git
+pull-cache interval and verifies settling before the single refresh rejects
+changed content. Component suites additionally
 cover expiry, tampering/reuse, wait deadlines, concurrent callers, secret-only
 changes, missing fields, pending errors and bounds. Wire fixtures do not implement
 Core authorization, source fetching or Docker execution.

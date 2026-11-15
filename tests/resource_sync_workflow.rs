@@ -119,6 +119,48 @@ fn data(result: CallToolResult) -> Value {
 }
 
 #[tokio::test]
+async fn git_pull_cache_settles_before_one_refresh_rejects_changed_source() {
+    let core = Core::start(source()).await;
+    let (p, s) = Process::start_profile(&core.address, true, true).await;
+    let created = saved(
+        &s,
+        json!({"name":"workflow-git-cache","config":{"source":{"kind":"git","repo":"fixture/source","resource_paths":["resources.toml"]},"include_variables":false,"include_user_groups":false,"match_tags":[]}}),
+        true,
+    ).await;
+    let id = created["resource"]["id"].as_str().unwrap();
+    let reviewed = data(
+        call(
+            &s,
+            "review_resource_sync_pending",
+            json!({"target":{"id":id},"selection":{"kind":"whole_sync"}}),
+        )
+        .await,
+    );
+    assert!(reviewed["review_reference"].is_string());
+    *core.source.lock().unwrap() = (
+        source() + "auto_prune=false\n",
+        "abcdef0123456789abcdef0123456789abcdef01".into(),
+    );
+    *core.git_pull_cache_until.lock().unwrap() =
+        Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+    let started = std::time::Instant::now();
+    let before = core.count("write");
+    let result = data(call(&s,"apply_resource_sync",json!({"review_reference":reviewed["review_reference"],"binding":reviewed["apply_binding"],"wait_timeout_seconds":1})).await);
+    assert_eq!(result["outcome"], "not_submitted");
+    assert_eq!(result["preflight"]["refresh_requests_submitted"], 1);
+    assert_eq!(result["run_sync_requests_submitted"], 0);
+    assert!(started.elapsed() >= std::time::Duration::from_secs(5));
+    assert_eq!(
+        core.git_pull_cache_hits
+            .load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+    assert_eq!(core.count("write"), before + 1);
+    assert_eq!(core.count("execute"), 0);
+    p.finish_excluding(s, &syncs::PRIVATE).await;
+}
+
+#[tokio::test]
 async fn integrated_denial_source_drift_and_lost_ack_remain_single_submit_and_unconfirmed_after_restart()
  {
     let core = Core::start(source()).await;

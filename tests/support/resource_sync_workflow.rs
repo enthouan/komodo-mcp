@@ -13,7 +13,13 @@ use komodo_client::entities::{
     toml::ResourcesToml,
 };
 use serde_json::{Value, json};
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Instant,
+};
 use support::operations;
 
 pub const SERVER: &str = "000000000000000000000001";
@@ -24,6 +30,8 @@ pub struct Core {
     export: exports::Core,
     workloads: operations::Core,
     pub source: Mutex<(String, String)>,
+    pub git_pull_cache_until: Mutex<Option<Instant>>,
+    pub git_pull_cache_hits: AtomicUsize,
     pub requests: Mutex<Vec<operations::Request>>,
     http: reqwest::Client,
     task: Mutex<Option<operations::Task>>,
@@ -50,6 +58,8 @@ impl Core {
             })
             .await,
             source: Mutex::new((source, REVISION.into())),
+            git_pull_cache_until: Mutex::new(None),
+            git_pull_cache_hits: AtomicUsize::new(0),
             requests: Mutex::new(vec![]),
             http: reqwest::Client::new(),
             task: Mutex::new(None),
@@ -83,6 +93,24 @@ impl Core {
     fn refresh(&self, id: &str) -> Value {
         let mut d = self.syncs.data.lock().unwrap();
         let saved = d.syncs[id].clone();
+        // Core 2.3.2 lib/git/src/pull.rs can reuse a pull result for 5000ms.
+        // Its pending refresh then reads the previous local source contents.
+        let git = saved["config"]["files_on_host"] != true
+            && ["repo", "linked_repo"].iter().any(|key| {
+                saved["config"][key]
+                    .as_str()
+                    .is_some_and(|value| !value.is_empty())
+            });
+        if git
+            && self
+                .git_pull_cache_until
+                .lock()
+                .unwrap()
+                .is_some_and(|until| Instant::now() < until)
+        {
+            self.git_pull_cache_hits.fetch_add(1, Ordering::SeqCst);
+            return saved;
+        }
         let (source, revision) = self.document(&saved);
         let desired: ResourcesToml = toml::from_str(&source).unwrap();
         assert_eq!(desired.servers.len(), 1);

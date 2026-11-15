@@ -13,7 +13,8 @@ New changes go under `Unreleased` until the next release is prepared.
   retains the full automation/configuration/operation/recovery acceptance.
   Document source preservation versus desired-state resets, scoped/global
   effects, recovery and independent health; check every shared new-dependency
-  creation edge before deduplicating private snapshots.
+  creation edge before deduplicating private snapshots and let Core's five-second
+  Git pull cache expire before the one apply-preflight refresh.
   ([#103](https://github.com/enthouan/komodo-mcp/issues/103))
 
 - Apply an exact reviewed ResourceSync selection with both local grants, one

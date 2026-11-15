@@ -280,6 +280,14 @@ change pending alerts even when application is rejected. RunSync can perform an
 additional internal refresh; the returned counts describe MCP's explicit
 requests, not every internal Core effect.
 
+Core 2.3.2 reuses Git pull results for five seconds. For direct Git/linked Repo
+sources, apply waits 5.1 seconds after the initial observation before its one
+refresh, within the 45-second preflight bound. The result records
+`preflight.git_pull_cache_wait_ms`; inline/host sources report zero. This lets
+pulls predating the attempt expire. Concurrent Core pulls and subsequent source
+changes still prevent a guarantee of the latest external revision. Standalone
+refresh retains Core's cache behavior and never promises a network fetch.
+
 Private reference checks cover the active source Repo and selected desired
 attachment/source/image dependencies (Server, Swarm, Builder, Repo, Build and
 explicit Alerter targets and static Procedure-step targets), recursively up to

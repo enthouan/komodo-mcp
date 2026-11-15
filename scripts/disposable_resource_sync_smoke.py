@@ -217,9 +217,18 @@ async def apply(mcp, reviewed, expected='succeeded'):
     result = await mcp.tool('apply_resource_sync', {
         'review_reference': reviewed['review_reference'], 'binding': reviewed['apply_binding'],
         'wait_timeout_seconds': 3})
+    s.REPORT['resource_sync'].setdefault('apply_attempts', []).append({
+        'sync_id': reviewed['apply_binding']['sync_id'], 'selection': reviewed['apply_binding']['selection'],
+        'outcome': result['outcome'], 'preflight': result['preflight'],
+        'run_sync_requests': result['run_sync_requests_submitted'],
+        'known_update_id': (result.get('receipt') or {}).get('update_id')})
+    s.persist()
     s.require(result['preflight']['refresh_requests_submitted'] == 1
               and result['run_sync_requests_submitted'] == 1 and result['outcome'] == 'accepted',
               'reviewed apply did not make one refresh and one accepted RunSync')
+    s.require(result['preflight']['git_pull_cache_wait_ms'] ==
+              (5100 if reviewed['plan']['source']['kind'] in ['git', 'linked_repo'] else 0),
+              'Git pull-cache settling protocol was not recorded')
     receipt = result['receipt']
     s.require(receipt['update_id'] and not receipt['automatic_resubmission'], 'known update ID missing/replay')
     observed = await mcp.tool('wait_for_resource_sync_update', {
@@ -239,6 +248,7 @@ async def apply(mcp, reviewed, expected='succeeded'):
         'selection': reviewed['apply_binding']['selection'],
         'reviewed_source': reviewed['plan']['source'], 'update_id': receipt['update_id'],
         'outcome': expected, 'explicit_refresh_requests': 1, 'run_sync_requests': 1,
+        'git_pull_cache_wait_ms': result['preflight']['git_pull_cache_wait_ms'],
         'parent_health_verified': False,
         'batch_reports': observed['wait']['latest_update'].get('observed_sync_result'),
         'resource_observation_incomplete': result['resource_observation_incomplete']}
@@ -418,6 +428,11 @@ async def resets_and_drift(creator, sources):
         baseline = external_evidence(host_name)
         result = await creator.tool('apply_resource_sync', {
             'review_reference': old['review_reference'], 'binding': old['apply_binding']})
+        s.REPORT['resource_sync'].setdefault('drift_attempts', []).append({
+            'source': kind, 'outcome': result['outcome'], 'preflight': result['preflight'],
+            'run_sync_requests': result['run_sync_requests_submitted'],
+            'known_update_id': (result.get('receipt') or {}).get('update_id')})
+        s.persist()
         s.require(result['outcome'] == 'not_submitted' and result['run_sync_requests_submitted'] == 0
                   and result['review_consumed'], 'changed source silently applied a new plan')
         await creator.tool('refresh_resource_sync_pending', {'id': case['id']})
@@ -425,6 +440,7 @@ async def resets_and_drift(creator, sources):
         unchanged(baseline, host_name)
         s.REPORT['resource_sync'].setdefault('drift', []).append({'source': kind,
             'old_review_rejected': True, 'new_review_explicitly_required': True,
+            'git_pull_cache_wait_ms': result['preflight']['git_pull_cache_wait_ms'],
             'rejected_apply_refreshes': result['preflight']['refresh_requests_submitted'], 'rejected_run_sync_requests': 0})
     linked = sources['linked_repo']
     await creator.tool('refresh_resource_sync_pending', {'id': linked['id']})
