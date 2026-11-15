@@ -8,6 +8,8 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+## v0.6.0
+
 - Validate export → define → refresh → review → apply → inspect through one
   production-stdio workflow and an opt-in four-source Core/Periphery smoke that
   retains the full automation/configuration/operation/recovery acceptance.
