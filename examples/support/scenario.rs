@@ -409,6 +409,13 @@ async fn solve(
     ensure!(
         names
             == BTreeSet::from([
+                "list_images",
+                "get_image",
+                "get_image_history",
+                "list_networks",
+                "get_network",
+                "list_volumes",
+                "get_volume",
                 "list_swarms",
                 "get_swarm",
                 "list_swarm_nodes",

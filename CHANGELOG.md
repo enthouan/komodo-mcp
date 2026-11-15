@@ -7,6 +7,7 @@ notes: short, categorized bullets with links to the relevant pull requests.
 
 ### Added
 
+- Inspect Docker images, networks and volumes, including safe image history.
 - Inspect Swarm nodes, services and tasks, diagnose placement failures, and read exact-service logs. ([#114](https://github.com/enthouan/komodo-mcp/pull/114))
 
 ## v0.6.0

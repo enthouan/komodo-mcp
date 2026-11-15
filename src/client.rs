@@ -492,6 +492,13 @@ impl CoreClient {
             "GetDeployment" => "GetDeployment",
             "GetSwarm" => "GetSwarm",
             "ListSwarms" => "ListSwarms",
+            "ListImages" => "ListImages",
+            "InspectImage" => "InspectImage",
+            "ListImageHistory" => "ListImageHistory",
+            "ListNetworks" => "ListNetworks",
+            "InspectNetwork" => "InspectNetwork",
+            "ListVolumes" => "ListVolumes",
+            "InspectVolume" => "InspectVolume",
             "InspectSwarm" => "InspectSwarm",
             "ListSwarmNodes" => "ListSwarmNodes",
             "InspectSwarmNode" => "InspectSwarmNode",
@@ -543,6 +550,13 @@ impl CoreClient {
                 || matches!(
                     T::req_type(),
                     "GetContainerLog"
+                        | "ListImages"
+                        | "InspectImage"
+                        | "ListImageHistory"
+                        | "ListNetworks"
+                        | "InspectNetwork"
+                        | "ListVolumes"
+                        | "InspectVolume"
                         | "ListSwarms"
                         | "GetSwarm"
                         | "InspectSwarm"
@@ -601,16 +615,20 @@ impl CoreClient {
         R: DeserializeOwned,
     {
         let body = serde_json::json!({"type":request_type,"params":request});
-        let inspected_container = (operation == "InspectContainer")
-            .then(|| body["params"]["container"].as_str())
-            .flatten();
+        let inspected_object = match operation {
+            "InspectContainer" => body["params"]["container"].as_str(),
+            "InspectImage" | "ListImageHistory" => body["params"]["image"].as_str(),
+            "InspectNetwork" => body["params"]["network"].as_str(),
+            "InspectVolume" => body["params"]["volume"].as_str(),
+            _ => None,
+        };
         let mut response = self
             .clone_request(builder, operation)?
             .json(&body)
             .send()
             .await
             .map_err(|error| AppError::from_upstream(operation, error.into()))?;
-        self.decode_bounded_body(&mut response, operation, inspected_container)
+        self.decode_bounded_body(&mut response, operation, inspected_object)
             .await
     }
 
@@ -628,7 +646,7 @@ impl CoreClient {
         &self,
         response: &mut reqwest::Response,
         operation: &'static str,
-        inspected_container: Option<&str>,
+        inspected_object: Option<&str>,
     ) -> Result<R, AppError> {
         let status = response.status();
         if matches!(
@@ -666,7 +684,24 @@ impl CoreClient {
                 return Err(AppError::from_container_http_failure(
                     status,
                     &body,
-                    inspected_container,
+                    inspected_object,
+                ));
+            }
+            if matches!(
+                operation,
+                "ListImages"
+                    | "InspectImage"
+                    | "ListImageHistory"
+                    | "ListNetworks"
+                    | "InspectNetwork"
+                    | "ListVolumes"
+                    | "InspectVolume"
+            ) {
+                return Err(AppError::from_docker_http_failure(
+                    operation,
+                    status,
+                    &body,
+                    inspected_object,
                 ));
             }
             return Err(AppError::from_http_failure(operation, status, &body));

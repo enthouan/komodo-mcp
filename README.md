@@ -11,7 +11,7 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.9.0 SDK](https://docs.rs/rmcp/3.9.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Forty-five read-only tools list and inspect
+exactly with optional features disabled. Fifty-two read-only tools list and inspect
 Servers, Stacks, Deployments, Repos, Builders, Builds, Procedures and Actions, summarize fleet health, inspect alerts/update
 history, read bounded logs, and diagnose a stack in one call.
 The [scoped TOML export](docs/export.md) returns a sanitized inspection document
@@ -19,6 +19,8 @@ for explicit resources/groups, with separate opt-in to all Core variables.
 The [Swarm inspection tools](docs/swarms.md) inspect existing clusters, nodes,
 services and tasks, trace placement failures, and read bounded exact-service logs.
 Cached lists and fresh inspection remain distinct.
+The [Docker inspection tools](docs/docker.md) list and inspect images, networks
+and volumes on one Server, with safe image history and explicit cache limits.
 Optional operate-enabled tools deploy one existing workload or clone/pull a saved
 Repo, or run/cancel a saved Server-backed Build, Procedure or Action, and return
 its Core update receipt.
@@ -144,7 +146,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All forty-five read tools remain locally available in every grant
+All fifty-two read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
