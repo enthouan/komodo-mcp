@@ -141,7 +141,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All thirty-four read tools remain locally available in every grant
+All thirty-five read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -182,7 +182,12 @@ explicit source/cache/alert refresh. `review_resource_sync_pending` audits an
 explicit whole-sync, resource-type or named selection and returns a private
 single-use reference only when coverage is complete. See
 [pending plans](docs/resource-syncs.md#pending-plans-and-explicit-refresh) for
-freshness, metadata and deployment limits. Desired-state application is separate.
+freshness, metadata and deployment limits. `apply_resource_sync` requires both
+local grants and the exact single-use review, performs one counted preflight
+refresh, rejects detected drift, and submits at most one RunSync.
+`wait_for_resource_sync_update` resumes a retained update ID through read-only
+identity checks. Parent success, independent resource observations and workload
+health remain separate; see [reviewed application](docs/resource-syncs.md#apply-a-reviewed-selection).
 
 Builders and Builds add `list_builders`/`get_builder`, `list_builds`/`get_build`
 and typed create/update preview/apply tools. Direct writes support explicit
@@ -294,6 +299,7 @@ RUST_LOG=komodo_mcp=debug,rmcp=warn ./target/release/komodo-mcp
 | `export_resources_toml` | Export explicit resources/groups and optional all-variable metadata as sanitized, incomplete inspection TOML |
 | `get_resource_sync_pending` | Inspect cached desired-state changes, deployment intent and distinct errors without mutations |
 | `review_resource_sync_pending` | Audit an explicit selection and retain a bounded private review reference without Core mutations |
+| `wait_for_resource_sync_update` | Resume an explicitly known RunSync update ID with sync/operation checks on every read |
 
 Each tool advertises a JSON input schema, output schema, and effect annotations
 through MCP `tools/list`. Read tools are non-destructive; scoped review is

@@ -188,6 +188,8 @@ pub struct UpdateDetail {
     pub observed_procedure_result: Option<crate::procedure_observation::ProcedureObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_action_result: Option<crate::action_observation::ActionObservation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_sync_result: Option<crate::sync_observation::SyncObservation>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -199,6 +201,11 @@ pub struct RevisionObservation {
 }
 
 fn observed_revision(client: &CoreClient, update: &Update) -> Option<RevisionObservation> {
+    // Pinned RunSync does not bind a revision to its update. Pending/last-sync
+    // hashes can describe a later refresh and cannot be attributed to this run.
+    if update.operation == komodo_client::entities::Operation::RunSync {
+        return None;
+    }
     if let Some(revision) = crate::repositories::revision(client, &update.commit_hash) {
         return Some(RevisionObservation {
             revision,
@@ -583,9 +590,18 @@ pub(crate) fn project_update_detail(
         )
         .take(MAX_UPDATE_STAGES)
         .map(|(index, log)| {
-            // Arbitrary Action output can disclose source, arguments or the
-            // temporary administrator credentials even after an MCP restart.
-            if update.operation == komodo_client::entities::Operation::RunAction {
+            // Sync and trusted automation output can disclose raw source,
+            // arguments or administrator credentials, including after restart.
+            if update.operation == komodo_client::entities::Operation::RunSync {
+                let mut safe=log.clone();
+                safe.stage=crate::sync_observation::stage(&log.stage).0.into();
+                safe.stderr=if log.stderr.is_empty() {String::new()} else {
+                    "Sync error details omitted because they may contain desired/current TOML, source contents, values or credentials. Inspect safe batch reports and independent resource/health observations.".into()
+                };
+                let mut stage=project_stage(client,index,&safe);
+                stage.stderr_truncated = !log.stderr.is_empty();
+                stage
+            } else if update.operation == komodo_client::entities::Operation::RunAction {
                 let mut safe = log.clone();
                 if safe.stage != "Execute Action" {
                     safe.stage = "Action preparation".into();
@@ -621,5 +637,6 @@ pub(crate) fn project_update_detail(
         observed_build_result: crate::build_observation::project(client, update),
         observed_procedure_result: crate::procedure_observation::project(client, update),
         observed_action_result: crate::action_observation::project(update),
+        observed_sync_result: crate::sync_observation::project(update),
     })
 }

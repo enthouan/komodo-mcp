@@ -129,6 +129,7 @@ impl RecoveryInput {
                 self.operation,
                 WorkloadOperation::Run | WorkloadOperation::Cancel
             ),
+            WorkloadKind::ResourceSync => matches!(self.operation, WorkloadOperation::Run),
             _ => matches!(
                 self.operation,
                 WorkloadOperation::Deploy
@@ -147,6 +148,9 @@ impl RecoveryInput {
             (WorkloadKind::Build, RequestedScope::WholeBuild {}) => (),
             (WorkloadKind::Procedure, RequestedScope::WholeProcedure {}) => (),
             (WorkloadKind::Action, RequestedScope::WholeAction {}) => (),
+            (WorkloadKind::ResourceSync, RequestedScope::ResourceSync { selection }) => {
+                crate::sync_plans::validate_recovery_scope(selection)?
+            }
             (WorkloadKind::Stack, RequestedScope::Service { service }) => StackScope::Service {
                 service: service.clone(),
             }
@@ -257,6 +261,7 @@ pub async fn reconcile_operation(
             WorkloadKind::Build => ResourceKind::Build,
             WorkloadKind::Procedure => ResourceKind::Procedure,
             WorkloadKind::Action => ResourceKind::Action,
+            WorkloadKind::ResourceSync => ResourceKind::ResourceSync,
         },
         id: input.target.id.clone(),
     };
@@ -267,8 +272,10 @@ pub async fn reconcile_operation(
         WorkloadKind::Build => ResourceTarget::Build(input.target.id.clone()),
         WorkloadKind::Procedure => ResourceTarget::Procedure(input.target.id.clone()),
         WorkloadKind::Action => ResourceTarget::Action(input.target.id.clone()),
+        WorkloadKind::ResourceSync => ResourceTarget::ResourceSync(input.target.id.clone()),
     };
     let operation = match input.target.kind {
+        WorkloadKind::ResourceSync => komodo_client::entities::Operation::RunSync,
         WorkloadKind::Stack => {
             let (_, whole, service) = input.operation.stack_variants()?;
             if matches!(input.requested_scope, RequestedScope::Service { .. }) {
@@ -332,7 +339,7 @@ pub async fn reconcile_operation(
         history_requests: 0,
         detail_requests: 0,
         excluded_by_scope: 0,
-        evidence_incomplete: false,
+        evidence_incomplete: matches!(target.kind, ResourceKind::ResourceSync),
         candidates_truncated: false,
         history_error: None,
         automatic_resubmission: false,
@@ -376,6 +383,11 @@ pub async fn reconcile_operation(
                 scope_evidence: ScopeEvidence::WholeWorkloadVariant,
                 lookup_error: None,
             };
+            if matches!(target.kind, ResourceKind::ResourceSync) {
+                // No reliable selector or invocation identity, even for a
+                // claimed whole-sync run. Never inspect raw logs for it.
+                candidate.scope_evidence = ScopeEvidence::Unavailable;
+            }
             if let RequestedScope::Service { service } = &result.requested_scope {
                 candidate.scope_evidence = ScopeEvidence::Unavailable;
                 if result.detail_requests < MAX_DETAIL_READS {

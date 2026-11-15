@@ -27,6 +27,15 @@ Enabling/changing/clearing a schedule is a separate trusted configuration effect
 it neither submits an explicit run nor cancels an existing run. Core owns timezones
 and next occurrences, including cached/invalid/missing evidence.
 
+[Reviewed ResourceSync application](resource-syncs.md#apply-a-reviewed-selection)
+uses both local grants and a consumed private review before one preflight refresh
+and at most one RunSync. Known IDs resume through `wait_for_resource_sync_update`,
+which verifies the sync and operation every poll. Unknown-ID reconciliation uses
+kind `resource_sync`, scope `resource_sync` with the retained `selection`, and
+operation `run`. Core history cannot prove RunSync selectors or invocation
+ownership, including whole-sync scope. Every candidate remains unconfirmed and
+scope evidence is unavailable; no execution is selected or repeated.
+
 Set `KOMODO_ALLOW_OPERATE=true` in the MCP server's process environment and
 restart it. The default remains read-only. `KOMODO_ALLOW_CONFIGURATION_EDIT`
 is independent and exposes the typed configuration tools. Use an

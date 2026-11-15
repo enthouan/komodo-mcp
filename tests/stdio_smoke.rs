@@ -254,11 +254,12 @@ async fn list_tools(process: &mut Process, id: &str) -> Result<()> {
                         "get_resource_sync",
                         "get_resource_sync_pending",
                         "review_resource_sync_pending",
+                        "wait_for_resource_sync_update",
                     ])
                     .collect();
                 ensure!(
                     names == expected,
-                    "expected all thirty-four read-only tools"
+                    "expected all thirty-five read-only tools"
                 );
                 for tool in &result.tools {
                     ensure!(tool.output_schema.is_some(), "missing output schema");

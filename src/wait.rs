@@ -8,7 +8,7 @@ use tokio::time::{Instant, sleep, sleep_until};
 
 use crate::{
     client::CoreClient,
-    error::AppError,
+    error::{AppError, ErrorKind},
     history::{self, UpdateDetail, UpdateInput, UpdateStatus},
     inventory,
 };
@@ -87,6 +87,15 @@ pub async fn wait_for_update(
     input: WaitInput,
     cancelled: impl Future<Output = ()>,
 ) -> Result<WaitResult, AppError> {
+    wait_checked(client, input, None, cancelled).await
+}
+
+pub(crate) async fn wait_checked(
+    client: &CoreClient,
+    input: WaitInput,
+    expected: Option<(history::HistoryTarget, &'static str)>,
+    cancelled: impl Future<Output = ()>,
+) -> Result<WaitResult, AppError> {
     let id = UpdateInput { id: input.id }.validate("WaitForUpdate")?;
     if !(1..=30).contains(&input.timeout_seconds) {
         return Err(AppError::arguments(
@@ -121,6 +130,13 @@ pub async fn wait_for_update(
         };
         match observation {
             Ok(update) => {
+                if expected.as_ref().is_some_and(|(target, operation)| {
+                    &update.summary.target != target || update.summary.operation != *operation
+                }) {
+                    result.observation_error =
+                        Some(AppError::new(ErrorKind::InvalidResponse, "GetUpdate", None));
+                    return Ok(result.finish(client, WaitEnd::ObservationFailed, started));
+                }
                 let complete = update.summary.status == UpdateStatus::Complete;
                 result.latest_update = Some(update);
                 if complete {

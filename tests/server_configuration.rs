@@ -149,9 +149,9 @@ async fn four_profiles_hide_and_deny_all_server_tools_and_connection_apply_check
             let tools = s.list_tools(None).await.unwrap().tools;
             assert_eq!(
                 tools.len(),
-                34 + 17 * usize::from(operate)
+                35 + 17 * usize::from(operate)
                     + 46 * usize::from(edit)
-                    + 2 * usize::from(operate && edit)
+                    + 3 * usize::from(operate && edit)
             );
             for name in [
                 "preview_server_create",

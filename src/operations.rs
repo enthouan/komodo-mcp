@@ -57,6 +57,7 @@ pub enum WorkloadKind {
     Build,
     Procedure,
     Action,
+    ResourceSync,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -72,12 +73,17 @@ pub struct OperationResource {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RequestedScope {
     WholeStack {},
-    Service { service: String },
+    Service {
+        service: String,
+    },
     WholeDeployment {},
     WholeRepo {},
     WholeBuild {},
     WholeProcedure {},
     WholeAction {},
+    ResourceSync {
+        selection: crate::sync_plans::ExecutionScope,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -648,8 +654,31 @@ pub(crate) async fn submit<T>(
 where
     T: Serialize + KomodoExecuteRequest<Response = Update>,
 {
+    submit_future(
+        client,
+        resource,
+        requested_scope,
+        operation,
+        core_operation,
+        configured_effects,
+        client.execute(request),
+    )
+    .await
+}
+
+/// Reuse acknowledgement/uncertainty handling with a narrower authorized
+/// transport, without adding RunSync to the generic execution allowlist.
+pub(crate) async fn submit_future(
+    client: &CoreClient,
+    resource: OperationResource,
+    requested_scope: RequestedScope,
+    operation: WorkloadOperation,
+    core_operation: Operation,
+    configured_effects: ConfiguredEffects,
+    execution: impl std::future::Future<Output = Result<Result<Update, AppError>, AppError>>,
+) -> Result<SubmissionReceipt, AppError> {
     let started_ts = now_ms();
-    let reply = client.execute(request).await?;
+    let reply = execution.await?;
     let mut receipt = SubmissionReceipt {
         resource,
         requested_scope,
@@ -687,6 +716,9 @@ where
                 WorkloadKind::Build => ResourceTarget::Build(receipt.resource.id.clone()),
                 WorkloadKind::Procedure => ResourceTarget::Procedure(receipt.resource.id.clone()),
                 WorkloadKind::Action => ResourceTarget::Action(receipt.resource.id.clone()),
+                WorkloadKind::ResourceSync => {
+                    ResourceTarget::ResourceSync(receipt.resource.id.clone())
+                }
             };
             if update.operation != core_operation
                 || update.target != expected
