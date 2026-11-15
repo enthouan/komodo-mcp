@@ -69,8 +69,8 @@ fn dependencies(kind: Kind, config: &Value) -> Result<Vec<(Kind, String)>, AppEr
             out.push((Kind::Server, id.into()));
         }
     }
-    // Alerter's explicit resource list is resolved by Core on save. Never scan
-    // arbitrary strings, Action code, hooks or Procedure log output as IDs.
+    // Audit explicit Alerter targets too. Never infer references from arbitrary
+    // strings, Action code, hooks or Procedure log output.
     if kind == Kind::Alerter
         && let Some(items) = config.get("resources").filter(|v| !v.is_null())
     {
@@ -212,22 +212,25 @@ pub(super) async fn collect(
     let mut seen = BTreeSet::new();
     let mut resources = Vec::new();
     while let Some((parent, kind, id)) = queue.pop_front() {
+        let creating = !valid_id(&id)
+            && rows.iter().any(|r| {
+                r.resource_type == Some(kind)
+                    && r.action == ChangeKind::Create
+                    && r.name.as_deref() == Some(&id)
+            });
+        // Validate each edge before deduplicating the resource snapshot. A
+        // dependency first encountered under a later-executed parent must not
+        // authorize the same dependency for an earlier-executed parent.
+        if creating && (!selected(kind, &id) || order(kind) >= order(parent)) {
+            return Err(AppError::new(ErrorKind::UnsupportedTarget, OP, None));
+        }
         if !seen.insert((kind, id.clone())) {
             continue;
         }
         if seen.len() > MAX_REFERENCES {
             return Err(AppError::new(ErrorKind::UnsupportedTarget, OP, None));
         }
-        if !valid_id(&id)
-            && rows.iter().any(|r| {
-                r.resource_type == Some(kind)
-                    && r.action == ChangeKind::Create
-                    && r.name.as_deref() == Some(&id)
-            })
-        {
-            if !selected(kind, &id) || order(kind) >= order(parent) {
-                return Err(AppError::new(ErrorKind::UnsupportedTarget, OP, None));
-            }
+        if creating {
             resources
                 .push(json!({"kind":kind,"source_create":id,"identity_not_yet_assigned":true}));
             continue;

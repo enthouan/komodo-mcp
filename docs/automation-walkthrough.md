@@ -233,6 +233,14 @@ directory for inspection and use its exact owned project for recovery.
 
 Final acceptance must identify the actual integrated commit being evaluated.
 Candidate evidence alone is insufficient if the final implementation changes.
+
+The [ResourceSync walkthrough](resource-sync-walkthrough.md) adds
+`scripts/disposable_resource_sync_smoke.py`. It retains this entire automation
+extension and the original Core smoke, then adds four actual desired-state
+sources, separately counted preflight refresh/RunSync, scoped deletion/global
+changes, drift, unknown acknowledgements and independent deployment health.
+Use its actual-final-main report for v0.6 integration acceptance.
+
 Building/pushing these disposable user-workload images publishes no komodo-mcp
 distribution. Project distribution remains annotated source tags and GitHub
 Release notes; native/container distribution is tracked separately.

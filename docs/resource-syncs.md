@@ -1,5 +1,9 @@
 # ResourceSync definitions and pending plans
 
+Follow the [operator walkthrough](resource-sync-walkthrough.md) for a complete
+export → define → refresh → review → apply → inspect workflow and reproducible
+deterministic/live integration verification.
+
 `list_resource_syncs` and `get_resource_sync` inspect visible definitions in every
 local capability profile. Lists use positive `page_size` (1–100, default 30),
 name-ascending order and `next_page` with the same page size. Get accepts exactly
@@ -283,7 +287,8 @@ explicit Alerter targets and static Procedure-step targets), recursively up to
 withhold review authority to preserve the deferred external write-back boundary.
 Full visible raw configurations, including secret-only changes, stay private. New dependencies
 created within the same selection require an exact pending-create name and a
-compatible Core creation order. Missing/invisible/template/oversized dependency
+compatible Core creation order for every dependency edge, including when multiple
+parents share the same new dependency. Missing/invisible/template/oversized dependency
 evidence withholds authorization. Arbitrary trusted code, hooks, future automatic
 execution and their dynamic dependencies cannot be frozen or statically resolved.
 Review also bounds the metadata/dependency audit to 30 seconds; apply bounds its

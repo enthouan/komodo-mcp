@@ -392,7 +392,8 @@ async fn execute(
         assert_eq!(v["type"], "RunSync");
         let _: komodo_client::api::execute::RunSync =
             serde_json::from_value(v["params"].clone()).unwrap();
-        assert_eq!(v["params"]["sync"], SYNC);
+        let sync_id = v["params"]["sync"].as_str().unwrap().to_owned();
+        assert!(d.syncs.contains_key(&sync_id));
         let fault = d.execute_fault;
         if matches!(fault, ExecuteFault::Denied) {
             return denied();
@@ -402,7 +403,7 @@ async fn execute(
                 .unwrap();
         let mut u = update["update"].take();
         u["_id"] = json!({"$oid":UPDATE});
-        u["target"] = json!({"type":"ResourceSync","id":SYNC});
+        u["target"] = json!({"type":"ResourceSync","id":sync_id});
         u["operation"] = json!("RunSync");
         u["status"] = json!(if matches!(fault, ExecuteFault::Running) {
             "InProgress"

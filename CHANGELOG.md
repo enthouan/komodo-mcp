@@ -8,6 +8,14 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Validate export → define → refresh → review → apply → inspect through one
+  production-stdio workflow and an opt-in four-source Core/Periphery smoke that
+  retains the full automation/configuration/operation/recovery acceptance.
+  Document source preservation versus desired-state resets, scoped/global
+  effects, recovery and independent health; check every shared new-dependency
+  creation edge before deduplicating private snapshots.
+  ([#103](https://github.com/enthouan/komodo-mcp/issues/103))
+
 - Apply an exact reviewed ResourceSync selection with both local grants, one
   counted fresh-plan refresh, private definition/source/dependency comparisons
   and at most one RunSync. Preserve unknown acknowledgements, known IDs and
