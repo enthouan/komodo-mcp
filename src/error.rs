@@ -79,7 +79,7 @@ impl ErrorKind {
                 "Core returned invalid or incompatible data; check the Core release and proxy configuration."
             }
             Self::ResponseTooLarge => {
-                "Core log data exceeded its input budget; request a smaller tail or narrower service filter."
+                "Core data exceeded its input or output budget; request a smaller page, tail or narrower target where supported."
             }
             Self::CapabilityDisabled => {
                 "Enable the required local capability before requesting this operation."
@@ -184,6 +184,18 @@ impl AppError {
                 && matches!(operation, "RenameTag" | "DeleteTag")
             {
                 "Core denied this tag change; rename/delete requires this tag's owner or an admin. Keep the same identity; no retry or credential fallback was attempted."
+            } else if kind == ErrorKind::PermissionDenied
+                && matches!(
+                    operation,
+                    "InspectSwarm"
+                        | "InspectSwarmNode"
+                        | "InspectSwarmService"
+                        | "InspectSwarmTask"
+                )
+            {
+                "Core denied Swarm inspection; this identity needs Read plus the Inspect specific permission on the selected Swarm."
+            } else if kind == ErrorKind::PermissionDenied && operation == "GetSwarmServiceLog" {
+                "Core denied service logs; this identity needs Read plus the Logs specific permission on the selected Swarm."
             } else if kind == ErrorKind::PermissionDenied && operation == "CreateTag" {
                 "Core denied tag creation; check the enabled caller and Core's non-admin creation policy. No retry or credential fallback was attempted."
             } else if kind == ErrorKind::PermissionDenied && operation == "UpdateResourceMeta" {
@@ -342,6 +354,26 @@ impl AppError {
         } else {
             ErrorKind::Upstream
         };
+        if status == StatusCode::NOT_IMPLEMENTED
+            && matches!(
+                operation,
+                "ListSwarms"
+                    | "GetSwarm"
+                    | "InspectSwarm"
+                    | "ListSwarmNodes"
+                    | "InspectSwarmNode"
+                    | "ListSwarmServices"
+                    | "InspectSwarmService"
+                    | "ListSwarmTasks"
+                    | "InspectSwarmTask"
+                    | "GetSwarmServiceLog"
+            )
+        {
+            return Self {
+                message: "The selected Core/Periphery endpoint reports unsupported behavior. No alternative target or API was used.",
+                ..Self::new(ErrorKind::UnsupportedTarget, operation, Some(status))
+            };
+        }
         Self::new(kind, operation, Some(status))
     }
 }
@@ -409,7 +441,7 @@ fn core_2_3_2_permission_message(message: &str) -> bool {
     RESOURCE_TYPES.iter().any(|resource| {
         ["Read", "Write", "Execute"].iter().any(|level| {
             let prefix=format!("User does not have required permissions on this {resource}. Must have at least {level} permissions");
-            message == prefix || message == format!("{prefix}, as well as these specific permissions: [Attach]")
+            message == prefix || ["Attach", "Inspect", "Logs"].iter().any(|specific| message == format!("{prefix}, as well as these specific permissions: [{specific}]"))
         })
     })
 }

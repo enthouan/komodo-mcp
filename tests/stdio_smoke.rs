@@ -226,6 +226,16 @@ async fn list_tools(process: &mut Process, id: &str) -> Result<()> {
                     .iter()
                     .flat_map(|family| [family.list_tool(), family.get_tool()])
                     .chain([
+                        "list_swarms",
+                        "get_swarm",
+                        "list_swarm_nodes",
+                        "get_swarm_node",
+                        "list_swarm_services",
+                        "get_swarm_service",
+                        "list_swarm_tasks",
+                        "get_swarm_task",
+                        "get_swarm_service_logs",
+                        "diagnose_swarm_service",
                         "fleet_health",
                         "list_alerts",
                         "list_updates",
@@ -257,10 +267,7 @@ async fn list_tools(process: &mut Process, id: &str) -> Result<()> {
                         "wait_for_resource_sync_update",
                     ])
                     .collect();
-                ensure!(
-                    names == expected,
-                    "expected all thirty-five read-only tools"
-                );
+                ensure!(names == expected, "expected all forty-five read-only tools");
                 for tool in &result.tools {
                     ensure!(tool.output_schema.is_some(), "missing output schema");
                     let metadata = serde_json::to_value(tool)?;

@@ -492,6 +492,14 @@ impl CoreClient {
             "GetDeployment" => "GetDeployment",
             "GetSwarm" => "GetSwarm",
             "ListSwarms" => "ListSwarms",
+            "InspectSwarm" => "InspectSwarm",
+            "ListSwarmNodes" => "ListSwarmNodes",
+            "InspectSwarmNode" => "InspectSwarmNode",
+            "ListSwarmServices" => "ListSwarmServices",
+            "InspectSwarmService" => "InspectSwarmService",
+            "ListSwarmTasks" => "ListSwarmTasks",
+            "InspectSwarmTask" => "InspectSwarmTask",
+            "GetSwarmServiceLog" => "GetSwarmServiceLog",
             "GetRepo" => "GetRepo",
             "ListRepos" => "ListRepos",
             "GetBuild" => "GetBuild",
@@ -535,6 +543,16 @@ impl CoreClient {
                 || matches!(
                     T::req_type(),
                     "GetContainerLog"
+                        | "ListSwarms"
+                        | "GetSwarm"
+                        | "InspectSwarm"
+                        | "ListSwarmNodes"
+                        | "InspectSwarmNode"
+                        | "ListSwarmServices"
+                        | "InspectSwarmService"
+                        | "ListSwarmTasks"
+                        | "InspectSwarmTask"
+                        | "GetSwarmServiceLog"
                         | "ExportResourcesToToml"
                         | "GetDeploymentLog"
                         | "GetStackLog"

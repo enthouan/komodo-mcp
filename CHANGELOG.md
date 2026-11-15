@@ -5,6 +5,10 @@ notes: short, categorized bullets with links to the relevant pull requests.
 
 ## Unreleased
 
+### Added
+
+- Inspect Swarm nodes, services and tasks, diagnose placement failures, and read exact-service logs.
+
 ## v0.6.0
 
 ### Added

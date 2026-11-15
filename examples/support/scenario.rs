@@ -409,6 +409,16 @@ async fn solve(
     ensure!(
         names
             == BTreeSet::from([
+                "list_swarms",
+                "get_swarm",
+                "list_swarm_nodes",
+                "get_swarm_node",
+                "list_swarm_services",
+                "get_swarm_service",
+                "list_swarm_tasks",
+                "get_swarm_task",
+                "get_swarm_service_logs",
+                "diagnose_swarm_service",
                 "get_server",
                 "list_servers",
                 "get_stack",

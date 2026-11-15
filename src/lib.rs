@@ -32,6 +32,7 @@ pub mod schedules;
 pub mod server;
 pub mod server_configuration;
 pub mod stack_configuration;
+pub mod swarms;
 pub mod sync_observation;
 pub mod sync_plans;
 pub mod tags;

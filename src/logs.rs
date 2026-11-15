@@ -91,6 +91,7 @@ pub enum LogTargetKind {
     Container,
     Deployment,
     Stack,
+    SwarmService,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -257,7 +258,7 @@ pub async fn stack_logs(
     )
 }
 
-fn project(
+pub(crate) fn project(
     client: &CoreClient,
     log: Log,
     target: LogTarget,
