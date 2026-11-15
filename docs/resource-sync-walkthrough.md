@@ -203,6 +203,9 @@ managed deletion, variable/group whole/filtered scope, stale sources/references,
 partial failure, failed child deployment, unhealthy workload, lost replies,
 concurrent explicit callers and restart reconciliation. Expiry and selected
 malformed-wire/timing races remain deterministic coverage, not live claims.
+The deliberately unhealthy workload is restored through a new explicit sync and
+independently verified healthy before the retained Core smoke continues; both
+observations remain in the report.
 
 The runner owns the isolated Core database/users, private Git/host sources,
 registry, nested Docker daemon and workloads. Only Core uses a loopback port;

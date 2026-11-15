@@ -574,6 +574,26 @@ async def partial_and_health(creator):
     s.REPORT['resource_sync']['deployment_health'] = {'failed_child_parent_success': first,
         'successful_parent_update_id': result['receipt']['update_id'], 'docker_state': 'exited',
         'independent_mcp_health': unhealthy, 'parent_health_verified': False}
+    s.persist()
+    # Retained Server-detachment acceptance requires all owned workloads running.
+    # Restore this deliberately failed fixture through a new explicit sync, while
+    # retaining the independent unhealthy observation and its original update ID.
+    await save(creator, None, resource_id=sync_id, patch={'source': {'kind': 'inline',
+        'contents': deployment_doc('busybox:1.37.0', 'sh -c "sleep 600"')}})
+    restored, _ = await apply(creator, await review(creator, sync_id, whole()))
+    s.poll(lambda: s.run([*s.COMPOSE, 'exec', '-T', 'docker', 'docker', 'inspect', workload,
+        '--format', '{{.State.Status}}']) == 'running', 'owned synced workload restoration', 30)
+    healthy = None
+    for _ in range(30):
+        fleet = await creator.tool('fleet_health', {})
+        healthy = next((x for x in fleet['deployments'] if x['id'] == deployment_id), None)
+        if healthy and healthy['health'] == 'healthy':
+            break
+        await asyncio.sleep(1)
+    s.require(healthy and healthy['health'] == 'healthy', 'owned sync workload not restored before retained smoke')
+    s.REPORT['resource_sync']['deployment_health']['restored_before_retained_core_smoke'] = {
+        'new_explicit_parent_update_id': restored['receipt']['update_id'],
+        'docker_state': 'running', 'independent_mcp_health': healthy}
 
 
 async def pending_errors(creator):

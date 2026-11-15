@@ -236,10 +236,11 @@ mutation, and reject detected drift before at most one RunSync. Core rereads the
 source and has no expected-revision parameter: a final-read/execution race
 remains. Sync success and workload health are separate observations.
 
-Run `cargo test --locked --test sync_plans --test resource_syncs --test capabilities`
-for deterministic production-stdio evidence. The same fixture sync supports
-cached observer access and separately permission-checked refresh; #31 adds apply
-and #103 owns the actual-final-main live end-to-end evidence.
+Run `cargo test --locked --test resource_sync_workflow --test sync_apply --test sync_plans --test resource_syncs --test capabilities`
+for deterministic production-stdio evidence. The same sync supports cached
+observer access, separately permission-checked refresh and reviewed apply.
+The [walkthrough](resource-sync-walkthrough.md#reproduce-verification) includes
+the opt-in full Core/automation smoke and actual-final-main evidence requirement.
 
 Pinned semantics: [cached resource view](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/sync/view.rs),
 [execution and selectors](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/execute/sync.rs),
