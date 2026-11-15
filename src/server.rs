@@ -23,7 +23,17 @@ impl KomodoServer {
             Self::tool_router(),
             self.client.capabilities(),
             |name| match name {
-                "list_servers"
+                "list_swarms"
+                | "get_swarm"
+                | "list_swarm_nodes"
+                | "get_swarm_node"
+                | "list_swarm_services"
+                | "get_swarm_service"
+                | "list_swarm_tasks"
+                | "get_swarm_task"
+                | "get_swarm_service_logs"
+                | "diagnose_swarm_service"
+                | "list_servers"
                 | "export_resources_toml"
                 | "get_server"
                 | "list_stacks"
@@ -132,6 +142,96 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="List named visible Swarms with bounded positive pagination and cached health. Read only. Manager Server IDs and error presence are shown; raw errors and configuration are omitted. Follow next_page.",input_schema=schema_for_input::<ListInput>().expect("swarm schema"),output_schema=inventory::output_schema::<Page<crate::swarms::SwarmSummary>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_swarms(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_swarms") {
+            Ok(input) => crate::swarms::list(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Inspect one existing Swarm by stable ID or exact name. Core Read + Inspect required. Docker cluster ID and rotation state come from Core cache; no freshness or completeness guarantee. Join tokens, CA keys and raw configuration are omitted.",input_schema=schema_for_input::<DetailInput>().expect("swarm schema"),output_schema=inventory::output_schema::<crate::swarms::Observation<crate::swarms::SwarmDetail>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_swarm(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_swarm") {
+            Ok(input) => crate::swarms::get(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="List cached nodes on exactly one named Swarm. Core Read required. Show full stable Docker IDs, hostname, role, availability and state. Positive local pages, 512-object scan, 2 MiB response cap; incomplete cache and empty observations remain explicit. No mutation.",input_schema=schema_for_input::<crate::swarms::ListTargetInput>().expect("swarm schema"),output_schema=inventory::output_schema::<crate::swarms::Observation<crate::swarms::ObjectPage<crate::swarms::Node>>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_swarm_nodes(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_swarm_nodes") {
+            Ok(input) => crate::swarms::nodes(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Inspect one exact node on one Swarm. Resolve a unique cached full Docker ID or exact hostname, then fresh inspect that ID and verify identity. Core Read + Inspect required. No prefix selection, fallback or node administration. Labels, addresses and TLS material are omitted.",input_schema=schema_for_input::<crate::swarms::ObjectInput>().expect("swarm schema"),output_schema=inventory::output_schema::<crate::swarms::Observation<crate::swarms::Node>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_swarm_node(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_swarm_node") {
+            Ok(input) => crate::swarms::node(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="List cached services on one explicit Swarm with stable IDs, desired versus running replicas and mode. Core Read required. Bound local pages and scan; empty may reflect cache or suppressed poll failure. No fresh convergence or health claim, provisioning or mutation.",input_schema=schema_for_input::<crate::swarms::ListTargetInput>().expect("swarm schema"),output_schema=inventory::output_schema::<crate::swarms::Observation<crate::swarms::ObjectPage<crate::swarms::Service>>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_swarm_services(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_swarm_services") {
+            Ok(input) => crate::swarms::services(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Freshly inspect one exact cached service ID or unique name on one Swarm, verifying stable identity. Core Read + Inspect required. Show desired replicas and available Docker status; absent running count stays unknown. Omit environment, secrets, registry credentials, labels and raw errors.",input_schema=schema_for_input::<crate::swarms::ObjectInput>().expect("swarm schema"),output_schema=inventory::output_schema::<crate::swarms::Observation<crate::swarms::Service>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_swarm_service(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_swarm_service") {
+            Ok(input) => crate::swarms::service(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="List cached tasks on one explicit Swarm, optionally restricted to one exact service selector. Failed, missing, ambiguous or incomplete selectors never widen scope. Distinguish desired-running current replicas, shutdown/remove history and unknown classification. Include service/node IDs and states; Core Read required. No mutation.",input_schema=schema_for_input::<crate::swarms::TasksInput>().expect("swarm schema"),output_schema=inventory::output_schema::<crate::swarms::Observation<crate::swarms::ObjectPage<crate::swarms::Task>>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_swarm_tasks(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_swarm_tasks") {
+            Ok(input) => crate::swarms::tasks(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Freshly inspect one exact cached task on one Swarm; verify full Docker task/service identity. Core Read + Inspect required. Show placement, desired/current state, slot, exit code and conservative failure classification. Raw environment, specs and Docker messages are omitted; no mutation.",input_schema=schema_for_input::<crate::swarms::ObjectInput>().expect("swarm schema"),output_schema=inventory::output_schema::<crate::swarms::Observation<crate::swarms::Task>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_swarm_task(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_swarm_task") {
+            Ok(input) => crate::swarms::task(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Read bounded fresh logs for one exact cached Swarm service ID or unique name. Core Read + Logs required, without requiring Inspect. Resolve once and send the full service ID, never all services. Tail 1–500, output 1–65536 bytes, existing redaction before clipping, details disabled. No mutation or selector fallback.",input_schema=schema_for_input::<crate::swarms::LogsInput>().expect("swarm schema"),output_schema=inventory::output_schema::<crate::logs::WorkloadLogs>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_swarm_service_logs(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_swarm_service_logs") {
+            Ok(input) => crate::swarms::service_logs(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Diagnose one exact Swarm service using fresh inspect plus explicitly cached task/node discovery. Core Read + Inspect required. Trace pending/failed placement to up to eight fresh tasks and four related fresh nodes in 30 seconds; retain source gaps and incomplete coverage. Historical running tasks do not count as current replicas. Cache counts, fresh details, convergence and health remain separate. Zero mutations; raw Docker configuration/errors omitted.",input_schema=schema_for_input::<crate::swarms::ObjectInput>().expect("swarm schema"),output_schema=inventory::output_schema::<crate::swarms::Observation<crate::swarms::Diagnosis>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn diagnose_swarm_service(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "diagnose_swarm_service") {
+            Ok(input) => crate::swarms::diagnose(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description="Apply exactly one reviewed ResourceSync and exact apply_binding. Requires BOTH configuration-edit and operate before Core I/O; Core Execute remains authoritative. Consume the ten-minute process-local review once, privately recheck definition/dependencies/full plan/source, submit one explicit pending-cache refresh, reject any drift/errors/incomplete evidence, then submit at most one RunSync. Refresh can fetch source/cache and affect alerts; RunSync can internally refresh and act through Core's built-in administrator sync identity. Whole/type/named scopes stay explicit; filtered runs exclude variables/groups. Managed OR delete permits deletion; empty tags are unrestricted. Core rereads sources without expected revision: a final-read race remains, with no frozen plan, exactly-once guarantee, rollback or remote cancellation. Return separate refresh/RunSync counts, accepted/rejected/unknown receipt, known update ID/window, bounded follow-up, safe batch reports and independent resource observations. Parent success does not verify child deployment success or workload health. No replay or authoritative Git/host write-back.",input_schema=schema_for_input::<crate::sync_plans::ApplyInput>().expect("apply sync schema"),output_schema=inventory::output_schema::<crate::sync_plans::ApplyResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
     async fn apply_resource_sync(
         &self,
