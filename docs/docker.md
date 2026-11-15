@@ -24,7 +24,13 @@ and credential-bearing references are rejected. Image IDs are full lowercase
 `sha256:` content digests; network IDs are either 64 lowercase hexadecimal characters (local networks) or
 full 25-character lowercase alphanumeric Swarm IDs (overlay networks).
 Image names match an exact cached primary name, tag or manifest digest reference.
-Network and volume names are exact and case-sensitive. Multiple images or
+Bracketed IPv6 registry addresses, with optional ports, are supported.
+Network and volume names are exact and case-sensitive. Network selectors accept
+bounded nonblank names, including underscores, colons and spaces; control
+characters, wildcard forms and credential-bearing names are rejected. Public
+network names that are unsafe, unusually formatted or oversized are omitted with
+`name_omitted: true`; their full IDs remain usable, and they cannot invalidate the
+rest of an inventory. Volume selectors retain Docker volume-name syntax. Multiple images or
 networks with the same name require an explicit ID. Duplicate identities are an
 invalid response. Volumes use their exact name because Core's list has no
 immutable volume identifier.
@@ -118,3 +124,8 @@ Exact Docker/Bollard missing-error formats follow [image errors](https://github.
 [network errors](https://github.com/moby/moby/blob/v28.0.0/libnetwork/error.go)
 and [volume errors](https://github.com/moby/moby/blob/v28.0.0/volume/service/errors.go);
 other formats stay conservative upstream failures.
+
+Network selection/display rules were also checked against the upstream
+[network-name validator](https://github.com/moby/libnetwork/blob/master/config/config.go),
+and IPv6 reference syntax against the official
+[Docker reference grammar](https://github.com/distribution/reference/blob/main/regexp.go).

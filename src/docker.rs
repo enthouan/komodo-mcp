@@ -136,6 +136,7 @@ pub struct Layer {
 pub struct NetworkSummary {
     pub id: String,
     pub name: Option<String>,
+    pub name_omitted: bool,
     pub driver: Option<String>,
     pub scope: Option<String>,
     pub created: Option<String>,
@@ -187,19 +188,55 @@ fn name(v: &str) -> bool {
         && v.bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
 }
+fn network_name(v: &str) -> bool {
+    !v.trim().is_empty()
+        && v.len() <= 128
+        && !v.chars().any(char::is_control)
+        && !v.contains(['*', '?', '[', ']', '@'])
+        && !v.contains("://")
+}
+// Network names are arbitrary nonblank strings upstream. Keep exact selection
+// separate from the more conservative public display, and retain usable IDs.
+fn network_display(client: &CoreClient, v: &str) -> Option<String> {
+    (network_name(v)
+        && v.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_.:-".contains(&b))
+        && client.redact(v) == v)
+        .then(|| v.to_owned())
+}
 fn image_reference(v: &str) -> bool {
     if v.is_empty()
         || v.len() > 512
-        || !v.as_bytes()[0].is_ascii_alphanumeric()
+        || !(v.as_bytes()[0].is_ascii_alphanumeric() || v.starts_with('['))
         || v.contains("://")
         || !v
             .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"._-/:@".contains(&b))
+            .all(|b| b.is_ascii_alphanumeric() || b"._-/:@[]".contains(&b))
     {
         return false;
     }
     let mut parts = v.split('@');
     let path = parts.next().unwrap_or_default();
+    if let Some(bracketed) = path.strip_prefix('[') {
+        let Some((authority, repository)) = bracketed.split_once('/') else {
+            return false;
+        };
+        let Some((host, port)) = authority.split_once(']') else {
+            return false;
+        };
+        if host.parse::<std::net::Ipv6Addr>().is_err()
+            || !host.bytes().all(|b| b.is_ascii_hexdigit() || b == b':')
+            || (!port.is_empty()
+                && !port
+                    .strip_prefix(':')
+                    .is_some_and(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())))
+            || repository.contains(['[', ']'])
+        {
+            return false;
+        }
+    } else if path.contains(['[', ']']) {
+        return false;
+    }
     if path.ends_with(['/', ':'])
         || path
             .split('/')
@@ -219,7 +256,8 @@ fn validate(s: &Selector, kind: Kind) -> Result<(), AppError> {
         },
         (None, Some(v)) => match kind {
             Kind::Image => image_reference(v),
-            _ => name(v),
+            Kind::Network => network_name(v),
+            Kind::Volume => name(v),
         },
         _ => false,
     };
@@ -384,12 +422,15 @@ fn select<T>(
                     .iter()
                     .take(5)
                     .map(|i| {
-                        let (id, names) = identity(i);
+                        let (id, _) = identity(i);
                         Candidate {
                             id: text(client, id, 128),
-                            name: names
-                                .first()
-                                .filter(|v| name(v) || image_reference(v))
+                            name: s
+                                .name
+                                .as_deref()
+                                .filter(|v| {
+                                    image_reference(v) || network_display(client, v).is_some()
+                                })
                                 .map(|v| text(client, v, 128))
                                 .unwrap_or_else(|| "[omitted]".into()),
                         }
@@ -440,12 +481,12 @@ fn image_detail(client: &CoreClient, v: Image) -> Result<ImageDetail, AppError> 
 }
 fn network_list(client: &CoreClient, v: NetworkListItem) -> Result<NetworkSummary, AppError> {
     let id = v.id.filter(|v| network_id(v)).ok_or_else(invalid)?;
-    if v.name.as_ref().is_some_and(|v| !name(v)) {
-        return Err(invalid());
-    }
+    let display_name = v.name.as_deref().and_then(|v| network_display(client, v));
+    let name_omitted = v.name.is_some() && display_name.is_none();
     Ok(NetworkSummary {
         id,
-        name: v.name.map(|v| text(client, &v, 128)),
+        name: display_name,
+        name_omitted,
         driver: token(
             v.driver,
             &["bridge", "host", "null", "overlay", "macvlan", "ipvlan"],

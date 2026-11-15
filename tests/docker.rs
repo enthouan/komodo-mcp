@@ -265,6 +265,9 @@ async fn invalid_null_prefix_and_credential_selectors_fail_before_any_core_io() 
             json!({"name":"user:password@registry.invalid/web"}),
             json!({"name":null}),
         ] {
+            if tool == "get_network" && object == json!({"name":"-flag"}) {
+                continue;
+            }
             let reads = c.requests("read").len();
             assert_eq!(
                 error(call(&s, tool, json!({"target":{"id":SERVER},"object":object})).await)["kind"],
@@ -747,5 +750,125 @@ async fn mixed_local_and_swarm_network_ids_are_exact_and_do_not_poison_other_sel
         "invalid_arguments"
     );
     assert_eq!(c.requests("read").len(), reads);
+    finish(p, s, &c).await;
+}
+
+#[tokio::test]
+async fn broad_network_names_select_exactly_and_unsafe_display_never_poisons_inventory() {
+    let c = Core::start().await;
+    let names = [
+        "_private".to_owned(),
+        "app:backend".into(),
+        "-flag".into(),
+        "space separated".into(),
+        format!("https://{}:{}@private.invalid", PRIVATE[4], PRIVATE[5]),
+    ];
+    {
+        let mut d = c.data.lock().unwrap();
+        let rows = names
+            .iter()
+            .enumerate()
+            .map(|(n, name)| network(&format!("{:064x}", n + 1), name))
+            .collect::<Vec<_>>();
+        d.replies.insert("ListNetworks".into(), json!(rows));
+    }
+    let (p, s) = Process::start_profile(&c.address, false, false).await;
+    let v = data(call(&s, "list_networks", target()).await);
+    let rows = v["data"]["items"].as_array().unwrap();
+    assert_eq!(rows.len(), 5);
+    assert_eq!(rows[0]["name"], "_private");
+    assert_eq!(rows[1]["name"], "app:backend");
+    assert!(rows[3]["name"].is_null());
+    assert_eq!(rows[3]["name_omitted"], true);
+    assert!(rows[4]["name"].is_null());
+    assert_eq!(rows[4]["name_omitted"], true);
+    for (n, name) in names.iter().enumerate() {
+        let id = format!("{:064x}", n + 1);
+        {
+            let mut d = c.data.lock().unwrap();
+            d.replies.get_mut("InspectNetwork").unwrap()["Id"] = json!(id);
+            d.replies.get_mut("InspectNetwork").unwrap()["Name"] = json!(name);
+        }
+        let value = data(
+            call(
+                &s,
+                "get_network",
+                json!({"target":{"id":SERVER},"object":{"id":id}}),
+            )
+            .await,
+        );
+        assert_eq!(value["data"]["id"], id);
+        if n < 4 {
+            let value = data(
+                call(
+                    &s,
+                    "get_network",
+                    json!({"target":{"id":SERVER},"object":{"name":name}}),
+                )
+                .await,
+            );
+            assert_eq!(value["data"]["id"], id);
+        }
+        assert_eq!(c.requests("read").last().unwrap().params["network"], id);
+    }
+    finish(p, s, &c).await;
+}
+
+#[tokio::test]
+async fn ipv6_registry_tags_and_digests_are_preserved_and_bound_to_immutable_image_ids() {
+    let c = Core::start().await;
+    let tag = "[2001:db8::1]:5000/app:latest";
+    let digest = format!("[2001:db8::1]:5000/app@{IMAGE}");
+    {
+        let mut d = c.data.lock().unwrap();
+        d.replies.get_mut("ListImages").unwrap()[0]["name"] = json!(tag);
+        d.replies.get_mut("ListImages").unwrap()[0]["tags"] = json!([tag]);
+        d.replies.get_mut("ListImages").unwrap()[0]["digests"] = json!([digest]);
+        d.replies.get_mut("InspectImage").unwrap()["RepoTags"] = json!([tag]);
+        d.replies.get_mut("InspectImage").unwrap()["RepoDigests"] = json!([digest]);
+    }
+    let (p, s) = Process::start_profile(&c.address, false, false).await;
+    let v = data(call(&s, "list_images", target()).await);
+    assert_eq!(v["data"]["items"][0]["tags"], json!([tag]));
+    assert_eq!(v["data"]["items"][0]["digests"], json!([digest]));
+    assert_eq!(v["data"]["items"][0]["references_incomplete"], false);
+    for name in [tag, &digest] {
+        for tool in ["get_image", "get_image_history"] {
+            data(
+                call(
+                    &s,
+                    tool,
+                    json!({"target":{"id":SERVER},"object":{"name":name}}),
+                )
+                .await,
+            );
+            assert!(
+                c.requests("read")
+                    .iter()
+                    .filter(|r| r.operation == "InspectImage" || r.operation == "ListImageHistory")
+                    .all(|r| r.params["image"] == IMAGE)
+            );
+        }
+    }
+    for name in [
+        "[not-ipv6]:5000/app:latest",
+        "[2001:db8::1]:/app",
+        "[2001:db8::1]/app@user:password",
+        "user:password@[2001:db8::1]/app",
+    ] {
+        let reads = c.requests("read").len();
+        assert_eq!(
+            error(
+                call(
+                    &s,
+                    "get_image",
+                    json!({"target":{"id":SERVER},"object":{"name":name}})
+                )
+                .await
+            )["kind"],
+            "invalid_arguments"
+        );
+        assert_eq!(c.requests("read").len(), reads);
+    }
     finish(p, s, &c).await;
 }
