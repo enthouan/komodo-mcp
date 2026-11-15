@@ -109,13 +109,20 @@ versioned notes already exist, establish this boundary without rewriting the
 reviewed release scope. Publication dates and commit identities belong in the
 GitHub Release and tracking evidence.
 
-Follow the concise style of
-[SimpleLogin MCP releases](https://github.com/enthouan/simplelogin-mcp/releases),
-with explicit PR links. Start directly with applicable `### Added`,
-`### Changed` or `### Fixed` headings; omit empty categories. Use a handful of
-bullets, one short sentence per change, grouping related work. End each bullet
-with linked PR numbers such as `([#105](https://github.com/enthouan/komodo-mcp/pull/105))`,
-verified against merged history; issue links do not replace PR links.
+Write concise, user-facing release notes. Start directly with applicable
+`### Added`, `### Changed` or `### Fixed` headings; omit empty categories. Use a
+handful of bullets, each one short sentence about what users can do or what
+changed. Group related work. End each bullet with PR links verified against
+merged history; issue links do not replace PR links.
+
+Example using shipped komodo-mcp changes:
+
+```markdown
+### Added
+
+- Export selected resources and groups as sanitized, inspection-only TOML. ([#105](https://github.com/enthouan/komodo-mcp/pull/105))
+- Inspect, refresh and review scoped ResourceSync pending changes before applying them. ([#107](https://github.com/enthouan/komodo-mcp/pull/107))
+```
 
 Keep validation commands/results, hashes, fixture/live coverage, permission and
 recovery details, benchmark caveats, distribution boilerplate and deferred work
