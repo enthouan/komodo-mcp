@@ -21,7 +21,8 @@ other mutation endpoint is used.
 
 Object selectors contain exactly one `id` or `name`; nulls, wildcards, ID prefixes
 and credential-bearing references are rejected. Image IDs are full lowercase
-`sha256:` content digests; network IDs are 64 lowercase hexadecimal characters.
+`sha256:` content digests; network IDs are either 64 lowercase hexadecimal characters (local networks) or
+full 25-character lowercase alphanumeric Swarm IDs (overlay networks).
 Image names match an exact cached primary name, tag or manifest digest reference.
 Network and volume names are exact and case-sensitive. Multiple images or
 networks with the same name require an explicit ID. Duplicate identities are an

@@ -581,3 +581,78 @@ async fn history_coverage_output_budgets_and_malformed_identities_fail_safely() 
     );
     finish(p, s, &c).await;
 }
+
+#[tokio::test]
+async fn mixed_local_and_swarm_network_ids_are_exact_and_do_not_poison_other_selection() {
+    let c = Core::start().await;
+    let overlay = "ovrly0123456789abcdefghij";
+    {
+        let mut d = c.data.lock().unwrap();
+        let mut v = network(overlay, "ingress");
+        v["driver"] = json!("overlay");
+        v["scope"] = json!("swarm");
+        d.replies
+            .get_mut("ListNetworks")
+            .unwrap()
+            .as_array_mut()
+            .unwrap()
+            .push(v);
+    }
+    let (p, s) = Process::start_profile(&c.address, false, false).await;
+    let v = data(call(&s, "list_networks", target()).await);
+    assert_eq!(v["data"]["items"].as_array().unwrap().len(), 2);
+    assert!(
+        v["data"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n["id"] == overlay && n["scope"] == "swarm")
+    );
+    // Either exact selector for the local network remains usable in this cache.
+    data(call(&s, "get_network", object("get_network")).await);
+    data(
+        call(
+            &s,
+            "get_network",
+            json!({"target":{"id":SERVER},"object":{"name":"fixture-net"}}),
+        )
+        .await,
+    );
+    {
+        let mut d = c.data.lock().unwrap();
+        d.replies.get_mut("InspectNetwork").unwrap()["Id"] = json!(overlay);
+        d.replies.get_mut("InspectNetwork").unwrap()["Name"] = json!("ingress");
+    }
+    for selector in [json!({"id":overlay}), json!({"name":"ingress"})] {
+        let v = data(
+            call(
+                &s,
+                "get_network",
+                json!({"target":{"id":SERVER},"object":selector}),
+            )
+            .await,
+        );
+        assert_eq!(v["data"]["id"], overlay);
+        let q = c
+            .requests("read")
+            .into_iter()
+            .rev()
+            .find(|r| r.operation == "InspectNetwork")
+            .unwrap();
+        assert_eq!(q.params["network"], overlay);
+    }
+    let reads = c.requests("read").len();
+    assert_eq!(
+        error(
+            call(
+                &s,
+                "get_network",
+                json!({"target":{"id":SERVER},"object":{"id":&overlay[..12]}})
+            )
+            .await
+        )["kind"],
+        "invalid_arguments"
+    );
+    assert_eq!(c.requests("read").len(), reads);
+    finish(p, s, &c).await;
+}

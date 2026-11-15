@@ -52,7 +52,7 @@ impl JsonSchema for Selector {
     }
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({"type":"object","properties":{
-            "id":{"type":"string","pattern":"^(sha256:)?[0-9a-f]{64}$","description":"Full image sha256: digest or full network ID. Volumes use exact name only."},
+            "id":{"type":"string","pattern":"^((sha256:)?[0-9a-f]{64}|[a-z0-9]{25})$","description":"Full image sha256: digest or full local/Swarm network ID. Volumes use exact name only."},
             "name":{"type":"string","minLength":1,"maxLength":512,"description":"Exact image reference or network/volume name; no prefixes, credentials or wildcards."}
         },"oneOf":[{"required":["id"]},{"required":["name"]}],"additionalProperties":false})
     }
@@ -171,6 +171,12 @@ fn hex(v: &str) -> bool {
         && v.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
+fn network_id(v: &str) -> bool {
+    hex(v)
+        || (v.len() == 25
+            && v.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()))
+}
 fn image_id(v: &str) -> bool {
     v.strip_prefix("sha256:").is_some_and(hex)
 }
@@ -208,7 +214,7 @@ fn validate(s: &Selector, kind: Kind) -> Result<(), AppError> {
     let valid = match (&s.id, &s.name) {
         (Some(id), None) => match kind {
             Kind::Image => image_id(id),
-            Kind::Network => hex(id),
+            Kind::Network => network_id(id),
             Kind::Volume => false,
         },
         (None, Some(v)) => match kind {
@@ -433,7 +439,7 @@ fn image_detail(client: &CoreClient, v: Image) -> Result<ImageDetail, AppError> 
     })
 }
 fn network_list(client: &CoreClient, v: NetworkListItem) -> Result<NetworkSummary, AppError> {
-    let id = v.id.filter(|v| hex(v)).ok_or_else(invalid)?;
+    let id = v.id.filter(|v| network_id(v)).ok_or_else(invalid)?;
     if v.name.as_ref().is_some_and(|v| !name(v)) {
         return Err(invalid());
     }
@@ -690,7 +696,10 @@ pub async fn network(
             server: server.id.clone(),
         })
         .await?;
-    if values.iter().any(|v| !v.id.as_deref().is_some_and(hex)) {
+    if values
+        .iter()
+        .any(|v| !v.id.as_deref().is_some_and(network_id))
+    {
         return Err(invalid());
     }
     let selected = select(&client, values, &input.object, |v| {
