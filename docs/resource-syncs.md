@@ -1,5 +1,9 @@
 # ResourceSync definitions and pending plans
 
+Follow the [operator walkthrough](resource-sync-walkthrough.md) for a complete
+export → define → refresh → review → apply → inspect workflow and reproducible
+deterministic/live integration verification.
+
 `list_resource_syncs` and `get_resource_sync` inspect visible definitions in every
 local capability profile. Lists use positive `page_size` (1–100, default 30),
 name-ascending order and `next_page` with the same page size. Get accepts exactly
@@ -232,10 +236,11 @@ mutation, and reject detected drift before at most one RunSync. Core rereads the
 source and has no expected-revision parameter: a final-read/execution race
 remains. Sync success and workload health are separate observations.
 
-Run `cargo test --locked --test sync_plans --test resource_syncs --test capabilities`
-for deterministic production-stdio evidence. The same fixture sync supports
-cached observer access and separately permission-checked refresh; #31 adds apply
-and #103 owns the actual-final-main live end-to-end evidence.
+Run `cargo test --locked --test resource_sync_workflow --test sync_apply --test sync_plans --test resource_syncs --test capabilities`
+for deterministic production-stdio evidence. The same sync supports cached
+observer access, separately permission-checked refresh and reviewed apply.
+The [walkthrough](resource-sync-walkthrough.md#reproduce-verification) includes
+the opt-in full Core/automation smoke and actual-final-main evidence requirement.
 
 Pinned semantics: [cached resource view](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/sync/view.rs),
 [execution and selectors](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/execute/sync.rs),
@@ -276,6 +281,14 @@ change pending alerts even when application is rejected. RunSync can perform an
 additional internal refresh; the returned counts describe MCP's explicit
 requests, not every internal Core effect.
 
+Core 2.3.2 reuses Git pull results for five seconds. For direct Git/linked Repo
+sources, apply waits 5.1 seconds after the initial observation before its one
+refresh, within the 45-second preflight bound. The result records
+`preflight.git_pull_cache_wait_ms`; inline/host sources report zero. This lets
+pulls predating the attempt expire. Concurrent Core pulls and subsequent source
+changes still prevent a guarantee of the latest external revision. Standalone
+refresh retains Core's cache behavior and never promises a network fetch.
+
 Private reference checks cover the active source Repo and selected desired
 attachment/source/image dependencies (Server, Swarm, Builder, Repo, Build and
 explicit Alerter targets and static Procedure-step targets), recursively up to
@@ -283,7 +296,8 @@ explicit Alerter targets and static Procedure-step targets), recursively up to
 withhold review authority to preserve the deferred external write-back boundary.
 Full visible raw configurations, including secret-only changes, stay private. New dependencies
 created within the same selection require an exact pending-create name and a
-compatible Core creation order. Missing/invisible/template/oversized dependency
+compatible Core creation order for every dependency edge, including when multiple
+parents share the same new dependency. Missing/invisible/template/oversized dependency
 evidence withholds authorization. Arbitrary trusted code, hooks, future automatic
 execution and their dynamic dependencies cannot be frozen or statically resolved.
 Review also bounds the metadata/dependency audit to 30 seconds; apply bounds its

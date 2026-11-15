@@ -14,6 +14,10 @@ use komodo_client::{
 
 const APPLY: &str = "ApplyResourceSync";
 pub const PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(45);
+// Core 2.3.2 lib/git/src/pull.rs reuses a pull for 5000ms. Let a pull
+// predating our initial observation expire before the single refresh. This
+// does not freeze sources or bypass Core's concurrent pull/cache behavior.
+const GIT_PULL_CACHE_WAIT: Duration = Duration::from_millis(5100);
 
 fn default_wait() -> u8 {
     3
@@ -30,6 +34,7 @@ pub struct ApplyInput {
 }
 #[derive(Clone, Serialize, JsonSchema)]
 pub struct PreflightSummary {
+    pub git_pull_cache_wait_ms: u32,
     pub refresh_requests_submitted: u8,
     pub refresh_outcome: &'static str,
     pub error: Option<AppError>,
@@ -211,6 +216,7 @@ fn selection(scope: &ExecutionScope) -> Selection {
 }
 fn stale() -> AppError {
     AppError {
+        message: "The reviewed ResourceSync evidence changed or is incomplete. No RunSync was submitted. Any counted preflight refresh may already have changed Core's cache or pending alerts.",
         correction: Some(
             "Observed definition, references, source or scoped plan changed or coverage is incomplete. No RunSync was submitted; inspect and obtain a new review. A consumed reference is never reusable.",
         ),
@@ -290,6 +296,7 @@ pub async fn apply(
         outcome: "not_submitted",
         review_consumed: true,
         preflight: PreflightSummary {
+            git_pull_cache_wait_ms: 0,
             refresh_requests_submitted: 0,
             refresh_outcome: "not_submitted",
             error: None,
@@ -309,6 +316,7 @@ pub async fn apply(
             "RunSync applies desired state through Core's built-in administrator sync identity. Direct caller permissions on each affected resource do not isolate this delegated authority. Managed mode OR delete enables deletion; empty resource tags are unrestricted, and variables/groups are only included in whole-sync scope.",
             "One explicit preflight refresh can fetch/clone Core Git caches, read sources and store/alert on pending state. RunSync can perform its own internal refresh and configured automatic effects. MCP submits at most one refresh and one RunSync for this authorization; it never writes authoritative Git/host sources.",
             "Fresh private equality does not freeze Core or external sources: RunSync rereads sources without an expected-revision parameter. A final-read/submission race remains; no atomic compare-and-swap, exactly-once execution, rollback or remote cancellation is promised.",
+            "For direct Git and linked Repo sources, preflight waits 5100ms after its initial observation so Core 2.3.2's 5000ms pull cache can expire before the one refresh. Concurrent Core pulls and later source changes remain possible; an observed cache revision is not proof of the current external revision.",
             "The review reference is consumed before preflight. Lost acknowledgements stay unknown; retain target/scope/window and explicitly known IDs. Read-only recovery never chooses an unconfirmed candidate or resubmits execution.",
             "A successful parent sync or Sync Deploy batch does not verify child deployment success or workload health. Independent resource observations and cached pending state are separate evidence; verify workloads with health/diagnosis tools.",
         ],
@@ -324,6 +332,10 @@ pub async fn apply(
             return Err(stale());
         }
         before = super::observe::before(&bounded_client, &initial).await;
+        if matches!(initial.source.kind, "git" | "linked_repo") {
+            tokio::time::sleep(GIT_PULL_CACHE_WAIT).await;
+            result.preflight.git_pull_cache_wait_ms = GIT_PULL_CACHE_WAIT.as_millis() as u32;
+        }
         result.preflight.refresh_requests_submitted = 1;
         result.preflight.refresh_outcome = "submission_unknown";
         let raw = bounded_client
