@@ -440,7 +440,9 @@ async fn solve(
                 "get_schedule",
                 "export_resources_toml",
                 "list_resource_syncs",
-                "get_resource_sync"
+                "get_resource_sync",
+                "get_resource_sync_pending",
+                "review_resource_sync_pending"
             ]),
         "missing expected inventory tools"
     );

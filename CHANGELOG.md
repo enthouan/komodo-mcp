@@ -8,6 +8,15 @@ New changes go under `Unreleased` until the next release is prepared.
 
 ## Unreleased
 
+- Inspect cached ResourceSync changes and distinct source/deployment errors,
+  explicitly refresh with operate/Core Execute, and review exact selections
+  against private source/plan/reference baselines. Audit template-only and
+  variable-secret-flag changes omitted by Core's cached view; withhold review
+  references for incomplete, truncated or unfaithful deployment coverage,
+  including filtered raw deployment intent and unresolved source tag IDs.
+  Count refresh effects separately and submit no RunSync or source write-back.
+  ([#30](https://github.com/enthouan/komodo-mcp/issues/30))
+
 - Inspect and save typed ResourceSync definitions with private single-use
   previews, inline TOML validation, explicit Git/linked-Repo/Core-host sources,
   preserved omitted settings/secrets, linked-reference drift checks and full

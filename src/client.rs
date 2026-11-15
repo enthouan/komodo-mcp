@@ -251,6 +251,31 @@ impl CoreClient {
         )
     }
 
+    /// One explicit cache/source refresh, separately gated by operate. Core
+    /// decides Execute permission; this cannot submit a definition or RunSync.
+    pub(crate) async fn refresh_sync_pending(
+        &self,
+        sync: &str,
+    ) -> Result<serde_json::Value, AppError> {
+        const OP: &str = "RefreshResourceSyncPending";
+        if !self.capabilities().allows(Capability::Operate) {
+            return Err(AppError::new(ErrorKind::CapabilityDisabled, OP, None));
+        }
+        if sync.len() != 24 || !sync.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(AppError::arguments(
+                OP,
+                "Refresh requires one resolved stable ResourceSync ID",
+            ));
+        }
+        let request = komodo_client::api::write::RefreshResourceSyncPending { sync: sync.into() };
+        tokio::time::timeout(
+            self.0.policy.operation_timeout,
+            self.request_bounded_body(&self.0.write_request, request, OP, OP),
+        )
+        .await
+        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, OP, None)))
+    }
+
     /// A single typed destructive write. Its raw acknowledgement is retained
     /// privately so missing fields cannot be manufactured by SDK defaults.
     pub(crate) async fn delete<T>(&self, request: T) -> Result<serde_json::Value, AppError>
@@ -395,10 +420,11 @@ impl CoreClient {
         T: Serialize + KomodoReadRequest,
     {
         let operation = match T::req_type() {
-            op @ ("ListTags" | "ListServers" | "ListStacks" | "ListDeployments" | "ListSwarms"
-            | "ListBuilds" | "ListRepos" | "ListBuilders" | "ListAlerters"
-            | "ListProcedures" | "ListActions" | "ListResourceSyncs" | "GetSwarm"
-            | "GetBuild" | "GetProcedure" | "GetAction" | "GetResourceSync") => op,
+            op @ ("ListTags" | "ListVariables" | "ListServers" | "ListStacks"
+            | "ListDeployments" | "ListSwarms" | "ListBuilds" | "ListRepos"
+            | "ListBuilders" | "ListAlerters" | "ListProcedures" | "ListActions"
+            | "ListResourceSyncs" | "GetSwarm" | "GetBuild" | "GetProcedure"
+            | "GetAction" | "GetResourceSync") => op,
             "ListFullBuilders" => "ListFullBuilders",
             "ListFullAlerters" => "ListFullAlerters",
             "ListFullRepos" => "ListFullRepos",
@@ -638,6 +664,93 @@ mod write_policy_tests {
             stack::PartialStackConfig,
         },
     };
+
+    #[tokio::test]
+    async fn refresh_transport_requires_operate_and_exact_id_and_has_no_generic_write_escape() {
+        use komodo_client::api::write::RefreshResourceSyncPending;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        for (operate, edit) in [(false, false), (false, true), (true, false), (true, true)] {
+            let client = CoreClient::new(
+                Config::parse(
+                    &format!("http://{}", listener.local_addr().unwrap()),
+                    "fixture-key",
+                    "fixture-secret",
+                )
+                .unwrap()
+                .with_capabilities(CapabilityPolicy::new(operate, edit)),
+                RequestPolicy::default(),
+            )
+            .unwrap();
+            if !operate {
+                assert!(
+                    matches!(client.refresh_sync_pending("00000000000000000000000b").await,Err(e) if e.kind==ErrorKind::CapabilityDisabled)
+                );
+            }
+            assert!(
+                client
+                    .refresh_sync_pending("unresolved-name")
+                    .await
+                    .is_err()
+            );
+            assert!(
+                client
+                    .write(RefreshResourceSyncPending {
+                        sync: "00000000000000000000000b".into()
+                    })
+                    .await
+                    .is_err()
+            );
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_timeout_preserves_one_submission_without_retry() {
+        use tokio::io::AsyncReadExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = CoreClient::new(
+            Config::parse(
+                &format!("http://{}", listener.local_addr().unwrap()),
+                "fixture-key",
+                "fixture-secret",
+            )
+            .unwrap()
+            .with_capabilities(CapabilityPolicy::new(true, false)),
+            RequestPolicy {
+                connect_timeout: Duration::from_secs(1),
+                operation_timeout: Duration::from_millis(100),
+            },
+        )
+        .unwrap();
+        let observer = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut bytes = Vec::new();
+            while !String::from_utf8_lossy(&bytes).contains("RefreshResourceSyncPending") {
+                let mut chunk = [0; 4096];
+                let n = socket.read(&mut chunk).await.unwrap();
+                assert!(n > 0 && bytes.len() + n <= 8192);
+                bytes.extend_from_slice(&chunk[..n]);
+            }
+            let request = String::from_utf8_lossy(&bytes);
+            assert!(
+                request.contains("POST /write") && request.contains("RefreshResourceSyncPending")
+            );
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            assert!(
+                tokio::time::timeout(Duration::from_millis(30), listener.accept())
+                    .await
+                    .is_err()
+            );
+        });
+        assert!(
+            matches!(client.refresh_sync_pending("00000000000000000000000b").await,Err(e) if e.kind==ErrorKind::Timeout)
+        );
+        observer.await.unwrap();
+    }
 
     #[tokio::test]
     async fn shared_procedure_transport_rejects_unsafe_defaults_and_empty_update_without_operate() {

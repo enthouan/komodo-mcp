@@ -286,6 +286,10 @@ fn paths_valid(paths: &[String]) -> bool {
 }
 /// Match pinned Core's triple-quoted-string backslash adaptation before typed parsing.
 fn validate_inline(contents: &str) -> Result<(), AppError> {
+    parse_toml(contents).map(|_| ())
+}
+
+pub(crate) fn parse_toml(contents: &str) -> Result<ResourcesToml, AppError> {
     let adapted = contents
         .split("\"\"\"")
         .enumerate()
@@ -342,8 +346,7 @@ fn validate_inline(contents: &str) -> Result<(), AppError> {
     toml::from_str::<ResourcesToml>(&adapted).map_err(|_| AppError {
         field: Some("source.contents"),
         ..AppError::arguments(OP, "Inline TOML does not match Core 2.3.2 resource types; check required names, array tables and typed config values. No desired-state snippet is returned")
-    })?;
-    Ok(())
+    })
 }
 impl SyncPatch {
     fn validate(&self, client: &CoreClient) -> Result<(), AppError> {
@@ -555,6 +558,9 @@ fn source_kind(c: &ResourceSyncConfig) -> &'static str {
     } else {
         "unconfigured"
     }
+}
+pub(crate) fn summary_kind(c: &ResourceSyncConfig) -> &'static str {
+    source_kind(c)
 }
 pub(crate) fn summary(client: &CoreClient, c: &ResourceSyncConfig) -> DefinitionSummary {
     let source = SourceSummary {

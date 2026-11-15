@@ -34,6 +34,8 @@ impl KomodoServer {
                 | "get_repo"
                 | "list_resource_syncs"
                 | "get_resource_sync"
+                | "get_resource_sync_pending"
+                | "review_resource_sync_pending"
                 | "list_builders"
                 | "get_builder"
                 | "list_builds"
@@ -55,11 +57,23 @@ impl KomodoServer {
                 | "get_stack_logs"
                 | "stack_diagnose"
                 | "find_resources_by_tag" => Some(Capability::Read),
-                "deploy_stack" | "deploy_deployment" | "start_stack" | "stop_stack"
-                | "restart_stack" | "start_deployment" | "stop_deployment"
-                | "restart_deployment" | "clone_repo" | "pull_repo" | "run_build"
-                | "cancel_build" | "run_procedure" | "cancel_procedure" | "run_action"
-                | "cancel_action" => Some(Capability::Operate),
+                "deploy_stack"
+                | "deploy_deployment"
+                | "start_stack"
+                | "stop_stack"
+                | "restart_stack"
+                | "start_deployment"
+                | "stop_deployment"
+                | "restart_deployment"
+                | "clone_repo"
+                | "pull_repo"
+                | "run_build"
+                | "cancel_build"
+                | "run_procedure"
+                | "cancel_procedure"
+                | "run_action"
+                | "cancel_action"
+                | "refresh_resource_sync_pending" => Some(Capability::Operate),
                 "apply_resource_delete" | "apply_tag_delete" => Some(Capability::Destructive),
                 "preview_stack_update"
                 | "apply_stack_update"
@@ -115,6 +129,33 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="Read one ResourceSync's cached pending creates, updates, deletions, variable/group changes, deployment intent and distinct pending/deployment/source-file errors. Return bounded sanitized summaries; never return raw TOML, source contents, variable values or error snippets. Distinguish cached observations and available Git revision from actual current source freshness; inline/host have no Git hash. This calls only Core read APIs and submits zero mutations. Core's cached view can omit template-only and variable-secret-flag effects; use explicit scoped review for apply coverage. Display truncation or a cached clean state never authorizes RunSync.",input_schema=schema_for_input::<DetailInput>().expect("cached pending schema"),output_schema=inventory::output_schema::<crate::sync_plans::PendingOutput>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_resource_sync_pending(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_resource_sync_pending") {
+            Ok(input) => crate::sync_plans::get(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Explicitly refresh one resolved ResourceSync through exactly one typed RefreshResourceSyncPending. Requires the independent operate grant before reads and Core Execute; read-only credentials remain denied, with no fallback. Count the refresh attempt separately from zero RunSync requests. Core can read sources, fetch/clone its Git cache and create/resolve/send pending alerts. Return a bounded sanitized refresh-response observation, including distinct pending/deployment/file errors; unconfigured syncs can be skipped by Core. Lost or invalid acknowledgements preserve cache-mutation uncertainty without retry. No desired-state application or authoritative Git/host write-back.",input_schema=schema_for_input::<DetailInput>().expect("refresh pending schema"),output_schema=inventory::output_schema::<crate::sync_plans::RefreshOutput>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=false))]
+    async fn refresh_resource_sync_pending(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "refresh_resource_sync_pending") {
+            Ok(input) => crate::sync_plans::refresh(&self.client, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Review an EXPLICIT whole-sync, resource-type or typed named-resource selection using only Core reads. Bind stable IDs for existing resources and exact pending-create names for new resources; invalid/missing/duplicate selectors never become an unfiltered run. Audit template-only and variable secret-flag effects missing from Core's cached view. Variables/groups are excluded from filtered scope. Reject incomplete/truncated/unfaithful coverage, pending errors and deployment scope combinations that differ in Core 2.3.2 execution. When complete, retain full authoritative config/plan/source/reference evidence privately in the shared bounded ten-minute single-use store, returning an opaque review_reference and exact apply_binding for the later separately authorized apply. Refuse review authority on unsupported Core versions. Redacted display is never the comparison baseline. This performs zero Core mutations or RunSync, and does not prove an external source current or freeze final-read/execution races.",input_schema=schema_for_input::<crate::sync_plans::ReviewInput>().expect("review pending schema"),output_schema=inventory::output_schema::<crate::sync_plans::ReviewOutput>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
+    async fn review_resource_sync_pending(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "review_resource_sync_pending") {
+            Ok(input) => crate::sync_plans::review(&self.client, &self.core_version, input).await,
+            Err(error) => Err(error),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description = "List visible ResourceSync definitions with bounded positive pagination and name-ascending order. Return sanitized identity/source kind, management and cached state only. Use the same page_size with next_page. This calls only Core read APIs; no refresh, RunSync or source-file write.", input_schema = schema_for_input::<ListInput>().expect("list_resource_syncs schema"), output_schema = inventory::output_schema::<Page<crate::resource_syncs::SyncSummary>>(), annotations(read_only_hint = true, idempotent_hint = true, destructive_hint = false))]
     async fn list_resource_syncs(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_resource_syncs") {

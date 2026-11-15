@@ -1,6 +1,8 @@
 //! Owned mutable Core wire fixture; no external sources or execution are accessed.
+#![allow(dead_code)] // Shared by definition and pending-plan acceptance targets.
 use crate::support::{
     KEY, SECRET,
+    inventory::Family,
     operations::{Request, Task},
 };
 use axum::{
@@ -50,6 +52,12 @@ pub struct Data {
     pub deny_attach: bool,
     pub deny_read: bool,
     pub bad_credentials: bool,
+    pub server: Value,
+    pub variables: Value,
+    pub deny_metadata: bool,
+    pub deny_refresh: bool,
+    pub refresh_reply: Option<Value>,
+    pub version: String,
 }
 pub struct Core {
     pub address: String,
@@ -102,6 +110,12 @@ impl Core {
             deny_attach: false,
             deny_read: false,
             bad_credentials: false,
+            server: Family::Server.detail(),
+            variables: json!([]),
+            deny_metadata: false,
+            deny_refresh: false,
+            refresh_reply: None,
+            version: "2.3.2".into(),
         }));
         let app = Router::new()
             .route("/read", post(read))
@@ -194,7 +208,7 @@ async fn read(
     record(&mut d, &headers, "read", &v);
     let p = &v["params"];
     match v["type"].as_str().unwrap() {
-        "GetVersion" => Json(json!({"version":"2.3.2"})).into_response(),
+        "GetVersion" => Json(json!({"version":d.version})).into_response(),
         "ListResourceSyncs" => {
             Json(filtered(d.syncs.values().map(item).collect(), p)).into_response()
         }
@@ -217,6 +231,28 @@ async fn read(
         }
         "ListRepos" => Json(filtered(vec![repo_item(&d.repo)], p)).into_response(),
         "GetRepo" => Json(d.repo.clone()).into_response(),
+        "ListVariables" => {
+            if d.deny_metadata {
+                return denied();
+            }
+            Json(d.variables.clone()).into_response()
+        }
+        "ListServers" => {
+            if d.deny_metadata {
+                return denied();
+            }
+            let mut item = Family::Server.summary();
+            item["id"] = d.server["_id"]["$oid"].clone();
+            item["name"] = d.server["name"].clone();
+            item["template"] = d.server["template"].clone();
+            Json(filtered(vec![item], p)).into_response()
+        }
+        "GetServer" => {
+            if d.deny_metadata {
+                return denied();
+            }
+            Json(d.server.clone()).into_response()
+        }
         other => panic!("unexpected read {other}"),
     }
 }
@@ -229,6 +265,20 @@ async fn write(
     record(&mut d, &headers, "write", &v);
     let op = v["type"].as_str().unwrap();
     let p = &v["params"];
+    if op == "RefreshResourceSyncPending" {
+        if d.deny_refresh {
+            return denied();
+        }
+        let id = p["sync"].as_str().unwrap();
+        if let Some(reply) = d.refresh_reply.clone() {
+            d.syncs.insert(id.into(), reply.clone());
+            return Json(reply).into_response();
+        }
+        if matches!(d.fault, Fault::Lost) {
+            return (StatusCode::OK, "lost refresh acknowledgement").into_response();
+        }
+        return Json(d.syncs[id].clone()).into_response();
+    }
     let config = p["config"].as_object().unwrap();
     assert!(config.values().all(|v| !v.is_null()));
     if matches!(d.fault, Fault::Denied)

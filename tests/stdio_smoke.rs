@@ -252,15 +252,21 @@ async fn list_tools(process: &mut Process, id: &str) -> Result<()> {
                         "export_resources_toml",
                         "list_resource_syncs",
                         "get_resource_sync",
+                        "get_resource_sync_pending",
+                        "review_resource_sync_pending",
                     ])
                     .collect();
-                ensure!(names == expected, "expected all thirty-two read-only tools");
+                ensure!(
+                    names == expected,
+                    "expected all thirty-four read-only tools"
+                );
                 for tool in &result.tools {
                     ensure!(tool.output_schema.is_some(), "missing output schema");
                     let metadata = serde_json::to_value(tool)?;
                     ensure!(
                         metadata["annotations"]["readOnlyHint"] == true
-                            && metadata["annotations"]["idempotentHint"] == true,
+                            && metadata["annotations"]["idempotentHint"]
+                                == (metadata["name"] != "review_resource_sync_pending"),
                         "missing read-only annotations"
                     );
                 }

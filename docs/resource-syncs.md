@@ -1,4 +1,4 @@
-# ResourceSync definitions
+# ResourceSync definitions and pending plans
 
 `list_resource_syncs` and `get_resource_sync` inspect visible definitions in every
 local capability profile. Lists use positive `page_size` (1–100, default 30),
@@ -124,7 +124,8 @@ compute pending changes and create/resolve pending alerts. A successful save doe
 not prove source parsing or desired-state application succeeded. A later RunSync
 checks Execute on the sync and applies resources as Core's built-in administrator
 sync identity, with broader delegated authority than the initiating caller's own
-direct resource permissions. Standalone refresh/review/apply belong to #30/#31.
+direct resource permissions. Refresh and scoped review are described below;
+reviewed application is the separate #31 workflow.
 
 The saved echo and an independent bounded full raw configuration read-back are
 checked separately. `saved_configuration_verified:false` and `observation_error`
@@ -148,3 +149,96 @@ Pinned source: [source/settings](https://github.com/moghtech/komodo/blob/v2.3.2/
 [source precedence/host paths](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/sync/remote.rs),
 [TOML adaptation](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/sync/mod.rs),
 [pending refresh](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/write/sync.rs).
+
+## Pending plans and explicit refresh
+
+`get_resource_sync_pending` accepts the same exact `id` or `name` selector. It
+uses only bounded Core reads and returns `observation:"cached"`, creates,
+updates, deletions, variable/group changes, deployment intent/dependencies and
+separate `pending_error`, `pending_deploy_error` and source-file-error counts.
+Raw TOML, source contents, variable values, group memberships/permissions, commit
+messages and error snippets stay private. Missing fields yield incomplete
+evidence; errors never become an empty clean plan. Each section displays at most
+32 rows with its reported total and truncation flag.
+
+```json
+{"name":"get_resource_sync_pending","arguments":{"name":"owned-sync"}}
+{"name":"refresh_resource_sync_pending","arguments":{"name":"owned-sync"}}
+```
+
+Refresh requires `KOMODO_ALLOW_OPERATE=true` before any Core I/O and retains
+Core's Execute decision. It makes **one RefreshResourceSyncPending attempt and
+zero RunSync requests**. Core can read source files, clone/fetch Git into its
+cache, store pending state and create/resolve/send alerts. This is a mutation,
+separate from desired-state application. An invalid/lost reply returns
+`submission_unknown`; an upstream denial returns `denied`, without fallback or
+retry. Inspect cached state after uncertainty. A refresh-response observation is
+not a frozen plan, and Core can skip an unconfigured source.
+
+`review_resource_sync_pending` is available with read access in every local
+profile. Its required `selection` is one of these explicit forms:
+
+```json
+{"target":{"name":"owned-sync"},"selection":{"kind":"whole_sync"}}
+{"target":{"name":"owned-sync"},"selection":{"kind":"resource_type","resource_type":"server"}}
+{"target":{"name":"owned-sync"},"selection":{"kind":"resources","resource_type":"server","targets":[{"id":"000000000000000000000001"},{"name":"new-server"}]}}
+```
+
+Named selections contain 1–16 exact targets within one type. Existing resources
+bind stable IDs; new resources bind their exact typed pending-create names.
+Missing, ambiguous, duplicate and invalid selectors fail without dropping
+entries or falling back to whole-sync. New ObjectId-shaped names and names Core
+would normalize cannot authorize a create. Variables/groups enter review scope
+only for a whole-sync selection and their enabled inclusion flags; resource tags
+do not isolate those changes. Filtered output explicitly counts excluded rows.
+
+Core 2.3.2's cached view omits template-only resource changes and `is_secret`-only
+variable changes. Review audits current resource template metadata and variable
+secret flags through bounded reads and adds `origin:"metadata_audit"` rows.
+`cached_status` and `reviewed_status` remain distinct. Denied or incomplete
+metadata observations withhold the reference. Core computes deployment effects
+differently for filtered runs, including when resources are disabled. A source
+requesting any Stack/Deployment `deploy=true` therefore permits a review reference
+only for whole-sync, `include_resources:true` and an empty resource-tag filter.
+Other combinations remain inspectable with an explicit coverage gap.
+This conservative deployment-intent check covers every source row before tag
+filtering, including rows absent from Core's cached deployment list.
+
+With a nonempty tag filter, ID-shaped tags in source resources also withhold the
+reference. Core has an initial literal source filter and a later ID-to-name tag
+predicate; review does not assume those stages are interchangeable or infer tag
+identity from a clean cache. Use source tag names for review authorization.
+
+A reference is issued only for inspected Core **2.3.2**, complete evidence and
+an exact displayable selection. It shares the 16-entry process-local preview
+store, expires after ten minutes and is single-use, bound to the apply operation,
+sync and canonical selection. Restarting MCP invalidates it. Minting a reference
+is non-idempotent but makes zero Core mutations. Private baselines retain full
+definitions, source contents, pending TOML, secret-only changes and relevant
+linked Repo data; sanitized output is never reconstructed as authorization.
+
+Review bounds source documents to 32 files/entries and 128 KiB total, cache
+sections to 256 entries, public JSON to 256 KiB, private baselines to 2 MiB and
+the metadata audit to 30 seconds, in addition to each request's 15-second/2 MiB
+transport limits. Duplicate/unsupported source identities, missing fields,
+truncation, pending errors or excess coverage produce explicit gaps and no
+reference. Source errors do not expose their contents.
+
+Git revisions describe Core's observed cache only. Inline and host sources have
+no Git revision, even if an old hash remains in Core. No observation claims the
+external source is currently unchanged. A later authorized apply must refresh
+and recheck definition, references, source and plan, counting that separate cache
+mutation, and reject detected drift before at most one RunSync. Core rereads the
+source and has no expected-revision parameter: a final-read/execution race
+remains. Sync success and workload health are separate observations.
+
+Run `cargo test --locked --test sync_plans --test resource_syncs --test capabilities`
+for deterministic production-stdio evidence. The same fixture sync supports
+cached observer access and separately permission-checked refresh; #31 adds apply
+and #103 owns the actual-final-main live end-to-end evidence.
+
+Pinned semantics: [cached resource view](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/sync/view.rs),
+[execution and selectors](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/execute/sync.rs),
+[resource execution](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/sync/execute.rs),
+[variable execution](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/sync/variables.rs),
+[deployment planning](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/sync/deploy.rs).
