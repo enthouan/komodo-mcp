@@ -46,6 +46,99 @@ async fn finish(p: Process, s: Session, c: &Core) {
     p.finish_excluding(s, &PRIVATE).await;
 }
 
+// Validate the structural JSON Schema keywords used by these generated output
+// contracts. This is a protocol-envelope regression check, not a general-purpose
+// JSON Schema implementation. No network or external validator is needed in CI.
+fn matches_schema(value: &Value, schema: &Value, root: &Value) -> bool {
+    if let Some(reference) = schema["$ref"].as_str() {
+        return reference
+            .strip_prefix('#')
+            .and_then(|p| root.pointer(p))
+            .is_some_and(|s| matches_schema(value, s, root));
+    }
+    if let Some(options) = schema["anyOf"].as_array() {
+        return options.iter().any(|s| matches_schema(value, s, root));
+    }
+    let typed = |t: &str| match t {
+        "object" => value.is_object(),
+        "array" => value.is_array(),
+        "string" => value.is_string(),
+        "boolean" => value.is_boolean(),
+        "null" => value.is_null(),
+        "integer" => value.is_i64() || value.is_u64(),
+        "number" => value.is_number(),
+        _ => false,
+    };
+    if let Some(t) = schema["type"].as_str()
+        && !typed(t)
+    {
+        return false;
+    }
+    if let Some(types) = schema["type"].as_array()
+        && !types.iter().any(|t| t.as_str().is_some_and(typed))
+    {
+        return false;
+    }
+    if let Some(options) = schema["enum"].as_array()
+        && !options.contains(value)
+    {
+        return false;
+    }
+    if let Some(n) = value.as_f64()
+        && (schema["minimum"].as_f64().is_some_and(|v| n < v)
+            || schema["maximum"].as_f64().is_some_and(|v| n > v))
+    {
+        return false;
+    }
+    if let Some(object) = value.as_object() {
+        if schema["required"].as_array().is_some_and(|keys| {
+            keys.iter()
+                .any(|k| !k.as_str().is_some_and(|k| object.contains_key(k)))
+        }) {
+            return false;
+        }
+        if let Some(properties) = schema["properties"].as_object() {
+            for (key, v) in object {
+                if let Some(s) = properties.get(key) {
+                    if !matches_schema(v, s, root) {
+                        return false;
+                    }
+                } else if schema["additionalProperties"] == false {
+                    return false;
+                }
+            }
+        }
+    }
+    if let Some(items) = value.as_array()
+        && let Some(item_schema) = schema.get("items")
+    {
+        return items.iter().all(|v| matches_schema(v, item_schema, root));
+    }
+    true
+}
+
+#[tokio::test]
+async fn successful_stdio_observations_match_the_advertised_output_contracts() {
+    let c = Core::start().await;
+    let (p, s) = Process::start_profile(&c.address, false, false).await;
+    let tools = s.list_tools(None).await.unwrap().tools;
+    for name in TOOLS {
+        let tool = tools.iter().find(|t| t.name == name).unwrap();
+        let schema = serde_json::to_value(tool.output_schema.as_ref().unwrap()).unwrap();
+        let v = data(call(&s, name, args(name)).await);
+        assert!(
+            matches_schema(&v, &schema, &schema),
+            "{name} output violates discovery schema: {schema}"
+        );
+        // With the payload at the root, a result must fail the envelope contract.
+        assert!(
+            !matches_schema(&v["data"], &schema, &schema),
+            "{name} schema accepted an unwrapped payload"
+        );
+    }
+    finish(p, s, &c).await;
+}
+
 #[tokio::test]
 async fn discovery_and_direct_calls_are_readonly_in_every_capability_profile() {
     for operate in [false, true] {

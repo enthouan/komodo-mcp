@@ -149,7 +149,7 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
-    #[tool(description="List cached images on exactly one Server with full content IDs, safe references, size and cached use. Core Read only. Bound local pages and 512-row scan; unknown cache coverage, zero mutations. Not a prune dry run.",input_schema=schema_for_input::<crate::docker::ListInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::Page<crate::docker::ImageSummary>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    #[tool(description="List cached images on exactly one Server with full content IDs, safe references, size and cached use. Core Read only. Bound local pages and 512-row scan; unknown cache coverage, zero mutations. Not a prune dry run.",input_schema=schema_for_input::<crate::docker::ListInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::Observation<crate::docker::Page<crate::docker::ImageSummary>>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn list_images(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_images") {
             Ok(input) => crate::docker::images(&self.client, input).await,
@@ -158,7 +158,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description="Freshly inspect one exact cached image ID or unique exact reference on one Server. Core Read only, without Inspect. Verify returned immutable image identity; omit environment, labels, commands, credentials, descriptors and raw driver metadata.",input_schema=schema_for_input::<crate::docker::ObjectInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::ImageDetail>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    #[tool(description="Freshly inspect one exact cached image ID or unique exact reference on one Server. Core Read only, without Inspect. Verify returned immutable image identity; omit environment, labels, commands, credentials, descriptors and raw driver metadata.",input_schema=schema_for_input::<crate::docker::ObjectInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::Observation<crate::docker::ImageDetail>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn get_image(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "get_image") {
             Ok(input) => crate::docker::image(&self.client, input).await,
@@ -167,7 +167,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description="Read safe bounded image history for one exact cached image after fresh identity verification. Core Read only. Layers expose only ID/index, timestamp and size; build commands, tags and comments are omitted. No removal, pruning or terminal calls.",input_schema=schema_for_input::<crate::docker::HistoryInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::ImageHistory>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    #[tool(description="Read safe bounded image history for one exact cached image after fresh identity verification. Core Read only. Layers expose only ID/index, timestamp and size; build commands, tags and comments are omitted. No removal, pruning or terminal calls.",input_schema=schema_for_input::<crate::docker::HistoryInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::Observation<crate::docker::ImageHistory>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn get_image_history(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "get_image_history") {
             Ok(input) => crate::docker::history(&self.client, input).await,
@@ -176,7 +176,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description="List cached networks on one explicitly selected Server with full IDs, names, driver class, scope and cached use. Core Read only. Bound local pages and scan; cached evidence has unknown freshness/coverage and is not a prune dry run.",input_schema=schema_for_input::<crate::docker::ListInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::Page<crate::docker::NetworkSummary>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    #[tool(description="List cached networks on one explicitly selected Server with full IDs, names, driver class, scope and cached use. Core Read only. Bound local pages and scan; cached evidence has unknown freshness/coverage and is not a prune dry run.",input_schema=schema_for_input::<crate::docker::ListInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::Observation<crate::docker::Page<crate::docker::NetworkSummary>>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn list_networks(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_networks") {
             Ok(input) => crate::docker::networks(&self.client, input).await,
@@ -185,7 +185,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description="Freshly inspect one exact cached network ID or unique name on one Server. Core Read only, without Inspect. Verify full ID and selected name. Show safe flags and attachment count; omit labels, options, IPAM and container metadata.",input_schema=schema_for_input::<crate::docker::ObjectInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::NetworkSummary>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    #[tool(description="Freshly inspect one exact cached network ID or unique name on one Server. Core Read only, without Inspect. Verify full ID and selected name. Show safe flags and attachment count; omit labels, options, IPAM and container metadata.",input_schema=schema_for_input::<crate::docker::ObjectInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::Observation<crate::docker::NetworkSummary>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn get_network(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "get_network") {
             Ok(input) => crate::docker::network(&self.client, input).await,
@@ -194,7 +194,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description="List cached volumes on one explicit Server with exact names, driver class, scope, size and cached use. Core Read only. Volumes have no immutable IDs in Core lists. Bounded local output does not bound Docker enumeration or establish prune eligibility.",input_schema=schema_for_input::<crate::docker::ListInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::Page<crate::docker::VolumeSummary>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    #[tool(description="List cached volumes on one explicit Server with exact names, driver class, scope, size and cached use. Core Read only. Volumes have no immutable IDs in Core lists. Bounded local output does not bound Docker enumeration or establish prune eligibility.",input_schema=schema_for_input::<crate::docker::ListInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::Observation<crate::docker::Page<crate::docker::VolumeSummary>>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn list_volumes(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_volumes") {
             Ok(input) => crate::docker::volumes(&self.client, input).await,
@@ -203,7 +203,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description="Freshly inspect one exact cached volume name on one Server. Core Read only, without Inspect. Verify returned name; same-name replacement cannot be excluded. Omit mountpoints, labels, options, cluster secrets, contexts and driver status. Zero mutations.",input_schema=schema_for_input::<crate::docker::ObjectInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::VolumeSummary>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    #[tool(description="Freshly inspect one exact cached volume name on one Server. Core Read only, without Inspect. Verify returned name; same-name replacement cannot be excluded. Omit mountpoints, labels, options, cluster secrets, contexts and driver status. Zero mutations.",input_schema=schema_for_input::<crate::docker::ObjectInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::Observation<crate::docker::VolumeSummary>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn get_volume(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "get_volume") {
             Ok(input) => crate::docker::volume(&self.client, input).await,
