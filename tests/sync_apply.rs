@@ -321,7 +321,12 @@ async fn refreshed_external_content_or_git_revision_drift_requires_new_review() 
 
 #[tokio::test]
 async fn linked_source_and_desired_dependency_secret_changes_are_private_and_stale() {
-    for dependency in ["active_source", "desired_repo", "desired_server"] {
+    for dependency in [
+        "active_source",
+        "desired_repo",
+        "desired_server",
+        "desired_procedure",
+    ] {
         let core = Core::start().await;
         seed(&core);
         {
@@ -332,19 +337,30 @@ async fn linked_source_and_desired_dependency_secret_changes_are_private_and_sta
                 sync["config"]["linked_repo"] = json!(REPO);
                 sync["info"]["pending_hash"] = json!("abcdef12");
             } else {
-                let source = format!(
-                    "[[stack]]\nname='new-stack'\n[stack.config]\nserver_id='{SERVER}'\nlinked_repo='{REPO}'\n"
-                );
+                let source = if dependency == "desired_procedure" {
+                    format!(
+                        "[[procedure]]\nname='new-procedure'\n[[procedure.config.stage]]\nname='one'\n[[procedure.config.stage.executions]]\n[procedure.config.stage.executions.execution]\ntype='StartAllContainers'\n[procedure.config.stage.executions.execution.params]\nserver='{SERVER}'\n"
+                    )
+                } else {
+                    format!(
+                        "[[stack]]\nname='new-stack'\n[stack.config]\nserver_id='{SERVER}'\nlinked_repo='{REPO}'\n"
+                    )
+                };
                 sync["config"]["file_contents"] = json!(source);
                 sync["info"]["remote_contents"][0]["contents"] = json!(source);
-                sync["info"]["resource_updates"] = json!([{"target":{"type":"Stack","id":""},"data":{"type":"Create","data":{"name":"new-stack","proposed":source}}}]);
+                let (kind, name) = if dependency == "desired_procedure" {
+                    ("Procedure", "new-procedure")
+                } else {
+                    ("Stack", "new-stack")
+                };
+                sync["info"]["resource_updates"] = json!([{"target":{"type":kind,"id":""},"data":{"type":"Create","data":{"name":name,"proposed":source}}}]);
             }
         }
         let (p, s) = Process::start_profile(&core.address, true, true).await;
         let review = reviewed(&s, whole()).await;
         {
             let mut d = core.data.lock().unwrap();
-            if dependency == "desired_server" {
+            if matches!(dependency, "desired_server" | "desired_procedure") {
                 d.server["config"]["passkey"] = json!("private-new-passkey");
             } else {
                 d.repo["config"]["git_account"] = json!("private-new-account");
@@ -627,5 +643,45 @@ async fn successful_sync_parent_and_unhealthy_deployment_are_independent_observa
     let health = data(call(&s, "fleet_health", json!({})).await);
     assert_eq!(health["deployments"][0]["health"], "unhealthy");
     counts(&core, 1, 1);
+    finish(p, s).await;
+}
+
+#[tokio::test]
+async fn known_procedure_writeback_steps_never_mint_sync_review_authority() {
+    let core = Core::start().await;
+    seed(&core);
+    {
+        let mut d = core.data.lock().unwrap();
+        let sync = d.syncs.get_mut(SYNC).unwrap();
+        let source = format!(
+            "[[procedure]]\nname='new-procedure'\n[[procedure.config.stage]]\nname='one'\n[[procedure.config.stage.executions]]\nenabled=false\n[procedure.config.stage.executions.execution]\ntype='CommitSync'\n[procedure.config.stage.executions.execution.params]\nsync='{SYNC}'\n"
+        );
+        sync["config"]["file_contents"] = json!(source);
+        sync["info"]["remote_contents"][0]["contents"] = json!(source);
+        sync["info"]["resource_updates"] = json!([{"target":{"type":"Procedure","id":""},"data":{"type":"Create","data":{"name":"new-procedure","proposed":source}}}]);
+    }
+    let (p, s) = Process::start_profile(&core.address, true, true).await;
+    let review = data(
+        call(
+            &s,
+            "review_resource_sync_pending",
+            json!({"target":{"id":SYNC},"selection":whole()}),
+        )
+        .await,
+    );
+    assert!(review["review_reference"].is_null());
+    assert_eq!(review["plan"]["apply_coverage_complete"], false);
+    assert!(
+        review["plan"]["coverage_gaps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "desired_references_not_authoritatively_observed")
+    );
+    assert_eq!(
+        review["plan"]["observation_errors"][0]["kind"],
+        "unsupported_target"
+    );
+    counts(&core, 0, 0);
     finish(p, s).await;
 }

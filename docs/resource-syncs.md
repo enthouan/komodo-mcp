@@ -278,8 +278,10 @@ requests, not every internal Core effect.
 
 Private reference checks cover the active source Repo and selected desired
 attachment/source/image dependencies (Server, Swarm, Builder, Repo, Build and
-explicit Alerter targets), recursively up to 32 references. Full visible raw
-configurations, including secret-only changes, stay private. New dependencies
+explicit Alerter targets and static Procedure-step targets), recursively up to
+32 references. Disabled steps are included. Known CommitSync Procedure steps
+withhold review authority to preserve the deferred external write-back boundary.
+Full visible raw configurations, including secret-only changes, stay private. New dependencies
 created within the same selection require an exact pending-create name and a
 compatible Core creation order. Missing/invisible/template/oversized dependency
 evidence withholds authorization. Arbitrary trusted code, hooks, future automatic

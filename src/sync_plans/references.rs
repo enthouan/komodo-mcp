@@ -56,7 +56,7 @@ fn dependencies(kind: Kind, config: &Value) -> Result<Vec<(Kind, String)>, AppEr
     } else {
         None
     };
-    if let Some(ids) = servers {
+    if let Some(ids) = servers.filter(|v| !v.is_null()) {
         let ids = ids.as_array().ok_or_else(invalid)?;
         if ids.len() > 16 {
             return Err(invalid());
@@ -72,7 +72,7 @@ fn dependencies(kind: Kind, config: &Value) -> Result<Vec<(Kind, String)>, AppEr
     // Alerter's explicit resource list is resolved by Core on save. Never scan
     // arbitrary strings, Action code, hooks or Procedure log output as IDs.
     if kind == Kind::Alerter
-        && let Some(items) = config.get("resources")
+        && let Some(items) = config.get("resources").filter(|v| !v.is_null())
     {
         let items = items.as_array().ok_or_else(invalid)?;
         if items.len() > 32 {
@@ -98,6 +98,71 @@ fn dependencies(kind: Kind, config: &Value) -> Result<Vec<(Kind, String)>, AppEr
                 return Err(invalid());
             }
             out.push((kind, id.into()));
+        }
+    }
+    if kind == Kind::Procedure
+        && let Some(stages) = config.get("stages").filter(|v| !v.is_null())
+    {
+        let stages = stages.as_array().ok_or_else(invalid)?;
+        if stages.len() > 16 {
+            return Err(invalid());
+        }
+        let mut count = 0;
+        for stage in stages {
+            let executions = stage["executions"].as_array().ok_or_else(invalid)?;
+            count += executions.len();
+            if count > 64 {
+                return Err(invalid());
+            }
+            for execution in executions {
+                let execution = &execution["execution"];
+                // Include disabled steps: saving can also enable automatic
+                // execution, and source omission has desired-state defaults.
+                if execution["type"] == "CommitSync" {
+                    return Err(AppError {
+                        correction: Some(
+                            "Known CommitSync Procedure steps, including disabled steps, cannot authorize external Git/host write-back through reviewed ResourceSync application. External source write-back is deferred.",
+                        ),
+                        ..AppError::new(ErrorKind::UnsupportedTarget, OP, None)
+                    });
+                }
+                let params = &execution["params"];
+                for (field, kind) in [
+                    ("build", Kind::Build),
+                    ("repo", Kind::Repo),
+                    ("action", Kind::Action),
+                    ("procedure", Kind::Procedure),
+                    ("deployment", Kind::Deployment),
+                    ("stack", Kind::Stack),
+                    ("server", Kind::Server),
+                    ("swarm", Kind::Swarm),
+                    ("sync", Kind::ResourceSync),
+                    ("alerter", Kind::Alerter),
+                ] {
+                    if let Some(id) = params.get(field) {
+                        let id = id.as_str().ok_or_else(invalid)?;
+                        if !name_ok(id) {
+                            return Err(invalid());
+                        }
+                        out.push((kind, id.into()));
+                    }
+                }
+                if execution["type"] == "SendAlert"
+                    && let Some(items) = params.get("alerters")
+                {
+                    let items = items.as_array().ok_or_else(invalid)?;
+                    if items.len() > 32 {
+                        return Err(invalid());
+                    }
+                    for id in items {
+                        let id = id.as_str().ok_or_else(invalid)?;
+                        if !name_ok(id) {
+                            return Err(invalid());
+                        }
+                        out.push((Kind::Alerter, id.into()));
+                    }
+                }
+            }
         }
     }
     Ok(out)
