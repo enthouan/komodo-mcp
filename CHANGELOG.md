@@ -1,511 +1,76 @@
 # Changelog
 
-Release sections are the reviewed source for GitHub Release notes. Application
-versions follow SemVer; publication dates and commit identities belong in the
-GitHub Release and tracking evidence.
-
-New changes go under `Unreleased` until the next release is prepared.
+New changes go under `Unreleased`. Release sections provide the GitHub Release
+notes: short, categorized bullets with links to the relevant pull requests.
 
 ## Unreleased
 
 ## v0.6.0
 
-- Validate export → define → refresh → review → apply → inspect through one
-  production-stdio workflow and an opt-in four-source Core/Periphery smoke that
-  retains the full automation/configuration/operation/recovery acceptance.
-  Document source preservation versus desired-state resets, scoped/global
-  effects, recovery and independent health; check every shared new-dependency
-  creation edge before deduplicating private snapshots and let Core's five-second
-  Git pull cache expire before the one apply-preflight refresh. Preserve counted
-  cache/alert effects in stale-plan rejections even when no RunSync is submitted.
-  ([#103](https://github.com/enthouan/komodo-mcp/issues/103))
+### Added
 
-- Apply an exact reviewed ResourceSync selection with both local grants, one
-  counted fresh-plan refresh, private definition/source/dependency comparisons
-  and at most one RunSync. Preserve unknown acknowledgements, known IDs and
-  read-only restart recovery without inferred selector/caller attribution or
-  replay. Withhold raw sync errors and distinguish parent batch reports,
-  independent resource observations, child deployment uncertainty and health.
-  Retain Core's final-read/source-reread race and deferred external write-back.
-  ([#31](https://github.com/enthouan/komodo-mcp/issues/31))
-
-- Inspect cached ResourceSync changes and distinct source/deployment errors,
-  explicitly refresh with operate/Core Execute, and review exact selections
-  against private source/plan/reference baselines. Audit template-only and
-  variable-secret-flag changes omitted by Core's cached view; withhold review
-  references for incomplete, truncated or unfaithful deployment coverage,
-  including filtered raw deployment intent and unresolved source tag IDs.
-  Count refresh effects separately and submit no RunSync or source write-back.
-  ([#30](https://github.com/enthouan/komodo-mcp/issues/30))
-
-- Inspect and save typed ResourceSync definitions with private single-use
-  previews, inline TOML validation, explicit Git/linked-Repo/Core-host sources,
-  preserved omitted settings/secrets, linked-reference drift checks and full
-  authoritative read-back. Default new webhooks off, gate execution-bearing edits
-  by both grants, and disclose pending-cache/source/alert effects, managed deletion
-  and desired-state resets. Submit no RunSync or external source write-back.
-  ([#29](https://github.com/enthouan/komodo-mcp/issues/29))
-
-- Export explicit resource/group selections through Core's scoped read API,
-  with separate opt-in to all variables. Parse and serialize a conservative
-  inspection-only TOML projection, omit secret-bearing content even for admins,
-  report missing definitions and reuse limits, and reject excess output without
-  truncating a document. Add compiled-stdio selection, permission, redaction and
-  zero-mutation evidence. ([#28](https://github.com/enthouan/komodo-mcp/issues/28))
+- Export selected resources and groups as sanitized, inspection-only TOML. ([#105](https://github.com/enthouan/komodo-mcp/pull/105))
+- Create and edit ResourceSync definitions using inline, Git, linked Repo or Core-host sources. ([#106](https://github.com/enthouan/komodo-mcp/pull/106))
+- Inspect, refresh and review scoped ResourceSync pending changes before applying them. ([#107](https://github.com/enthouan/komodo-mcp/pull/107))
+- Apply reviewed ResourceSync changes and recover interrupted observations without replaying execution. ([#108](https://github.com/enthouan/komodo-mcp/pull/108))
+- Add a complete ResourceSync walkthrough and integration checks across all four sources. ([#109](https://github.com/enthouan/komodo-mcp/pull/109))
 
 ## v0.5.0
 
-Manage repositories, build workload images on existing Servers, and run trusted
-automation with explicit execution and health evidence.
+### Added
 
-- Validate integrated Repo → Server Builder → Build → image → explicit Deployment
-  evidence through production stdio, with separate terminal outcomes and workload
-  health. Add cross-family deterministic fixtures, a reproducible automation
-  walkthrough and opt-in disposable pinned Core/Periphery acceptance with scoped
-  identities, private Git/registry workloads, recovery evidence and verified cleanup.
-  ([#93](https://github.com/enthouan/komodo-mcp/issues/93))
-
-- Inspect Core Action/Procedure schedules with bounded pagination and separate
-  saved configuration, cache, parse-error and next/last-run evidence. Preview and
-  apply typed Cron/English/timezone/enable/alert edits through the shared private
-  contract, preserving source, stages, defaults and secrets with both effect grants.
-  Report inherited Core timezone and scheduling races; add pinned-parser DST
-  fixtures without an MCP scheduler or automatic replay.
-  ([#27](https://github.com/enthouan/komodo-mcp/issues/27))
-
-- Manage trusted Action source/default arguments with private typed previews and
-  full read-back, inert administrator-only creation and automatic-effect gates.
-  Run saved Actions once with bounded Core argument merging and shared read-only
-  recovery. Validate exact Action/run cancellation IDs in handlers and transport;
-  keep acknowledgement and termination separate. Disclose host/administrator
-  authority and omit arbitrary secret-bearing output while retaining structured
-  command/outcome evidence.
-  ([#26](https://github.com/enthouan/komodo-mcp/issues/26))
-
-- Manage typed trusted Procedure definitions with ordered sequential stages,
-  parallel/disabled steps, private preview/read-back and automatic-effect gates.
-  Run one saved Procedure with explicit Core administrator-authority acknowledgement,
-  safe bounded stage/child reports and shared wait/recovery. Add resource-level
-  cancellation with active-run checks, after-current-stage semantics and separate
-  acknowledgement/original outcome; retain uncertainty and never replay work.
-  ([#25](https://github.com/enthouan/komodo-mcp/issues/25))
-
-- Run one saved Server-backed Build with explicit effect acknowledgement and
-  shared bounded receipts, revision/version/image evidence, wait and read-only
-  recovery. Add deliberate Build cancellation with active-run rechecks and
-  separate acknowledgement/original outcome reporting; disclose Core's
-  resource-level race and unavailable dependent-result links. Never replay an
-  uncertain execution or infer deployment health from Build success.
-  ([#24](https://github.com/enthouan/komodo-mcp/issues/24))
-
-- Add bounded Builder/Build inspection and shared typed definition preview/apply.
-  Support explicit existing-Server Builders with ordered fallback, preserve
-  omitted secrets, revalidate references and verify complete saved configuration.
-  Disclose Core cache, registry and dependent redeployment effects; gate
-  execution-bearing edits with both local grants and reject AWS/URL writes.
-  Definition tools submit no build execution or cloud provisioning.
-  ([#23](https://github.com/enthouan/komodo-mcp/issues/23))
-
-- Add bounded Repo inspection, typed definition preview/apply and explicit
-  clone/pull with prior hook acknowledgement. Preserve omitted secrets, verify
-  authoritative saved configuration and gate execution-bearing updates and
-  webhook enabling with both local grants. Extend shared receipts/history/wait/
-  recovery with observed revision evidence and no replay or automatic attribution after lost replies.
-  ([#22](https://github.com/enthouan/komodo-mcp/issues/22))
-
-### Permissions and Core effects
-
-Read-only remains the default. `KOMODO_ALLOW_OPERATE=true` and
-`KOMODO_ALLOW_CONFIGURATION_EDIT=true` grant independent local capabilities;
-execution-bearing edits and schedule updates require both. Core remains the
-permission authority: running a saved resource requires its Execute permission,
-editing requires Write, and observation/reference validation needs the relevant
-Read/Inspect/Logs/Attach access. Core creation policy and Build creation permission
-still apply; Builder and Action creation require an administrator. The same caller
-is used throughout, with no privileged fallback.
-
-Direct Builder writes and Build runs support explicit existing-Server Builders
-only, preserving ordered fallback. AWS configuration/provisioning and direct URL
-Builder writes/execution remain unsupported. Hooks and Dockerfiles are trusted
-executable configuration. Procedures run children with Core's built-in
-administrator identity; Actions run Deno `--allow-all` on the Core host with a
-temporary administrator API key. Their configured behavior is not sandboxed by
-the direct Build tools' Server-only restriction.
-
-Definition saves can refresh Git/Dockerfile caches, enable automatic execution
-or change later webhook/startup/schedule behavior. Build execution can push
-images and trigger configured dependent redeployments. A definition-only MCP
-request can still cause Core effects. Action per-run arguments follow Core's
-recursive object merge and array append; empty objects/arrays do not clear saved
-values per run. Arbitrary Action output is omitted because it can contain secrets.
-
-### Execution, cancellation and schedules
-
-Acknowledgement, terminal command outcome and workload health remain separate.
-Observed revision/image evidence does not establish an asynchronous dependent
-deployment link or healthy workload. Local wait cancellation/expiry ends only
-observation; known update IDs remain resumable. Lost or invalid acknowledgements
-retain unknown acceptance, and history candidates remain unconfirmed even when
-only one matches. Writes and executions are never automatically replayed.
-
-Remote cancellation is explicit. Build and Procedure cancellation target the
-resource and retain a final replacement-run race; Procedures check between stages
-and current children can finish. Action cancellation requires the verified exact
-Action/run update IDs. Cancellation acknowledgement does not prove the original
-run stopped, roll back effects or cancel arbitrary child operations.
-
-Core owns Cron/English parsing, timezone handling and dispatch. Cron includes
-seconds; an empty timezone inherits Core configuration or Core host local time.
-Saved configuration, cached next/last-run values and parser errors are separate
-evidence. Invalid expressions may save with cache errors, and cache entries have
-no atomic generation link to definitions. Disabling/clearing does not cancel
-dispatched work; an in-flight run can reschedule from an older captured policy.
-The MCP server adds no scheduler.
-
-### Evidence and distribution limits
-
-Verification includes production stdio workflows, deterministic Core 2.3.2 wire
-fixtures and owned disposable Core/Periphery 2.3.2 acceptance recorded in the
-[release tracker](https://github.com/enthouan/komodo-mcp/issues/94) and
-[integration evidence](https://github.com/enthouan/komodo-mcp/issues/93).
-Live scope covers a private Git source, one existing Server Builder, workload
-image build/push to a dotted private registry hostname, an explicit Deployment
-and independent final container/MCP health, plus hook/build/push/partial-child
-failures, cancellation, permissions and concurrent lost-reply recovery. Repo
-clone's Core HTML revision is a short observed hash, not full-hash attestation;
-the live image digest is independently inspected. Cleanup is ownership-scoped
-and verified.
-
-Ordered fallback, unsupported Builder variants, the full timing/error matrix
-and timezone/DST behavior retain deterministic fixture/source coverage. Live
-schedule evidence verifies saved policy and Core cache, not an actual scheduled
-trigger. See the [automation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/docs/automation-walkthrough.md)
-for minimum permissions, effect disclosures and recovery steps. The pinned
-`komodo_client =2.3.2` and `rmcp =3.9.0` remain unchanged; archived benchmark
-measurements retain their original source, executable and application identities.
-This release cut claims no new performance baseline.
-
-Release artifacts remain an annotated source tag and GitHub Release notes.
-Build the stdio executable from source using the
-[installation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/README.md#fresh-checkout-demo-synthetic-core).
-komodo-mcp container/native distribution and artifact verification remain in
-[#41](https://github.com/enthouan/komodo-mcp/issues/41),
-[#42](https://github.com/enthouan/komodo-mcp/issues/42) and
-[#51](https://github.com/enthouan/komodo-mcp/issues/51); building/pushing user
-workload images does not publish komodo-mcp.
+- Inspect and configure Repos, with explicit clone and pull operations. ([#95](https://github.com/enthouan/komodo-mcp/pull/95))
+- Configure Server-backed Builders and Builds, then run and cancel saved Builds. ([#96](https://github.com/enthouan/komodo-mcp/pull/96), [#97](https://github.com/enthouan/komodo-mcp/pull/97))
+- Manage, run and cancel trusted Procedures and Actions. ([#98](https://github.com/enthouan/komodo-mcp/pull/98), [#99](https://github.com/enthouan/komodo-mcp/pull/99))
+- Inspect and update Action and Procedure schedules, including Cron, English expressions and timezones. ([#100](https://github.com/enthouan/komodo-mcp/pull/100))
+- Add an automation walkthrough and integration checks from Repo cloning through deployment health. ([#101](https://github.com/enthouan/komodo-mcp/pull/101))
 
 ## v0.4.0
 
-Manage resource configuration with typed previews, deliberate applies and
-separate runtime observations.
+### Added
 
-- Add typed tag creation/rename and explicit resource assignment preview/apply,
-  preserving omitted assignments and unrelated metadata, with additive set
-  behavior, deliberate empty-set clearing and read-only discovery by renamed
-  tags. Reuse guarded deletion for exact tags and report visible assignment
-  effects, partial cleanup and Core's omitted Swarm cleanup separately. Verify
-  authoritative read-back against silent resolution drops and retain uncertain
-  responses without retries. ([#20](https://github.com/enthouan/komodo-mcp/issues/20))
-
-- Add deliberate single-resource Stack/Deployment/Server deletion through the
-  shared private preview store, requiring both local grants for apply. Revalidate
-  deployed identities, runtime and visible references; separate definition
-  removal, fresh known-container observations, cleanup errors and detachment.
-  Disclose hidden effects, Server workloads and legacy Builder cleanup limits;
-  retain uncertain submissions without retries or exposing archived definitions.
-  ([#21](https://github.com/enthouan/komodo-mcp/issues/21))
-
-- Add typed Server creation and partial connection/alerting updates through the
-  shared preview/apply contract. Preserve omitted settings and accepted trust,
-  require explicit pinned keys for enabled saves, disable automatic pruning/key
-  rotation on creation, and gate connection applies with both local grants.
-  Report verified configuration separately from cached connectivity and sanitized
-  connection failures, without provisioning or key-management fallback.
-  ([#19](https://github.com/enthouan/komodo-mcp/issues/19))
-
-- Add typed Deployment creation and partial updates using the shared private
-  preview/apply contract, with direct images, versioned Build references and
-  existing Server/Swarm targets. Preserve omitted ports, environment references
-  and targets; redact privileged/secret fields; require both local grants for
-  image updates; distinguish desired configuration from cached/runtime evidence
-  and disclose Core registry, auto-deploy and old-target effects. Bind tokens
-  to operation/resource kind and redact configured credentials before bounded
-  display clipping. ([#18](https://github.com/enthouan/komodo-mcp/issues/18))
-
-- Extend the shared typed Stack preview/apply flow with creation, inline/Git/
-  linked-Repo/host source declarations and existing Server/Swarm attachments.
-  Preserve omitted source fields, bind raw referenced definitions, separate
-  desired configuration from runtime observations, and disclose Core auto-deploy
-  and old-target workload effects. Source updates require both operate and
-  configuration-edit grants, regardless of the observed auto-update policy.
-  Definition saves submit no execution or file
-  mutation requests. ([#17](https://github.com/enthouan/komodo-mcp/issues/17))
-
-- Add trusted typed Stack configuration preview/apply with private authoritative
-  baselines, explicit omission/clear/no-op behavior, redacted field changes,
-  single-use previews and bounded single-submission uncertainty. Preserve
-  independent operate/edit grants and verify the same-identity permission
-  boundary with the disposable Core/Periphery runner.
-  ([#16](https://github.com/enthouan/komodo-mcp/issues/16))
-
-### Permissions and Core effects
-
-Configuration tools opt in through `KOMODO_ALLOW_CONFIGURATION_EDIT=true`,
-independently of `KOMODO_ALLOW_OPERATE`. Applying a supplied Stack source,
-Deployment image or Server connection setting also requires operate access,
-including unchanged inputs. Enabled Server creation and resource/tag deletion
-require both grants. Core remains the upstream permission authority.
-
-Definition saves issue no separate execution request, but Core can auto-deploy
-after source/image updates or reconnect/poll Periphery after connection edits.
-Resource deletion can tear down workloads, detach references or leave runtime
-cleanup incomplete. Core 2.3.2 can leave Builder `server_ids` after Server deletion
-and omits Swarm assignments from tag-deletion cleanup. Final-read races, hidden
-dependencies and uncertain replies remain explicit; no mutation is retried
-automatically and record absence never proves global cleanup.
-
-### Evidence and distribution limits
-
-Verification uses production stdio MCP processes, synthetic Core 2.3.2 wire
-fixtures and fresh owned disposable Core/Periphery 2.3.2 acceptance recorded in
-the [release tracker](https://github.com/enthouan/komodo-mcp/issues/85). Live scope
-covers inline Stacks and direct-image Deployments on Server targets, Server
-record settings and saved-but-unreachable observations, Stack tag assignments,
-running-workload deletion and Server detachment. Git/linked-Repo/host sources,
-Build references and Swarm behavior retain deterministic fixture/source
-coverage. Successful outbound/inbound/changed-key handshakes are not part of
-the live matrix. The pinned `komodo_client =2.3.2` and `rmcp =3.9.0` are unchanged;
-archived benchmark measurements retain their original identities.
-
-Release artifacts remain an annotated source tag and GitHub Release notes.
-Build the stdio executable from source using the
-[installation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/README.md#fresh-checkout-demo-synthetic-core).
+- Preview and apply Stack configuration changes, including creation, sources and targets. ([#86](https://github.com/enthouan/komodo-mcp/pull/86), [#87](https://github.com/enthouan/komodo-mcp/pull/87))
+- Create and edit Deployments with direct images or Build references. ([#88](https://github.com/enthouan/komodo-mcp/pull/88))
+- Create and edit Server connection and alert settings. ([#89](https://github.com/enthouan/komodo-mcp/pull/89))
+- Delete individual Stacks, Deployments and Servers with explicit previews and cleanup reporting. ([#90](https://github.com/enthouan/komodo-mcp/pull/90))
+- Create, rename, assign and delete resource tags. ([#91](https://github.com/enthouan/komodo-mcp/pull/91))
 
 ## v0.3.1
 
-Dependency and CI maintenance for workload operations and recovery.
+### Changed
 
-- Update the official MCP SDK from rmcp 3.8.0 to 3.9.0 with the existing stdio
-  feature selection, verified through MCP lifecycle, tool-schema and subprocess
-  checks.
-  ([#67](https://github.com/enthouan/komodo-mcp/pull/67))
-- Pin the Rust setup action by commit and explicitly retain compiler 1.99.1 in
-  CI and benchmarks, so action updates do not select an unavailable compiler.
-  ([#66](https://github.com/enthouan/komodo-mcp/pull/66))
-
-### Evidence and distribution limits
-
-Verification uses production stdio MCP processes with synthetic **Core 2.3.2
-wire fixtures** and the pinned `komodo_client =2.3.2`. The existing disposable
-Core/Periphery 2.3.2 [live smoke evidence](https://github.com/enthouan/komodo-mcp/issues/74#issuecomment-6844295403)
-remains pinned to the v0.3.0 implementation commit `4f8d3f8`. This dependency cut
-adds no new live compatibility or performance claim; archived benchmark reports
-retain their original source and executable identities.
-
-Release artifacts are an annotated source tag and GitHub Release notes. Build
-the stdio executable from source using the
-[installation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/README.md#fresh-checkout-demo-synthetic-core).
+- Update the MCP SDK from rmcp 3.8.0 to 3.9.0. ([#67](https://github.com/enthouan/komodo-mcp/pull/67))
+- Pin the Rust setup action while retaining Rust 1.99.1 in CI and benchmarks. ([#66](https://github.com/enthouan/komodo-mcp/pull/66))
 
 ## v0.3.0
 
-Operate existing workloads with explicit scope, single-submission receipts and
-recoverable observation.
+### Added
 
-- Verify the complete production stdio inspection/operation/receipt/wait/health
-  workflow, independent callers and interrupted recovery with deterministic CI
-  scenarios. Add a reproducible operator walkthrough and opt-in disposable
-  Core/Periphery 2.3.2 smoke with scoped non-admin identities, dependency/hook
-  checks, bounded observers and verified ownership-scoped cleanup.
-  ([#74](https://github.com/enthouan/komodo-mcp/issues/74))
-
-- Add read-only interrupted-submission reconciliation with bounded resource
-  history/service evidence, explicit unknown acceptance and unconfirmed candidate
-  attribution. Verify accepted disconnects, timeouts, malformed/oversized replies,
-  process loss and independent callers across deploy/lifecycle/service operations
-  without automatically executing again.
-  ([#15](https://github.com/enthouan/komodo-mcp/issues/15))
-
-- Add read-only bounded waiting and cross-session resume by Core update ID,
-  with cancellation, total/request/polling limits, retained latest evidence and
-  explicit incomplete observation. Keep Core execution outcome separate from
-  workload health and never resubmit execution while waiting or resuming.
-  ([#14](https://github.com/enthouan/komodo-mcp/issues/14))
-
-- Add start, stop and restart for existing Server-backed Stacks and Deployments,
-  including exact deployed Compose service scope. Reuse single-submission receipts,
-  preserve Core failures and busy outcomes, reject Swarm lifecycle actions, and
-  describe action-specific dependencies without substituting unpause or redeploy.
-  ([#13](https://github.com/enthouan/komodo-mcp/issues/13))
-
-- Add explicit single-target Stack/Deployment deploy tools, named Compose service
-  scope, stable-ID submissions, bounded sanitized update receipts and immediate
-  observation. Reject unsupported filters without expanding scope; retain unknown
-  submission outcomes and known update IDs without automatic retry.
-  ([#12](https://github.com/enthouan/komodo-mcp/issues/12))
-
-- Add independent operate and configuration-edit capability grants, defaulting
-  to read-only, with one policy for discovery, lookup and direct dispatch.
-  Preserve read-only recovery history and Core's permission authority, including
-  denial recorded after execution acknowledgement.
-  ([#11](https://github.com/enthouan/komodo-mcp/issues/11))
-
-### Operations and compatibility
-
-Operations are opt-in through `KOMODO_ALLOW_OPERATE=true`; default discovery and
-dispatch remain read-only. Local grants do not replace Core permissions. An
-enabled identity needs the selected workload's Execute permission and the Read,
-Inspect and Logs access used for observation. Configuration editing remains
-future scope, with an independent local grant.
-
-Server-backed Stacks support deploy/start/stop/restart for the whole Stack or one
-exact Compose service; Server-backed Deployments support all four actions for
-the whole workload. Swarm supports whole-Stack/Deployment deploy only. Swarm
-service filters and lifecycle operations are rejected before execution. Invalid
-or unresolved selection never widens to a whole workload.
-
-Deploy applies saved configuration and image policy. Server Deployment deploy
-pulls the selected image/build and recreates its container; Stack deploy follows
-saved auto-pull, build, Compose flags and wrappers. Lifecycle uses existing
-containers and does not apply changed configuration/images or run deploy hooks.
-Service deploy can start dependencies and runs saved pre/post hooks; start can
-start existing dependencies, restart can propagate to configured dependents,
-and stopping a selected service can affect dependent applications. Requested
-service scope is not an isolation guarantee.
-
-Each explicit call submits at most one typed Core execution. Acknowledgement
-establishes acceptance; later permission, busy or rollout failure stays attached
-to that update. Successful execution and workload health are observed separately.
-Lost replies and untrustworthy acknowledgements retain unknown acceptance.
-Known update IDs resume through bounded read-only observation from a new session;
-local wait timeout/cancellation does not cancel the remote operation. Missing-ID
-history searches return unconfirmed candidates, including when only one matches.
-Clock differences, delayed visibility and permissions can hide an accepted
-request. Recovery never automatically resubmits; independent explicit calls can
-repeat effects, with no upstream idempotency or exactly-once guarantee.
-
-See the [operator walkthrough](https://github.com/enthouan/komodo-mcp/blob/4f8d3f8860bb0adffb368753e8b0db7a87f5a373/docs/operations-walkthrough.md)
-for configuration, supported targets, observation bounds and recovery steps.
-
-### Evidence and distribution limits
-
-The supported API/fixture baseline is **Core 2.3.2**. The integrated implementation
-was verified through compiled production stdio and a disposable **Core/Periphery
-2.3.2** Server-backed smoke using scoped non-admin identities, separate
-provisioning credentials and verified cleanup. Live evidence used Compose
-**5.4.0** and isolated Docker **27.5.1**; Swarm contracts are fixture-tested, with
-no live multi-version/Swarm certification claim. The [implementation acceptance
-and live evidence](https://github.com/enthouan/komodo-mcp/issues/74#issuecomment-6844295403)
-retain the exact tested commit, executable identity, measured recovery traffic
-and final independent health observations. Application, MCP protocol and
-Core/SDK versions are independent identities.
-
-Archived benchmark reports retain their actual pre-release source, executable
-and application-version identities. This version/changelog cut does not claim
-new performance measurements or a general performance ranking.
-
-Release artifacts remain an annotated source tag and GitHub Release notes.
-Build the stdio executable from source using the
-[installation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/README.md#fresh-checkout-demo-synthetic-core).
-No container images or native binary packages are distributed in this release.
+- Add opt-in workload operations and an independent configuration-edit capability grant, with read-only access by default. ([#76](https://github.com/enthouan/komodo-mcp/pull/76))
+- Deploy individual Stacks, Deployments or named Compose services. ([#77](https://github.com/enthouan/komodo-mcp/pull/77))
+- Start, stop and restart Server-backed workloads and Compose services. ([#78](https://github.com/enthouan/komodo-mcp/pull/78))
+- Wait for updates, resume observation across sessions and investigate interrupted submissions without replaying them. ([#79](https://github.com/enthouan/komodo-mcp/pull/79), [#80](https://github.com/enthouan/komodo-mcp/pull/80))
+- Add an operations walkthrough and integration checks for execution, recovery and workload health. ([#81](https://github.com/enthouan/komodo-mcp/pull/81))
 
 ## v0.2.0
 
-Read-only fleet incident diagnosis with bounded, linked supporting evidence.
+### Added
 
-- Configure weekly Cargo/Actions dependency updates and document the required
-  checks, solo-maintainer main protection, and release compatibility.
-  ([#64](https://github.com/enthouan/komodo-mcp/issues/64))
-- Add paged fleet health with CPU, memory, disk, and service observations,
-  four concurrent reads per call, deadlines, and resource-specific evidence gaps.
-  ([#6](https://github.com/enthouan/komodo-mcp/issues/6))
-- Clarify the dedicated changelog release cut and exact release commit/PR naming.
-- Add bounded container, deployment, and service-filtered stack log readers with
-  Core input caps, joint line/UTF-8 byte limits, truncation metadata, and credential
-  redaction before tail selection, including camelCase labels and multiline values.
-  ([#8](https://github.com/enthouan/komodo-mcp/issues/8))
-- Add bounded alert/update history and update lookup, explicit queued/running/final
-  outcomes, and sanitized failed-stage evidence with capped upstream bodies.
-  ([#7](https://github.com/enthouan/komodo-mcp/issues/7))
-- Add one-call stack diagnosis with current health outcomes, affected services,
-  linked evidence and source gaps, plus bounded reads, wait and serialized output.
-  ([#9](https://github.com/enthouan/komodo-mcp/issues/9))
-- Verify fleet-to-stack diagnosis and independent evidence through production
-  stdio, and extend the retained inventory benchmark with concurrent incident
-  workflows and fleet growth against the pinned reference.
-  ([#10](https://github.com/enthouan/komodo-mcp/issues/10))
+- Inspect fleet health, including CPU, memory, disk and service observations. ([#68](https://github.com/enthouan/komodo-mcp/pull/68))
+- Read bounded, redacted workload logs and alert/update history. ([#69](https://github.com/enthouan/komodo-mcp/pull/69), [#70](https://github.com/enthouan/komodo-mcp/pull/70))
+- Diagnose a Stack with linked health, log and incident evidence. ([#71](https://github.com/enthouan/komodo-mcp/pull/71))
+- Add incident-triage integration checks and concurrent-fleet benchmarks. ([#72](https://github.com/enthouan/komodo-mcp/pull/72))
 
-### Evidence and distribution limits
+### Changed
 
-Verification uses synthetic **Core 2.3.2 wire fixtures** and simulated Read
-permissions. No deployed Core, Docker or authorization engine was exercised.
-The application version `0.2.0`, MCP protocol, SDK version and fixture Core
-version are independent identities.
-
-The [incident measurements and raw reports](https://github.com/enthouan/komodo-mcp/blob/49389893b80c39744213c21970b56b1c94cfe554/benchmarks/results/incident-final-README.md)
-cover 7/31/125 stacks with one/four callers and retain the inventory workload.
-Results are provisional shared-host observations. Both implementations return
-the same common incident evidence, while Rust also reads broader fleet metrics,
-services, alerts and diagnosis; these different workloads establish no general
-performance ranking. Archives preserve their actual pre-release source,
-executable and application-version identities. This version/changelog cut does
-not claim new performance measurements.
-
-Release artifacts are an annotated source tag and GitHub Release notes. Build
-the stdio executable from source using the
-[installation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/README.md#fresh-checkout-demo-synthetic-core).
-No container images or native binary packages are distributed in this release.
+- Configure weekly dependency updates and document main-branch protection and release conventions. ([#61](https://github.com/enthouan/komodo-mcp/pull/61), [#65](https://github.com/enthouan/komodo-mcp/pull/65))
 
 ## v0.1.0
 
-First release of the Rust stdio MCP server for inspecting Komodo inventory.
+### Added
 
-- Implement the MCP initialization, tool discovery, request, and clean stdin-EOF
-  shutdown lifecycle using the official rmcp SDK.
-  ([#1](https://github.com/enthouan/komodo-mcp/issues/1),
-  [#53](https://github.com/enthouan/komodo-mcp/pull/53))
-- Connect through the official `komodo_client`, with validated environment
-  configuration, bounded requests, credential redaction, and safe error results.
-  ([#2](https://github.com/enthouan/komodo-mcp/issues/2),
-  [#54](https://github.com/enthouan/komodo-mcp/pull/54))
-- Expose six read-only Server, Stack, and Deployment list/detail tools, with
-  bounded pagination, exact ID/name lookup, compact allowlisted projections, and
-  explicit incomplete or ambiguous lookup results.
-  ([#3](https://github.com/enthouan/komodo-mcp/issues/3),
-  [#55](https://github.com/enthouan/komodo-mcp/pull/55))
-- Provide a synthetic mock Core installation walkthrough, an official rmcp
-  stdio client example that computes stacks on a server across every page, and
-  MCP Inspector configuration examples.
-  ([#4](https://github.com/enthouan/komodo-mcp/issues/4),
-  [#56](https://github.com/enthouan/komodo-mcp/pull/56))
-- Add reproducible fresh-process and complete-inventory benchmarks against a
-  pinned TypeScript reference, with correctness oracles, raw measurements, and
-  recorded workload and executable identities.
-  ([#5](https://github.com/enthouan/komodo-mcp/issues/5),
-  [#57](https://github.com/enthouan/komodo-mcp/pull/57))
-- Establish a reusable release skill, annotated-tag/GitHub-Release publisher,
-  recovery checks, and release-executable MCP version verification.
-  ([#58](https://github.com/enthouan/komodo-mcp/issues/58))
-
-### Evidence and distribution limits
-
-Verification uses synthetic **Core 2.3.2 wire fixtures**, including simulated
-permissions. No deployed Core was exercised; compatibility and authorization
-behavior beyond those fixtures remain unverified. The application version
-`0.1.0`, MCP protocol version, dependency version, and detected Core version are
-independent identities.
-
-Benchmark findings are **provisional and workload-specific**. The archived run
-observed lower Rust startup/read latency and memory use, alongside larger MCP
-responses and more Core reads. It does not establish general performance on
-deployed Core or other hosts. See the
-[baseline evidence and caveats](https://github.com/enthouan/komodo-mcp/blob/main/benchmarks/results/README.md).
-No new performance baseline is claimed for this release commit.
-
-This release publishes an annotated source tag and GitHub Release notes. Build
-the stdio executable from source using the
-[installation walkthrough](https://github.com/enthouan/komodo-mcp/blob/main/README.md#fresh-checkout-demo-synthetic-core).
-It does not distribute container images or native binary packages. Later work
-extends the same release process with
-[GHCR/Compose (#41)](https://github.com/enthouan/komodo-mcp/issues/41),
-[native binaries and Corresponding Source (#42)](https://github.com/enthouan/komodo-mcp/issues/42),
-and [stable artifact verification, SBOMs, and provenance (#51)](https://github.com/enthouan/komodo-mcp/issues/51).
+- Introduce the Rust stdio MCP server and official Komodo client integration. ([#53](https://github.com/enthouan/komodo-mcp/pull/53), [#54](https://github.com/enthouan/komodo-mcp/pull/54))
+- List and inspect Servers, Stacks and Deployments with six read-only tools. ([#55](https://github.com/enthouan/komodo-mcp/pull/55))
+- Add installation, mock Core and MCP Inspector examples. ([#56](https://github.com/enthouan/komodo-mcp/pull/56))
+- Add reproducible startup and inventory benchmarks against the TypeScript reference. ([#57](https://github.com/enthouan/komodo-mcp/pull/57))
+- Add release tooling with annotated tags, recovery checks and executable version verification. ([#59](https://github.com/enthouan/komodo-mcp/pull/59))

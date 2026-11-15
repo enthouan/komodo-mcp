@@ -109,6 +109,27 @@ versioned notes already exist, establish this boundary without rewriting the
 reviewed release scope. Publication dates and commit identities belong in the
 GitHub Release and tracking evidence.
 
+Write concise, user-facing release notes. Start directly with applicable
+`### Added`, `### Changed` or `### Fixed` headings; omit empty categories. Use a
+handful of bullets, each one short sentence about what users can do or what
+changed. Group related work. End each bullet with PR links verified against
+merged history; issue links do not replace PR links.
+
+Example using shipped komodo-mcp changes:
+
+```markdown
+### Added
+
+- Export selected resources and groups as sanitized, inspection-only TOML. ([#105](https://github.com/enthouan/komodo-mcp/pull/105))
+- Inspect, refresh and review scoped ResourceSync pending changes before applying them. ([#107](https://github.com/enthouan/komodo-mcp/pull/107))
+```
+
+Keep validation commands/results, hashes, fixture/live coverage, permission and
+recovery details, benchmark caveats, distribution boilerplate and deferred work
+in the relevant docs and release-tracking evidence. Include a brief breaking
+change or required migration when it affects users. Apply this format as changes
+are added under `Unreleased`, rather than accumulating implementation reports.
+
 For the first release, explicitly summarize shipped scope from history and
 completed issues; do not invent a previous tag. Later releases use the previous
 **verified published** release's annotated tag and target through the intended
@@ -120,11 +141,12 @@ git diff --stat PREVIOUS_VERIFIED_TAG..CANDIDATE_SHA
 python3 scripts/release.py metadata --version X.Y.Z --notes-file target/release-notes.md
 ```
 
-Review user-facing changes, issue/PR links, evidence limits, and artifacts this
-version actually distributes. No crates.io, MCP Registry, GHCR, binary archive,
-SBOM or provenance publisher is in current scope. #41 (multi-architecture
-GHCR/Compose), #42 (native binaries/matching Corresponding Source), and #51
-(stable artifact verification, SBOMs/provenance) extend this same process when
+Review user-facing changes and PR links in the notes, and evidence limits and
+distributed artifacts in the supporting docs/tracker. No crates.io, MCP Registry,
+GHCR, binary archive, SBOM or provenance publisher is in current scope.
+#41 (multi-architecture GHCR/Compose), #42 (native binaries/matching
+Corresponding Source), and #51 (stable artifact verification, SBOMs/provenance)
+extend this same process when
 implemented; they are not current gates. Update the helper, skill, tests and
 artifact verification together as those capabilities land.
 
@@ -257,8 +279,21 @@ object without replacing local tags, requires type `tag`, annotation exactly
 `vX.Y.Z`, a direct target equal to the captured commit, and accepted main ancestry.
 It reads the Release's exact tag/title, notes, published/non-draft state,
 stable/prerelease classification and publication timestamp. `target_commitish`
-alone is never identity evidence. Current notes claim no uploaded binary assets;
-unexpected assets require scope review.
+alone is never identity evidence. Current distribution has no uploaded binary
+assets; unexpected assets require scope review.
+
+### Authorized editorial note updates
+
+An explicit request to revise published release notes authorizes a body-only
+edit, without republishing. Save the original and approved replacement notes
+and their hashes in an edit record. Update only the existing Release body, then
+independently read it back and verify unchanged Release identity, tag objects,
+publication state, assets and Latest designation.
+
+The normal verifier compares notes with the original tagged changelog and will
+report a notes mismatch after such an edit. Verify the approved replacement
+against the edit record and current changelog instead; keep the original tag
+and publication evidence, and never relax the publisher's conflict checks.
 
 ## Recovery and completion
 
