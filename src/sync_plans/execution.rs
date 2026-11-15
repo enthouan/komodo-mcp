@@ -216,6 +216,7 @@ fn selection(scope: &ExecutionScope) -> Selection {
 }
 fn stale() -> AppError {
     AppError {
+        message: "The reviewed ResourceSync evidence changed or is incomplete. No RunSync was submitted. Any counted preflight refresh may already have changed Core's cache or pending alerts.",
         correction: Some(
             "Observed definition, references, source or scoped plan changed or coverage is incomplete. No RunSync was submitted; inspect and obtain a new review. A consumed reference is never reusable.",
         ),

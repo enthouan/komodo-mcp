@@ -435,6 +435,9 @@ async def resets_and_drift(creator, sources):
         s.persist()
         s.require(result['outcome'] == 'not_submitted' and result['run_sync_requests_submitted'] == 0
                   and result['review_consumed'], 'changed source silently applied a new plan')
+        if result['preflight']['refresh_requests_submitted']:
+            s.require('no write' not in result['rejection']['message'].lower(),
+                      'stale rejection denied its already submitted preflight refresh')
         await creator.tool('refresh_resource_sync_pending', {'id': case['id']})
         await apply(creator, await review(creator, case['id'], whole()))
         unchanged(baseline, host_name)

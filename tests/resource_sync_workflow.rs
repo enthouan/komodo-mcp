@@ -149,6 +149,11 @@ async fn git_pull_cache_settles_before_one_refresh_rejects_changed_source() {
     assert_eq!(result["outcome"], "not_submitted");
     assert_eq!(result["preflight"]["refresh_requests_submitted"], 1);
     assert_eq!(result["run_sync_requests_submitted"], 0);
+    let rejection = result["rejection"]["message"].as_str().unwrap();
+    assert!(
+        !rejection.to_lowercase().contains("no write"),
+        "a rejected RunSync must not deny the already submitted preflight refresh"
+    );
     assert!(started.elapsed() >= std::time::Duration::from_secs(5));
     assert_eq!(
         core.git_pull_cache_hits
