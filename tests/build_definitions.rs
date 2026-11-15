@@ -52,7 +52,7 @@ async fn discovery_and_direct_calls_enforce_every_local_profile_without_core_io(
                 tools.len(),
                 35 + 17 * usize::from(operate)
                     + 46 * usize::from(edit_grant)
-                    + 2 * usize::from(operate && edit_grant)
+                    + 3 * usize::from(operate && edit_grant)
             );
             for name in [
                 "list_builders",
