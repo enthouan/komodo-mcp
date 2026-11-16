@@ -181,7 +181,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description="Consume one saved-scale deploy review, recheck its private target/configuration/references/service and submit the existing Core Deploy at most once. Operate plus Core Execute. Removes/recreates service; report denied/failed/unknown deployment as partial, retain known update ID, never roll back or replay. Does not prove replicas or health.",input_schema=schema_for_input::<crate::scaling::ApplyInput>().expect("scale schema"),output_schema=inventory::output_schema::<crate::scaling::ScaleDeployment>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    #[tool(description="Consume one saved-scale deploy review, recheck its private target/configuration/references/service and submit the existing Core Deploy at most once. Operate plus Core Execute. Removes/recreates service; report denied/failed/unknown deployment as partial, retain known update ID, never roll back or automatically retry/replay. Does not prove replicas or health.",input_schema=schema_for_input::<crate::scaling::ApplyInput>().expect("scale schema"),output_schema=inventory::output_schema::<crate::scaling::ScaleDeployment>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
     async fn deploy_scaled_deployment(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "deploy_scaled_deployment") {
             Ok(input) => crate::scaling::deploy(&self.client, input).await,
