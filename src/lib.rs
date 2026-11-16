@@ -3,6 +3,7 @@
 pub mod action_observation;
 pub mod action_operations;
 pub mod actions;
+pub mod alerters;
 pub mod build_configuration;
 pub mod build_observation;
 pub mod build_operations;

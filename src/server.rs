@@ -23,7 +23,9 @@ impl KomodoServer {
             Self::tool_router(),
             self.client.capabilities(),
             |name| match name {
-                "list_variables"
+                "list_alerters"
+                | "get_alerter"
+                | "list_variables"
                 | "get_variable"
                 | "list_core_secret_names"
                 | "observe_deployment_scale"
@@ -79,7 +81,8 @@ impl KomodoServer {
                 | "get_stack_logs"
                 | "stack_diagnose"
                 | "find_resources_by_tag" => Some(Capability::Read),
-                "review_deployment_scale_deploy"
+                "test_alerter"
+                | "review_deployment_scale_deploy"
                 | "deploy_scaled_deployment"
                 | "deploy_stack"
                 | "deploy_deployment"
@@ -101,7 +104,11 @@ impl KomodoServer {
                 "apply_resource_delete" | "apply_tag_delete" | "apply_resource_sync" => {
                     Some(Capability::Destructive)
                 }
-                "preview_variable_change"
+                "preview_alerter_create"
+                | "apply_alerter_create"
+                | "preview_alerter_update"
+                | "apply_alerter_update"
+                | "preview_variable_change"
                 | "apply_variable_change"
                 | "preview_deployment_scale"
                 | "apply_deployment_scale"
@@ -159,6 +166,69 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="List bounded visible Alerters with enabled and endpoint type only. Core Read; no endpoint URLs, tokens or recipient details. No sends or writes.", input_schema=schema_for_input::<ListInput>().expect("alerter schema"), output_schema=inventory::output_schema::<Page<crate::alerters::Summary>>(), annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_alerters(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_alerters") {
+            Ok(input) => crate::alerters::list(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Inspect one saved Alerter: enabled, endpoint variant, type/resource filters and bounded maintenance metadata. Empty inclusions are unrestricted. Endpoint URLs, credentials, references and literal email are omitted. Core Read; no sends or writes.", input_schema=schema_for_input::<DetailInput>().expect("alerter schema"), output_schema=inventory::output_schema::<crate::alerters::Detail>(), annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_alerter(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_alerter") {
+            Ok(input) => crate::alerters::get(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Preview a new Alerter using a typed Custom, Slack, Discord, Ntfy or Pushover endpoint with original URL/reference input. Enabled defaults false. Private shared single-use preview, enabled Core admin and configuration-edit required. Never delivers a test or exposes endpoint details.", input_schema=schema_for_input::<crate::alerters::CreateInput>().expect("alerter schema"), output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
+    async fn preview_alerter_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_alerter_create") {
+            Ok(input) => crate::alerters::preview_create(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Apply one matching private Alerter creation preview after rechecking admin, name absence and references. Configuration-edit; enabled creation also requires operate. One typed write plus full raw read-back. Defaults disabled; never sends TestAlerter or SendAlert. No automatic retry.", input_schema=schema_for_input::<crate::alerters::CreateApplyInput>().expect("alerter schema"), output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn apply_alerter_create(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_alerter_create") {
+            Ok(input) => crate::alerters::apply_create(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Preview one saved Alerter patch using a full private raw baseline. Omitted fields preserve original credentials/references; [] clears filters/windows, empty inclusion is unrestricted; Ntfy email uses explicit set/clear. Show safe field changes only. No delivery or mutation.", input_schema=schema_for_input::<crate::alerters::PreviewInput>().expect("alerter schema"), output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
+    async fn preview_alerter_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_alerter_update") {
+            Ok(input) => crate::alerters::preview_update(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Apply one matching private Alerter patch with configuration-edit AND operate, Core resource Write. Revalidate full raw baseline/references, detect no-op, submit at most one typed write and independently read complete saved config. Future automatic routing can change. No implicit TestAlerter/SendAlert, retry or CAS guarantee.", input_schema=schema_for_input::<crate::alerters::ApplyInput>().expect("alerter schema"), output_schema=inventory::output_schema::<crate::configuration::ConfigurationResult>(), annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn apply_alerter_update(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_alerter_update") {
+            Ok(input) => crate::alerters::apply_update(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Explicitly acknowledge one TestAlerter submission for one saved named target. Operate and Core Execute; never auto-enable or broadcast SendAlert. Disabled fails without delivery; tests bypass filters but honor maintenance. Core success may mean suppressed with no provider attempt. Retain sanitized update receipt for get_update/wait_for_update/reconcile_operation, never resend automatically; actual receipt requires independent receiver evidence.", input_schema=schema_for_input::<crate::alerters::TestInput>().expect("alerter schema"), output_schema=inventory::output_schema::<crate::alerters::TestResult>(), annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn test_alerter(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "test_alerter") {
+            Ok(input) => crate::alerters::test(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description="List bounded variable metadata by local page: exact names, descriptions and explicitly validated secret classification. Values are omitted from lists, including administrator secret responses. At most 512 entries scanned, 50 per page, 2 MiB Core response; local pagination does not bound Core enumeration. No mutation.",input_schema=schema_for_input::<crate::variables::PageInput>().expect("variable schema"),output_schema=inventory::output_schema::<crate::variables::VariablePage>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn list_variables(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_variables") {

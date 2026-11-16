@@ -231,6 +231,8 @@ impl CoreClient {
             "UpdateProcedure" => "UpdateProcedure",
             "CreateAction" => "CreateAction",
             "UpdateAction" => "UpdateAction",
+            "CreateAlerter" => "CreateAlerter",
+            "UpdateAlerter" => "UpdateAlerter",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "write", None)),
         };
         crate::configuration::require_edit(self)?;
@@ -241,6 +243,7 @@ impl CoreClient {
         crate::builders::guard_write(self, operation, &parameters).await?;
         crate::procedures::guard_write(self, operation, &parameters)?;
         crate::actions::guard_write(self, operation, &parameters)?;
+        crate::alerters::guard_write(self, operation, &parameters).await?;
         crate::build_configuration::guard_write(self, operation, &parameters).await?;
         crate::repositories::require_execution_effect_operate(
             self,
@@ -447,6 +450,7 @@ impl CoreClient {
             "CancelProcedure" => "CancelProcedure",
             "RunAction" => "RunAction",
             "CancelAction" => "CancelAction",
+            "TestAlerter" => "TestAlerter",
             _ => return Err(AppError::new(ErrorKind::UnsupportedTarget, "execute", None)),
         };
         if !self.capabilities().allows(Capability::Operate) {
@@ -461,6 +465,7 @@ impl CoreClient {
         crate::build_operations::guard_execute(self, operation, &params).await?;
         crate::procedure_operations::guard_execute(self, operation, &params).await?;
         crate::action_operations::guard_execute(self, operation, &params).await?;
+        crate::alerters::guard_execute(self, operation, &params).await?;
         Ok(tokio::time::timeout(
             self.0.policy.operation_timeout,
             self.request_bounded_body(&self.0.execute_request, request, T::req_type(), operation),
