@@ -71,6 +71,10 @@ def extension(context):
         # This invokes the complete automation AND ResourceSync extensions;
         # base exercise_environment subsequently retains its entire regression.
         retained.provision(context)
+        s.require(s.REPORT['automation']['final_health']['docker_health'] == 'healthy'
+                  and s.REPORT['automation']['mutation_audit_summary']['read_only_mutation_attempts'] == 0,
+                  'retained automation acceptance incomplete')
+        owned.report['retained_automation_verified'] = True
 
 
 def before_cleanup():
@@ -89,7 +93,10 @@ def before_cleanup():
             for raw in owned.admin.read('ListAlerters'):
                 aid = s.identity(raw)
                 current = owned.admin.read('GetAlerter', {'alerter': aid})
-                s.require(current['name'].startswith(owned.prefix), 'unrecognized Alerter during cleanup')
+                retained_ids = {row['id'] for row in s.REPORT.get('server_deletion', {}).get('references', [])
+                                if row['kind'] == 'alerter'}
+                s.require(current['name'].startswith(owned.prefix) or aid in retained_ids,
+                          'unrecognized Alerter during cleanup')
                 owned.admin.write('UpdateAlerter', {'id': aid, 'config': {'enabled': False}})
                 s.require(not owned.admin.read('GetAlerter', {'alerter': aid})['config']['enabled'], 'Alerter disable failed')
             owned.cleanup_identities()
@@ -148,7 +155,7 @@ def entry(argv=None):
             {'verified': True, 'action': 'no fixture images created'})
         s.REPORT['final_acceptance'] = bool(result == 0 and REQUIRE_MAIN and SUITE == 'all'
             and s.REPORT['swarm_admin']['passed'] and s.REPORT.get('retained_legacy_workflow')
-            and s.REPORT['automation']['passed'] and s.REPORT['resource_sync']['passed'])
+            and s.REPORT['swarm_admin']['retained_automation_verified'] and s.REPORT['resource_sync']['passed'])
         validate_source(EXPECTED, REQUIRE_MAIN, SUITE)
         s.persist()
     except BaseException:

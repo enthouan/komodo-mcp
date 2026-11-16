@@ -118,4 +118,37 @@ class AutomaticPolicies(unittest.TestCase):
         with self.assertRaises(s.Failure): s.disable_server_automatic_effects(Admin(), 'a'*24, 'owned')
 
 
+class ImageOwnershipProof(unittest.TestCase):
+    def cache(self, before=()):
+        cache = fixture.ImageCache.__new__(fixture.ImageCache)
+        cache.outer = 'outer-fixture-daemon'
+        cache.before_ids = set(before)
+        cache.observed = {'owned@sha256:abc': 'sha256:image'}
+        return cache
+    def test_preexisting_image_is_preserved_without_remove(self):
+        cache = self.cache(['sha256:image'])
+        with patch.object(s, 'run', return_value=cache.outer) as run:
+            result = cache.cleanup()
+        self.assertTrue(result['references'][0]['preexisting_preserved'])
+        self.assertEqual(run.call_count, 1)
+    def test_changed_reference_refuses_remove(self):
+        cache = self.cache()
+        row = {'ID': 'sha256:changed', 'Repository': 'owned', 'Tag': '<none>', 'Digest': 'sha256:abc'}
+        with patch.object(s, 'run', return_value=cache.outer) as run, \
+             patch.object(cache, 'rows', return_value=[row]), self.assertRaises(s.Failure):
+            cache.cleanup()
+        self.assertFalse(any('rm' in call.args[0] for call in run.call_args_list))
+    def test_concurrent_container_preserves_new_image(self):
+        cache = self.cache()
+        row = {'ID': 'sha256:image', 'Repository': 'owned', 'Tag': '<none>', 'Digest': 'sha256:abc'}
+        with patch.object(s, 'run', side_effect=[cache.outer, 'foreign-container']) as run, \
+             patch.object(cache, 'rows', return_value=[row]):
+            result = cache.cleanup()
+        self.assertTrue(result['references'][0]['concurrent_use_preserved'])
+        self.assertFalse(any('rm' in call.args[0] for call in run.call_args_list))
+    def test_outer_daemon_change_refuses_cache_mutation(self):
+        with patch.object(s, 'run', return_value='different'), self.assertRaises(s.Failure):
+            self.cache().cleanup()
+
+
 if __name__ == '__main__': unittest.main()

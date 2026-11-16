@@ -17,10 +17,15 @@ async def exercise():
     fixture.remember('Swarm', swarm_id, name)
     fixture.grant('reader', 'Swarm', swarm_id, 'Read', ['Inspect', 'Logs'])
     deployment_name = fixture.prefix + 'scaled'
+    network_name = fixture.prefix + 'overlay'
+    network_id = fixture.manager.call('network', 'create', '--driver', 'overlay',
+        '--label', f.LABEL + '=' + s.OWNER, network_name)
     constraint = '--constraint=node.labels.mcp_absent==true'
-    extra = [constraint, '--label=' + f.LABEL + '=' + s.OWNER, '--replicas=1']
+    extra = [constraint, '--label=' + f.LABEL + '=' + s.OWNER,
+             '--detach=true', '--no-resolve-image', '--replicas=1']
     deployment = fixture.admin.write('CreateDeployment', {'name': deployment_name, 'config': {
-        'swarm_id': swarm_id, 'replicas': 1, 'image': {'type': 'Image', 'params': {'image': f.BUSYBOX}},
+        'swarm_id': swarm_id, 'replicas': 1, 'network': network_name,
+        'image': {'type': 'Image', 'params': {'image': f.BUSYBOX}},
         'command': "sh -c 'mkdir -p /tmp/www; echo v07-owned-health > /tmp/www/index.html; exec httpd -f -p 8080 -h /tmp/www'",
         'extra_args': extra, 'send_alerts': False, 'auto_update': False, 'poll_for_updates': False}})
     did = s.identity(deployment)
@@ -117,6 +122,7 @@ async def exercise():
             engine.remove_container(cid)
     fixture.admin.write('DeleteDeployment', {'id': did})
     fixture.admin.write('DeleteSwarm', {'id': swarm_id})
+    fixture.manager.call('network', 'rm', network_id)
     s.require(fixture.manager.call('service', 'ls', '-q') == '', 'owned Swarm services remain')
     report.update(passed=True, services_removed_before_pruning=True, historical_tasks_not_counted_as_replicas=True)
     s.persist()
