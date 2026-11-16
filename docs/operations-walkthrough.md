@@ -21,9 +21,9 @@ the permission authority, including a denial recorded after acknowledgement.
    `KOMODO_API_SECRET`, `KOMODO_ALLOW_OPERATE=true` and
    `KOMODO_ALLOW_CONFIGURATION_EDIT=false`. These are process environment values;
    `.env` files are not loaded. Restart the child after changing capabilities.
-   With both optional grants disabled, discovery contains fifty-six read tools,
+   With both optional grants disabled, discovery contains fifty-eight read tools,
    including exact [discovery by tag](tags.md).
-   Operate adds nineteen tools; configuration editing independently adds typed
+   Operate adds twenty tools; configuration editing independently adds typed
    preview/apply tools. See [client configuration](../README.md#local-capabilities-and-core-permissions)
    and the [configuration workflow](configuration.md).
 2. Initialize your stdio client and call `tools/list`. Resolve an exact workload

@@ -427,6 +427,8 @@ async fn solve(
                 "get_swarm_service_logs",
                 "diagnose_swarm_service",
                 "observe_deployment_scale",
+                "list_alerters",
+                "get_alerter",
                 "list_variables",
                 "get_variable",
                 "list_core_secret_names",

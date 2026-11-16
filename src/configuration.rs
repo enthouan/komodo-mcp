@@ -248,6 +248,7 @@ pub enum DefinitionPreview {
     Repo(crate::repositories::DefinitionPreview),
     ResourceSync(Box<crate::resource_syncs::DefinitionPreview>),
     Builder(crate::builders::DefinitionPreview),
+    Alerter(crate::alerters::DefinitionPreview),
     Build(Box<crate::build_configuration::DefinitionPreview>),
     Procedure(Box<crate::procedures::DefinitionPreview>),
     Action(Box<crate::actions::DefinitionPreview>),

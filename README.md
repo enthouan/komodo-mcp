@@ -150,7 +150,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All fifty-six read tools remain locally available in every grant
+All fifty-eight read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -169,6 +169,13 @@ creation, value updates and deletion with both grants, plus description edits
 with configuration-edit alone. Every write also requires an enabled Core
 administrator. Secret values and authentication payloads remain omitted;
 variable history is sanitized even after restart.
+
+The [Alerter workflow](docs/alerters.md) adds safe configuration inspection,
+private create/update previews and explicit single-target test delivery. New
+Alerters default disabled. Existing-definition applies require both grants;
+`test_alerter` requires operate and Core Execute. Saving never sends a test.
+Provider endpoints and recipient credentials stay private, and Core success
+remains separate from independently observed receipt.
 
 Deployment definitions add `preview_deployment_create`/`apply_deployment_create`
 and `preview_deployment_update`/`apply_deployment_update` through the same contract.
@@ -317,6 +324,7 @@ RUST_LOG=komodo_mcp=debug,rmcp=warn ./target/release/komodo-mcp
 | `list_actions` / `get_action` | Inspect safe Action settings and delegated host/administrator execution authority |
 | `list_schedules` / `get_schedule` | Inspect saved Action/Procedure schedules and separate Core cache/parse/next-run evidence |
 | `export_resources_toml` | Export explicit resources/groups and optional all-variable metadata as sanitized, incomplete inspection TOML |
+| `list_alerters` / `get_alerter` | Inspect enabled status, endpoint type, filters and maintenance metadata without endpoint secrets |
 | `list_variables` | Page through variable metadata without returning any values |
 | `get_variable` | Inspect one exact name; return only ordinary values passing the safe projection |
 | `list_core_secret_names` | List configured Core key names without values or Server/Builder expansion |

@@ -691,6 +691,15 @@ pub(crate) async fn resolve_action(
     Ok((summary, full))
 }
 
+pub(crate) async fn list_alerter_records(
+    client: &CoreClient,
+    input: ListInput,
+) -> Result<Page<AlerterListItem>, AppError> {
+    paginate(input, "ListAlerters", |page, limit| {
+        alerters(client, Search::default(), page, limit)
+    })
+    .await
+}
 pub(crate) async fn resolve_alerter(
     client: &CoreClient,
     input: DetailInput,

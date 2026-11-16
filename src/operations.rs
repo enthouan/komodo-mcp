@@ -58,6 +58,7 @@ pub enum WorkloadKind {
     Procedure,
     Action,
     ResourceSync,
+    Alerter,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -81,6 +82,7 @@ pub enum RequestedScope {
     WholeBuild {},
     WholeProcedure {},
     WholeAction {},
+    AlerterTest {},
     ResourceSync {
         selection: crate::sync_plans::ExecutionScope,
     },
@@ -97,6 +99,7 @@ pub enum WorkloadOperation {
     Pull,
     Run,
     Cancel,
+    Test,
 }
 
 impl WorkloadOperation {
@@ -734,6 +737,7 @@ pub(crate) async fn submit_future(
         }
         Ok(update) => {
             let expected = match receipt.resource.kind {
+                WorkloadKind::Alerter => ResourceTarget::Alerter(receipt.resource.id.clone()),
                 WorkloadKind::Stack => ResourceTarget::Stack(receipt.resource.id.clone()),
                 WorkloadKind::Deployment => ResourceTarget::Deployment(receipt.resource.id.clone()),
                 WorkloadKind::Repo => ResourceTarget::Repo(receipt.resource.id.clone()),

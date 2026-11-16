@@ -7,6 +7,7 @@ notes: short, categorized bullets with links to the relevant pull requests.
 
 ### Added
 
+- Configure named Alerters and explicitly test one saved endpoint with safe delivery reporting. ([#118](https://github.com/enthouan/komodo-mcp/pull/118))
 - Manage ordinary variables and edit secret metadata without returning secret values. ([#117](https://github.com/enthouan/komodo-mcp/pull/117))
 - Preview, save, deploy and observe managed Swarm Deployment replicas, including zero. ([#116](https://github.com/enthouan/komodo-mcp/pull/116))
 - Inspect Docker images, networks and volumes, including safe image history. ([#115](https://github.com/enthouan/komodo-mcp/pull/115))

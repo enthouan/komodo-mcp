@@ -45,6 +45,7 @@ fn history_target(r: &OperationResource) -> HistoryTarget {
             WorkloadKind::Build => ResourceKind::Build,
             WorkloadKind::Procedure => ResourceKind::Procedure,
             WorkloadKind::Action => ResourceKind::Action,
+            WorkloadKind::Alerter => ResourceKind::Alerter,
             WorkloadKind::Stack => ResourceKind::Stack,
             WorkloadKind::Deployment => ResourceKind::Deployment,
             WorkloadKind::Repo => ResourceKind::Repo,

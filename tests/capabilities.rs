@@ -451,14 +451,14 @@ async fn production_keeps_all_reads_and_recovery_history_for_every_policy() {
                 .tools;
             assert_eq!(
                 tools.len(),
-                56 + 19 * usize::from(operate)
-                    + 50 * usize::from(edit)
+                58 + 20 * usize::from(operate)
+                    + 54 * usize::from(edit)
                     + 3 * usize::from(operate && edit)
             );
             for tool in tools {
                 let mutation = [
                     "deploy_", "start_", "stop_", "restart_", "clone_", "pull_", "run_", "cancel_",
-                    "refresh_",
+                    "refresh_", "test_",
                 ]
                 .iter()
                 .any(|prefix| tool.name.starts_with(prefix))

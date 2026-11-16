@@ -129,6 +129,7 @@ impl RecoveryInput {
                 self.operation,
                 WorkloadOperation::Run | WorkloadOperation::Cancel
             ),
+            WorkloadKind::Alerter => matches!(self.operation, WorkloadOperation::Test),
             WorkloadKind::ResourceSync => matches!(self.operation, WorkloadOperation::Run),
             _ => matches!(
                 self.operation,
@@ -148,6 +149,7 @@ impl RecoveryInput {
             (WorkloadKind::Build, RequestedScope::WholeBuild {}) => (),
             (WorkloadKind::Procedure, RequestedScope::WholeProcedure {}) => (),
             (WorkloadKind::Action, RequestedScope::WholeAction {}) => (),
+            (WorkloadKind::Alerter, RequestedScope::AlerterTest {}) => (),
             (WorkloadKind::ResourceSync, RequestedScope::ResourceSync { selection }) => {
                 crate::sync_plans::validate_recovery_scope(selection)?
             }
@@ -255,6 +257,7 @@ pub async fn reconcile_operation(
     input.validate()?;
     let target = HistoryTarget {
         kind: match input.target.kind {
+            WorkloadKind::Alerter => ResourceKind::Alerter,
             WorkloadKind::Stack => ResourceKind::Stack,
             WorkloadKind::Deployment => ResourceKind::Deployment,
             WorkloadKind::Repo => ResourceKind::Repo,
@@ -266,6 +269,7 @@ pub async fn reconcile_operation(
         id: input.target.id.clone(),
     };
     let expected_target = match input.target.kind {
+        WorkloadKind::Alerter => ResourceTarget::Alerter(input.target.id.clone()),
         WorkloadKind::Stack => ResourceTarget::Stack(input.target.id.clone()),
         WorkloadKind::Deployment => ResourceTarget::Deployment(input.target.id.clone()),
         WorkloadKind::Repo => ResourceTarget::Repo(input.target.id.clone()),
@@ -275,6 +279,7 @@ pub async fn reconcile_operation(
         WorkloadKind::ResourceSync => ResourceTarget::ResourceSync(input.target.id.clone()),
     };
     let operation = match input.target.kind {
+        WorkloadKind::Alerter => komodo_client::entities::Operation::TestAlerter,
         WorkloadKind::ResourceSync => komodo_client::entities::Operation::RunSync,
         WorkloadKind::Stack => {
             let (_, whole, service) = input.operation.stack_variants()?;
