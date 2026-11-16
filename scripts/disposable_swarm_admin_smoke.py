@@ -36,6 +36,9 @@ def validate_source(expected, require_main, suite):
     if require_main:
         s.require(s.run(['git', 'rev-parse', 'origin/main']) == expected,
                   'fetch origin/main and use its exact merged commit for final acceptance')
+        actual = s.run(['git', 'ls-remote', '--exit-code', 'origin', 'refs/heads/main'], timeout=45)
+        s.require(actual == expected + '\trefs/heads/main',
+                  'remote main changed; fetch and validate the actual integrated commit')
 
 
 def extension(context):
@@ -99,6 +102,12 @@ def before_cleanup():
                           'unrecognized Alerter during cleanup')
                 owned.admin.write('UpdateAlerter', {'id': aid, 'config': {'enabled': False}})
                 s.require(not owned.admin.read('GetAlerter', {'alerter': aid})['config']['enabled'], 'Alerter disable failed')
+            policies = []
+            for row in owned.admin.read('ListServers'):
+                server_id, name = s.identity(row), row['name']
+                s.require(name.startswith('mcp-'), 'unrecognized Server during owned policy cleanup')
+                policies.append(s.disable_server_automatic_effects(owned.admin, server_id, name))
+            owned.report['automatic_server_policy_cleanup'] = policies
             owned.cleanup_identities()
             # Observe all live terminal namespaces before removing their database
             # and engines. An interrupted hard-crash shell is left to its bounded

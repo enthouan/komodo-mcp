@@ -219,6 +219,8 @@ async def exercise():
                     rows = sessions(api, raw_server, name)
                     s.require(len(rows) == 1, 'owned namespace not independently visible')
                     old = fingerprint(rows[0])
+                    s.require(rows[0]['command'].startswith('timeout -k 1 90 '),
+                              'owned shell remote lifetime wrapper changed')
                     if mode == 'cancellation':
                         await process.send({'jsonrpc': '2.0', 'method': 'notifications/cancelled',
                             'params': {'requestId': rid, 'reason': 'owned acceptance cancellation'}})

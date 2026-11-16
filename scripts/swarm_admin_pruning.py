@@ -39,7 +39,10 @@ class PruneFixtures:
         row['volumes'].append(row['used_anonymous'])
         row['used_image'] = e.call('inspect', '--format', '{{.Image}}', holder)
         if category == 'image':
-            row['unused_image'] = e.call('commit', '--change', 'LABEL komodo-mcp.prune-case=' + prefix,
+            private = 'owned-image-private-' + secrets.token_hex(20)
+            s.SECRETS.append(private)
+            row['unused_image'] = e.call('commit', '--change', 'ENV MCP_IMAGE_SECRET=' + private,
+                                        '--change', 'LABEL komodo-mcp.prune-case=' + prefix,
                                         holder, prefix + ':unused')
             row['images'].append(row['unused_image'])
         if category in ['container', 'system']:
@@ -127,6 +130,21 @@ async def exercise():
                     mcp = f.Audited(process, proxy)
                     for name in ['list_images', 'list_networks', 'list_volumes']:
                         await mcp.tool(name, {'target': {'id': fixture.sid}})
+                    if category == 'image' and not lost:
+                        await f.poll_async(lambda: row['unused_image'] in json.dumps(
+                            fixture.admin.read('ListImages', {'server': fixture.sid})),
+                            'exact private image cache')
+                        details = {}
+                        for tool, selector in [('get_image', {'id': row['unused_image']}),
+                            ('get_image_history', {'id': row['unused_image']}),
+                            ('get_network', {'id': row['used_network']}),
+                            ('get_volume', {'name': row['used_volume']})]:
+                            details[tool] = await mcp.tool(tool, {'target': {'id': fixture.sid}, 'object': selector})
+                        s.require(all(value['source'] == 'fresh_inspect' for value in details.values()),
+                                  'Docker details were not fresh observations')
+                        fixture.report['docker_inspection'] = {'actor_id': fixture.roles['pruner']['id'],
+                            'actor_specifics': [], 'fresh_tools': list(details),
+                            'private_image_environment_and_history_omitted': True, 'mutations': 0}
                     args = {'target': {'id': fixture.sid}, 'category': category}
                     preview = await mcp.tool('preview_docker_prune', args)
                     if lost: proxy.lose = OPS[category]

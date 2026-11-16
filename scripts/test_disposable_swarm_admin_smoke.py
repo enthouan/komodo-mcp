@@ -7,6 +7,9 @@ import socket
 import tempfile
 import threading
 import unittest
+import asyncio
+import http.server
+import types
 from unittest.mock import patch
 
 import disposable_core_smoke as s
@@ -86,6 +89,10 @@ class FinalSourceProof(unittest.TestCase):
     def test_branch_candidate_is_never_mislabeled_as_main(self):
         with patch.object(s, 'run', side_effect=['a'*40, '', 'b'*40]), self.assertRaises(s.Failure):
             integration.validate_source('a'*40, True, 'all')
+    def test_stale_tracking_ref_cannot_pass_actual_remote_main_check(self):
+        with patch.object(s, 'run', side_effect=['a'*40, '', 'a'*40, 'b'*40 + '\trefs/heads/main']), \
+             self.assertRaises(s.Failure):
+            integration.validate_source('a'*40, True, 'all')
     def test_permission_scalar_never_manufactures_specific_grants(self):
         self.assertEqual(fixture.permission('Execute'), {'level': 'Execute', 'specific': []})
         with self.assertRaises(s.Failure): fixture.permission('Terminal')
@@ -149,6 +156,54 @@ class ImageOwnershipProof(unittest.TestCase):
     def test_outer_daemon_change_refuses_cache_mutation(self):
         with patch.object(s, 'run', return_value='different'), self.assertRaises(s.Failure):
             self.cache().cleanup()
+
+
+class RelayCancellation(unittest.IsolatedAsyncioTestCase):
+    async def test_closed_observer_promptly_closes_upstream_without_replaying(self):
+        cancelled = threading.Event()
+        class Core(http.server.BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.1'
+            def log_message(self, *_): pass
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                self.send_response(200)
+                self.send_header('Transfer-Encoding', 'chunked')
+                self.end_headers()
+                self.wfile.flush()
+                self.connection.settimeout(4)
+                try:
+                    if not self.connection.recv(1): cancelled.set()
+                except OSError: pass
+                self.close_connection = True
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Core)
+        server.daemon_threads = True
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        before = fixture.F
+        fixture.F = types.SimpleNamespace(address='http://127.0.0.1:' + str(server.server_port),
+            roles={'terminal': {'credentials': {'key': 'fixture-key', 'secret': 'fixture-secret'}}})
+        try:
+            async with fixture.Proxy('terminal') as proxy:
+                def observe_then_disconnect():
+                    connection = http.client.HTTPConnection('127.0.0.1', proxy.http.server_port, timeout=4)
+                    try:
+                        connection.request('POST', '/terminal/execute',
+                            json.dumps({'terminal': 'owned-fixture', 'command': 'never-executed'}),
+                            headers={'x-api-key': 'fixture-key', 'x-api-secret': 'fixture-secret'})
+                        response = connection.getresponse()
+                        self.assertEqual(response.status, 200)
+                        response.close()
+                    finally: connection.close()
+                await asyncio.to_thread(observe_then_disconnect)
+                self.assertTrue(await asyncio.to_thread(cancelled.wait, 2),
+                                'observer disconnect retained the upstream execution stream')
+                self.assertEqual(len(proxy.commands()), 1)
+        finally:
+            fixture.F = before
+            await asyncio.to_thread(server.shutdown)
+            server.server_close()
+            thread.join(2)
+            self.assertFalse(thread.is_alive())
 
 
 if __name__ == '__main__': unittest.main()

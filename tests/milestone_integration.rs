@@ -91,6 +91,7 @@ async fn every_capability_profile_keeps_cross_family_reads_free_of_implicit_effe
                         assert_eq!(core.data.lock().unwrap().requests.len(), before, "{tool}");
                     }
                     assert!(core.requests("write").is_empty());
+                    assert!(core.requests("execute").is_empty());
                     assert!(core.requests("terminal").is_empty());
                     assert!(core.requests("unexpected").is_empty());
                     assert!(!core.data.lock().unwrap().bad_credentials);

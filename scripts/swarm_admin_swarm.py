@@ -101,6 +101,10 @@ async def exercise():
                 if replicas:
                     response = fixture.worker.call('exec', running[0], 'wget', '-qO-', 'http://127.0.0.1:8080')
                     s.require(response == 'v07-owned-health', 'independent worker HTTP health failed')
+                    await mcp.tool('get_swarm_service', {'target': {'id': swarm_id}, 'object': {'id': service_id}})
+                    await mcp.tool('get_swarm_service_logs', {'target': {'id': swarm_id},
+                        'service': {'id': service_id}, 'tail': 10, 'max_bytes': 1024})
+                    report['exact_service_logs_read_without_mutation'] = True
                     report['independent_health'].append({'replicas': replicas, 'healthy': True,
                         'worker_container_id': running[0], 'health_body_matched': True})
                 else:
