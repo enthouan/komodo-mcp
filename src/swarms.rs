@@ -461,7 +461,10 @@ fn node_detail(client: &CoreClient, v: SwarmNode) -> Result<Node, AppError> {
         reachability: enum_text(manager.reachability),
     })
 }
-fn service_list(client: &CoreClient, v: SwarmServiceListItem) -> Result<Service, AppError> {
+pub(crate) fn service_list(
+    client: &CoreClient,
+    v: SwarmServiceListItem,
+) -> Result<Service, AppError> {
     Ok(Service {
         id: required_id(v.id.as_deref(), "ListSwarmServices")?,
         name: safe(client, v.name.as_deref()),
@@ -474,7 +477,7 @@ fn service_list(client: &CoreClient, v: SwarmServiceListItem) -> Result<Service,
         update_state: None,
     })
 }
-fn service_detail(client: &CoreClient, v: SwarmService) -> Result<Service, AppError> {
+pub(crate) fn service_detail(client: &CoreClient, v: SwarmService) -> Result<Service, AppError> {
     let spec = v.spec.unwrap_or_default();
     let replicas = v.replicas.or_else(|| {
         spec.mode
@@ -498,7 +501,7 @@ fn replica(desired: Option<TaskState>) -> &'static str {
         _ => "unknown",
     }
 }
-fn task_list(client: &CoreClient, v: SwarmTaskListItem) -> Result<Task, AppError> {
+pub(crate) fn task_list(client: &CoreClient, v: SwarmTaskListItem) -> Result<Task, AppError> {
     Ok(Task {
         id: required_id(v.id.as_deref(), "ListSwarmTasks")?,
         name: safe(client, v.name.as_deref()),
@@ -538,7 +541,7 @@ fn failure(message: Option<&str>, state: Option<TaskState>) -> Option<&'static s
         None
     }
 }
-fn task_detail(client: &CoreClient, v: SwarmTask) -> Result<Task, AppError> {
+pub(crate) fn task_detail(client: &CoreClient, v: SwarmTask) -> Result<Task, AppError> {
     let status = v.status.unwrap_or_default();
     Ok(Task {
         id: required_id(v.id.as_deref(), "InspectSwarmTask")?,

@@ -301,7 +301,7 @@ async def local_profiles(sync_id):
         async with s.LossProxy(CONTEXT['address'], CONTEXT['admin_test'], False) as proxy:
             async with await s.Mcp.start(proxy.address, CONTEXT['admin_test'], operate, edit) as raw:
                 names = {x['name'] for x in (await raw.rpc('tools/list', {}))['tools']}
-                s.require(len(names) == 52 + 17 * operate + 46 * edit + 3 * (operate and edit),
+                s.require(len(names) == 53 + 19 * operate + 48 * edit + 3 * (operate and edit),
                           'ResourceSync discovery capability count changed')
                 before = proxy.write_attempts, proxy.execute_attempts
                 before_reads = sum(proxy.read_operations.values())

@@ -34,7 +34,7 @@ const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(15);
 const SCENARIO_TIMEOUT: Duration = Duration::from_secs(45);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const STDERR_BYTES: usize = 1024 * 1024;
-const TOOLS: [&str; 52] = [
+const TOOLS: [&str; 53] = [
     "list_images",
     "get_image",
     "get_image_history",
@@ -52,6 +52,7 @@ const TOOLS: [&str; 52] = [
     "get_swarm_task",
     "get_swarm_service_logs",
     "diagnose_swarm_service",
+    "observe_deployment_scale",
     "list_servers",
     "get_server",
     "list_stacks",
@@ -300,7 +301,7 @@ async fn discover_and_reject(session: &Session, core: &IncidentCore) -> Result<(
     let actual: BTreeSet<_> = listed.tools.iter().map(|t| t.name.as_ref()).collect();
     ensure!(
         actual == BTreeSet::from(TOOLS),
-        "expected all fifty-two read-only tools"
+        "expected all fifty-three read-only tools"
     );
     let reads = core.requests().len();
     for tool in &listed.tools {

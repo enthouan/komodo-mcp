@@ -426,6 +426,7 @@ async fn solve(
                 "get_swarm_task",
                 "get_swarm_service_logs",
                 "diagnose_swarm_service",
+                "observe_deployment_scale",
                 "get_server",
                 "list_servers",
                 "get_stack",

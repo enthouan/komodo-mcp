@@ -29,6 +29,7 @@ pub mod procedures;
 pub mod recovery;
 pub mod repositories;
 pub mod resource_syncs;
+pub mod scaling;
 pub mod schedules;
 pub mod server;
 pub mod server_configuration;

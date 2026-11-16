@@ -17,6 +17,11 @@ direct image apply fails locally before Core reads/writes. Discovery describes
 this requirement, previews set `requires_operate_to_apply`, and the shared typed
 write transport enforces it independently.
 
+For managed Swarm replica changes, use the [scaling workflow](scaling.md).
+Pinned Periphery 2.3.2 ignores the saved replicas field during service creation;
+the scaling tools also manage only its replica extra argument, then require a
+separate reviewed Deploy and independent task/health observation.
+
 ## Create, inspect and edit
 
 Preview creation with an explicit image and existing target:
