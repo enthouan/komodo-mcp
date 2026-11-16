@@ -271,6 +271,7 @@ async fn saved_config_is_checked_again_inside_the_existing_final_deploy_resoluti
         let r = data(call(&s, "deploy_scaled_deployment", apply(1, &reviewed)).await);
         assert_eq!(r["partial_outcome"], true);
         assert_eq!(r["not_submitted_error"]["kind"], "stale_preview");
+        assert_eq!(r["saved_definition_verified"], false);
         assert!(r["receipt"].is_null());
         assert_eq!(executions(&c), 0);
         finish(p, s, &c).await;

@@ -621,7 +621,13 @@ pub async fn deploy(client: &CoreClient, input: ApplyInput) -> Result<ScaleDeplo
             );
             result.receipt = Some(receipt);
         }
-        Err(error) => result.not_submitted_error = Some(error),
+        Err(error) => {
+            // A later read can invalidate the earlier observation. Preserve the
+            // separately returned save result, but do not claim this definition
+            // remained verified at the unsubmitted execution boundary.
+            result.saved_definition_verified = false;
+            result.not_submitted_error = Some(error);
+        }
     }
     Ok(result)
 }
