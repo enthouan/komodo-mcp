@@ -32,6 +32,7 @@ async def variables():
                                     configuration_edit=True) as process:
             mcp = f.Audited(process, proxy)
             await mcp.tool('list_variables', {})
+            await mcp.tool('list_core_secret_names', {})
             secret = await mcp.tool('get_variable', {'name': secret_name})
             s.require(secret['is_secret'] and secret.get('value') is None, 'administrator secret value exposed')
             changes = [
@@ -170,6 +171,22 @@ async def access():
             await save(mcp, 'access', {'change': {'kind': 'change_permission', 'subject': user_subject,
                 'scope': resource, 'patch': {'remove_specific': ['logs', 'inspect']}}})
             await save(mcp, 'access', {'change': {'kind': 'delete_group', 'target': {'id': gid}}})
+            managed_name = fixture.prefix + 'managed-service-user'
+            await save(mcp, 'access', {'change': {'kind': 'create_service_user',
+                'username': managed_name, 'description': 'owned service metadata'}})
+            managed = [u for u in fixture.admin.read('ListUsers') if u['username'] == managed_name]
+            s.require(len(managed) == 1, 'exact created service user not observed')
+            managed_id = s.identity(managed[0])
+            await save(mcp, 'access', {'change': {'kind': 'set_service_user_description',
+                'target': {'id': managed_id}, 'description': 'updated owned metadata'}})
+            for enabled in [False, True]:
+                await save(mcp, 'access', {'change': {'kind': 'set_user_base',
+                    'target': {'id': managed_id}, 'enabled': enabled}})
+            s.require(fixture.admin.read('ListApiKeysForServiceUser', {'user': managed_id}) == [],
+                      'product service user unexpectedly received credentials')
+            await save(mcp, 'access', {'change': {'kind': 'delete_user', 'target': {'id': managed_id}}})
+            report['managed_service_user'] = {'id': managed_id, 'lifecycle_verified': True,
+                                             'api_keys_issued': 0}
         report['ordinary_admin_proxy'] = proxy.summary()
     async with f.Proxy('super-admin') as proxy:
         async with await f.Mcp.start(proxy.address, fixture.roles['super-admin']['credentials'],
@@ -205,6 +222,21 @@ async def alerters():
             aid = created['resource']['id']
             fixture.remember('Alerter', aid, args['name'])
             s.require(len(fixture.receipts()) == before, 'saving implicitly sent a notification')
+            # Stored endpoint/reference-only drift remains private but must
+            # invalidate a preview before any test or configuration submission.
+            stale_args = {'target': {'id': aid}, 'patch': {'enabled': True}}
+            review = await mcp.tool('preview_alerter_update', stale_args)
+            fixture.admin.write('UpdateAlerter', {'id': aid, 'config': {'endpoint': {
+                'type': 'Custom', 'params': {'url': ok_url}}}})
+            before_mutations = len(proxy.mutations())
+            rejected = await f.raw(process, 'apply_alerter_update', dict(stale_args,
+                preview_id=review['preview_id']))
+            s.require(rejected['structuredContent']['kind'] == 'stale_preview'
+                      and len(proxy.mutations()) == before_mutations,
+                      'private endpoint drift was not rejected without mutation')
+            await save(mcp, 'alerter', {'target': {'id': aid}, 'patch': {
+                'endpoint': args['config']['endpoint']}})
+            report['private_endpoint_reference_drift_rejected'] = True
             async def test(label, expected_success, expected_receipts):
                 previous = len(fixture.receipts())
                 result = await mcp.tool('test_alerter', {'target': {'id': aid}, 'acknowledge_delivery': True})

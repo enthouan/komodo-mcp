@@ -197,6 +197,7 @@ class Proxy:
     def __init__(self, role):
         self.role = F.roles[role]
         self.events, self.accepted, self.failures = [], [], []
+        self.interrupted_streams = []
         self.lock = threading.Lock()
         self.lose = None
         outer = self
@@ -216,7 +217,8 @@ class Proxy:
                 self.end_headers()
                 self.wfile.write(body)
             def forward(self):
-                connection = timer = transport = None
+                connection = timer = transport = response = None
+                terminal_response = False
                 try:
                     s.require(self.path in ['/user', '/read', '/write', '/execute', '/terminal/execute']
                               and (self.command == 'GET') == (self.path == '/user'), 'unexpected audit route')
@@ -237,7 +239,9 @@ class Proxy:
                     else: op = 'CurrentCaller'
                     event = {'route': self.path, 'operation': op}
                     if self.path == '/terminal/execute': event['terminal'] = decoded['terminal']
-                    with outer.lock: outer.events.append(event)
+                    with outer.lock:
+                        s.require(len(outer.events) < 4096, 'audit request count exceeded bound')
+                        outer.events.append(event)
                     connection = http.client.HTTPConnection('127.0.0.1', s.Api(F.address).port, timeout=45)
                     connection.connect()
                     transport = connection.sock
@@ -253,6 +257,7 @@ class Proxy:
                     response = connection.getresponse()
                     budget = 65536 if self.path == '/terminal/execute' else s.MAX_BODY
                     if self.path == '/terminal/execute':
+                        terminal_response = True
                         self.send_response(response.status)
                         self.send_header('Connection', 'close')
                         self.end_headers()
@@ -279,13 +284,28 @@ class Proxy:
                                 self.reply(502, b'{"fixture":"accepted acknowledgement deliberately lost"}')
                                 return
                         self.reply(response.status, body)
-                except (BrokenPipeError, ConnectionResetError): pass
-                except Exception:
-                    with outer.lock: outer.failures.append('bounded audit forwarding failed')
+                except (OSError, http.client.HTTPException) as error:
+                    # Deadline/cancellation tests deliberately close their
+                    # observer while the upstream stream can still be open.
+                    # Keep that observation explicit, without replacing a
+                    # partially sent stream with a fabricated JSON response.
+                    with outer.lock:
+                        if terminal_response:
+                            outer.interrupted_streams.append(type(error).__name__)
+                        else: outer.failures.append(type(error).__name__)
+                except Exception as error:
+                    with outer.lock: outer.failures.append(type(error).__name__)
                     try: self.reply(502, b'{"fixture":"audit forwarding failed"}')
                     except OSError: pass
                 finally:
-                    if timer: timer.cancel()
+                    if timer:
+                        timer.cancel()
+                        timer.join(timeout=1)
+                    if response: response.close()
+                    if transport:
+                        try: transport.shutdown(socket.SHUT_RDWR)
+                        except OSError: pass
+                        transport.close()
                     if connection: connection.close()
         self.http = Server(('127.0.0.1', 0), Handler)
         self.address = 'http://127.0.0.1:' + str(self.http.server_address[1])
@@ -311,7 +331,8 @@ class Proxy:
     def summary(self):
         with self.lock:
             return {'counts': dict(collections.Counter(e['route'] + ':' + e['operation'] for e in self.events)),
-                    'accepted': self.accepted.copy(), 'forwarding_failures': self.failures.copy()}
+                    'accepted': self.accepted.copy(), 'forwarding_failures': self.failures.copy(),
+                    'interrupted_terminal_streams': self.interrupted_streams.copy()}
 
 
 class Mcp(s.Mcp):

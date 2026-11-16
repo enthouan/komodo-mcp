@@ -198,6 +198,8 @@ async def exercise():
                     s.require(values[0]['terminal'] != values[1]['terminal'], 'two callers shared state')
                 report['two_callers'] = {'ids': [fixture.roles[r]['id'] for r in ['terminal', 'affected']],
                     'names': [v['terminal'] for v in values], 'proxies': [first.summary(), second.summary()]}
+                s.require(len(first.commands()) == len(second.commands()) == 1,
+                          'concurrent caller command was replayed')
         finally: fixture.grant('affected', 'Server', fixture.sid, 'Read')
         async with f.Proxy('terminal') as proxy:
             async with await f.Mcp.start(proxy.address, fixture.roles['terminal']['credentials'], terminal=True) as process:
