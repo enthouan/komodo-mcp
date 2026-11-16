@@ -376,6 +376,75 @@ impl AppError {
         }
         Self::new(kind, operation, Some(status))
     }
+
+    /// Match exact pinned Core state failures or Docker/Bollard missing-object
+    /// errors bound to the submitted identity. Never return the raw chain.
+    pub(crate) fn from_docker_http_failure(
+        operation: &'static str,
+        status: StatusCode,
+        body: &[u8],
+        locator: Option<&str>,
+    ) -> Self {
+        let base = Self::from_http_failure(operation, status, body);
+        if matches!(
+            base.kind,
+            ErrorKind::Authentication | ErrorKind::PermissionDenied
+        ) {
+            return base;
+        }
+        if status == StatusCode::NOT_IMPLEMENTED {
+            return Self {
+                message: "The selected Docker read endpoint reports unsupported behavior. No alternative API or target was used.",
+                ..Self::new(ErrorKind::UnsupportedTarget, operation, Some(status))
+            };
+        }
+        if status != StatusCode::INTERNAL_SERVER_ERROR {
+            return base;
+        }
+        let Ok(v) = serde_json::from_slice::<serde_json::Value>(body) else {
+            return base;
+        };
+        let messages = std::iter::once(v["error"].as_str())
+            .chain(
+                v["trace"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|v| v.as_str()),
+            )
+            .flatten()
+            .collect::<Vec<_>>();
+        let action = match operation {
+            "InspectImage" => "inspect image",
+            "ListImageHistory" => "get image history",
+            "InspectNetwork" => "inspect network",
+            "InspectVolume" => "inspect volume",
+            _ => return base,
+        };
+        if ["NotOk", "Disabled"].iter().any(|state| {
+            messages
+                .iter()
+                .any(|m| *m == format!("Cannot {action}: server is {state}"))
+        }) {
+            return Self {
+                message: "Core cannot inspect this Server because its cached state is unreachable or disabled. Cached inventory may remain available; no alternate target was used.",
+                ..Self::new(ErrorKind::Unreachable, operation, Some(status))
+            };
+        }
+        if let Some(id) = locator {
+            let detail = match operation {
+                "InspectImage" | "ListImageHistory" => format!("No such image: {id}"),
+                "InspectNetwork" => format!("network {id} not found"),
+                "InspectVolume" => format!("get {id}: no such volume"),
+                _ => return base,
+            };
+            let expected = format!("Docker responded with status code 404: {detail}");
+            if messages.iter().any(|m| *m == expected) {
+                return Self::new(ErrorKind::NotFound, operation, Some(status));
+            }
+        }
+        base
+    }
 }
 
 // Only the tagged resource::get helper on the supported detail operations.

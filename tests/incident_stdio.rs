@@ -34,7 +34,14 @@ const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(15);
 const SCENARIO_TIMEOUT: Duration = Duration::from_secs(45);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const STDERR_BYTES: usize = 1024 * 1024;
-const TOOLS: [&str; 45] = [
+const TOOLS: [&str; 52] = [
+    "list_images",
+    "get_image",
+    "get_image_history",
+    "list_networks",
+    "get_network",
+    "list_volumes",
+    "get_volume",
     "list_swarms",
     "get_swarm",
     "list_swarm_nodes",
@@ -293,7 +300,7 @@ async fn discover_and_reject(session: &Session, core: &IncidentCore) -> Result<(
     let actual: BTreeSet<_> = listed.tools.iter().map(|t| t.name.as_ref()).collect();
     ensure!(
         actual == BTreeSet::from(TOOLS),
-        "expected all forty-five read-only tools"
+        "expected all fifty-two read-only tools"
     );
     let reads = core.requests().len();
     for tool in &listed.tools {

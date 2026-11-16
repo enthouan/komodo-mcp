@@ -19,7 +19,7 @@ the permission authority, including a denial recorded after acknowledgement.
    `KOMODO_API_SECRET`, `KOMODO_ALLOW_OPERATE=true` and
    `KOMODO_ALLOW_CONFIGURATION_EDIT=false`. These are process environment values;
    `.env` files are not loaded. Restart the child after changing capabilities.
-   With both optional grants disabled, discovery contains forty-five read tools,
+   With both optional grants disabled, discovery contains fifty-two read tools,
    including exact [discovery by tag](tags.md).
    Operate adds seventeen tools; configuration editing independently adds typed
    preview/apply tools. See [client configuration](../README.md#local-capabilities-and-core-permissions)
@@ -216,3 +216,7 @@ Check saved fields and the separate Core cache before and after apply. Use an
 explicit timezone for reproducible policy, retain Core next-run/error evidence,
 and verify the eventual run and workload health independently. Disabling a
 schedule does not cancel already dispatched/running automation.
+
+For read-only Docker image, network and volume inventory on one exact Server,
+including safe image history, use the [Docker inspection walkthrough](docker.md).
+Cached inventory is not an authoritative prune dry run.
