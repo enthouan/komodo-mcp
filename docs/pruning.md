@@ -24,9 +24,23 @@ The system/volume distinction is also documented by
 and [Docker volume prune](https://docs.docker.com/reference/cli/docker/volume/prune/).
 Docker's installed version and current references decide eligibility. These are
 category-wide operations, not deletion of one named image, container, network
-or volume. There is no fleet loop, caller-supplied filter/flag, builder/buildx
-prune tool, schedule or automatic cleanup. System pruning's build-cache effects
-remain part of its real scope.
+or volume. Neither MCP tool adds a fleet loop, caller-supplied filter/flag,
+builder/buildx prune route, schedule or automatic cleanup. System pruning's
+build-cache effects remain part of its real scope.
+
+Core has its own independent Server `auto_prune` policy, which defaults to
+**true** in 2.3.2 and can prune all unused images daily even when
+`KOMODO_ALLOW_PRUNE=false`. The preview's
+`server.automatic_image_pruning_enabled` reports that saved flag; it does not
+prove a background prune occurred. These tools never change the policy.
+Inspect it through the normal Server configuration workflow. Disable it on an
+owned acceptance engine before seeding removal/preservation fixtures, so
+background cleanup cannot be mistaken for one explicit MCP prune.
+
+Pinned behavior comes from the [Core prune requests](https://github.com/moghtech/komodo/blob/v2.3.2/client/core/rs/src/api/execute/server.rs),
+[Periphery prune commands](https://github.com/moghtech/komodo/blob/v2.3.2/bin/periphery/src/api/docker.rs),
+[Server defaults](https://github.com/moghtech/komodo/blob/v2.3.2/client/core/rs/src/entities/server.rs)
+and [Core's daily prune loop](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/helpers/prune.rs).
 
 ## Preview, acknowledge, submit once
 

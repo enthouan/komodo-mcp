@@ -496,3 +496,23 @@ async fn changing_cached_objects_never_becomes_a_frozen_set_or_skips_an_explicit
     assert_eq!(c.executions().len(), 1);
     finish(p, s, &c).await;
 }
+
+#[tokio::test]
+async fn independent_core_auto_prune_policy_is_visible_bound_and_never_changed() {
+    let c = Core::start().await;
+    c.data.lock().unwrap().server["config"]["auto_prune"] = json!(true);
+    let (p, s) = Process::start_profile_pruning(&c.address, true, false, true).await;
+    let v = preview(&s, "image").await;
+    assert_eq!(v["server"]["automatic_image_pruning_enabled"], true);
+    assert!(c.executions().is_empty());
+    c.data.lock().unwrap().server["config"]["auto_prune"] = json!(false);
+    assert_eq!(error(apply(&s, "image", &v).await)["kind"], "stale_preview");
+    assert!(c.executions().is_empty());
+    let next = preview(&s, "image").await;
+    assert_eq!(next["server"]["automatic_image_pruning_enabled"], false);
+    let applied = data(apply(&s, "image", &next).await);
+    assert_eq!(applied["server"]["automatic_image_pruning_enabled"], false);
+    assert_eq!(c.executions().len(), 1);
+    assert_eq!(c.data.lock().unwrap().server["config"]["auto_prune"], false);
+    finish(p, s, &c).await;
+}

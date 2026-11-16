@@ -25,7 +25,7 @@ use crate::{
     },
 };
 const OP: &str = "docker_prune";
-const LIMITS: &str = "One stable Server and one category only. Core offers no exact atomic dry run, named-object selection, expected daemon ID or compare-and-swap. Cached inventory is supporting evidence only; the eligible object set and live connection can change before execution. All unused objects in the selected category can be removed, including shared application data. No rollback or automatic replay; inspect a known update or reconcile read-only after uncertainty.";
+const LIMITS: &str = "One stable Server and one category only. Core offers no exact atomic dry run, named-object selection, expected daemon ID or compare-and-swap. Cached inventory is supporting evidence only; the eligible object set and live connection can change before execution. Core's independent saved auto_prune policy can prune unused images daily, regardless of the MCP opt-in; these tools do not change that policy. All unused objects in the selected category can be removed, including shared application data. No rollback or automatic replay; inspect a known update or reconcile read-only after uncertainty.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -93,6 +93,8 @@ pub struct ApplyInput {
 pub struct Server {
     pub id: String,
     pub name: String,
+    /// Saved Core policy, not evidence that background pruning actually ran.
+    pub automatic_image_pruning_enabled: bool,
 }
 #[derive(Clone, Serialize, JsonSchema)]
 pub struct InventoryEvidence {
@@ -176,6 +178,7 @@ async fn prepare(client: &CoreClient, target: DetailInput) -> Result<Prepared, A
         || !raw["template"].is_boolean()
         || !raw["config"].is_object()
         || !raw["config"]["enabled"].is_boolean()
+        || !raw["config"]["auto_prune"].is_boolean()
     {
         return Err(invalid());
     }
@@ -215,6 +218,7 @@ async fn prepare(client: &CoreClient, target: DetailInput) -> Result<Prepared, A
         server: Server {
             id: selected.id,
             name: label(client, &selected.name),
+            automatic_image_pruning_enabled: baseline["server"]["config"]["auto_prune"] == true,
         },
         baseline,
     })

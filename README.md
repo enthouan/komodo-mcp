@@ -153,6 +153,9 @@ changing a grant. For example, set `KOMODO_ALLOW_OPERATE=true` in the MCP client
 server environment to opt into operations while configuration editing stays off.
 Enabling configuration editing alone never enables operations. These grants never
 change the caller's Core credentials or Core permissions.
+The pruning opt-in controls explicit MCP tools. Core's independent daily Server
+`auto_prune` policy remains configured upstream; the pruning preview shows its
+saved state without changing it.
 
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,

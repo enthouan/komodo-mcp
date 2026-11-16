@@ -99,6 +99,7 @@ impl Core {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = format!("http://{}/komodo", listener.local_addr().unwrap());
         let mut server = Family::Server.detail();
+        server["config"]["auto_prune"] = json!(true);
         server["config"]["private_extension"] = json!(PRIVATE[1]);
         let mut summary = Family::Server.summary();
         summary["info"]["state"] = json!("Ok");
