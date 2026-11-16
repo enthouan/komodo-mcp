@@ -29,6 +29,9 @@ import urllib.parse
 WORKSPACE = Path(__file__).resolve().parents[1]
 CORE_VERSION = '2.3.2'
 MAX_BODY = 2 * 1024 * 1024
+# Full opt-in tool discovery includes large configuration schemas. Keep its
+# stdio framing budget separate from the unchanged Core HTTP evidence budget.
+MAX_MCP_BYTES = 8 * 1024 * 1024
 MAX_COMMAND_OUTPUT = 8 * 1024 * 1024
 HTTP_TIMEOUT = 10.0
 SECRETS = []
@@ -200,16 +203,19 @@ class Mcp:
         await self.close()
 
     @classmethod
-    async def start(cls, address, credentials, operate=True, configuration_edit=False):
+    async def start(cls, address, credentials, operate=True, configuration_edit=False,
+                    prune=False, terminal=False):
         self = cls()
         self.next_id, self.stderr = 0, bytearray()
         env = {'PATH': os.environ.get('PATH', ''), 'KOMODO_ADDRESS': address,
                'KOMODO_API_KEY': credentials['key'], 'KOMODO_API_SECRET': credentials['secret'],
                'KOMODO_ALLOW_OPERATE': str(operate).lower(),
-               'KOMODO_ALLOW_CONFIGURATION_EDIT': str(configuration_edit).lower(), 'KOMODO_ALLOW_PRUNE': 'false', 'KOMODO_ALLOW_TERMINAL': 'false', 'RUST_LOG': 'info'}
+               'KOMODO_ALLOW_CONFIGURATION_EDIT': str(configuration_edit).lower(),
+               'KOMODO_ALLOW_PRUNE': str(prune).lower(),
+               'KOMODO_ALLOW_TERMINAL': str(terminal).lower(), 'RUST_LOG': 'info'}
         self.process = await asyncio.create_subprocess_exec(str(BINARY), env=env,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE, limit=MAX_BODY)
+            stderr=asyncio.subprocess.PIPE, limit=MAX_MCP_BYTES)
         self.drain = asyncio.create_task(self.drain_stderr())
         try:
             initialized = await self.rpc('initialize', {'protocolVersion': '2025-11-25', 'capabilities': {},
@@ -243,7 +249,7 @@ class Mcp:
             line = await asyncio.wait_for(self.process.stdout.readline(), max(.01, end-time.monotonic()))
             if not line:
                 raise Failure('production MCP exited before response')
-            if len(line) > MAX_BODY:
+            if len(line) > MAX_MCP_BYTES:
                 raise Failure('MCP response exceeded smoke bound')
             response = json.loads(line)
             if response.get('id') != expected:
@@ -1131,7 +1137,31 @@ async def exercise_deletion(address, admin, deleter, reader, deleter_id, reader_
     print('Verified running Stack/Deployment deletion, Core/local denial, Server detachment and surviving host workloads.',flush=True)
 
 
-def exercise_environment(extension=None):
+def disable_server_automatic_effects(admin, server_id, expected_name):
+    """Fixture preparation, independent of MCP's explicit prune/operate flags."""
+    before = admin.read('GetServer', {'server': server_id})
+    require(identity(before) == server_id and before['name'] == expected_name,
+            'owned Server identity changed before policy preparation')
+    fields = ['auto_prune', 'send_unreachable_alerts', 'send_cpu_alerts',
+              'send_mem_alerts', 'send_disk_alerts', 'send_version_mismatch_alerts']
+    require(all(isinstance(before['config'].get(k), bool) for k in fields),
+            'owned Server automatic-policy metadata incomplete')
+    patch = {k: False for k in fields}
+    if any(before['config'][k] for k in fields):
+        admin.write('UpdateServer', {'id': server_id, 'config': patch})
+    after = admin.read('GetServer', {'server': server_id})
+    require(identity(after) == server_id and after['name'] == expected_name
+            and all(after['config'][k] is False for k in fields),
+            'owned Server automatic effects were not disabled')
+    require({k: v for k, v in before['config'].items() if k not in fields}
+            == {k: v for k, v in after['config'].items() if k not in fields},
+            'fixture policy preparation changed unrelated Server configuration')
+    return {'server_id': server_id, 'automatic_image_prune_disabled': True,
+            'automatic_alerts_disabled': True, 'unrelated_configuration_preserved': True,
+            'fixture_preparation_only': True, 'mcp_mutations': 0}
+
+
+def exercise_environment(extension=None, *, retain_legacy=True):
     addresses = run([*COMPOSE, 'port', 'core', '9120']).splitlines()
     if len(addresses) != 1 or not re.fullmatch(r'127\.0\.0\.1:\d+', addresses[0]):
         raise Failure('Core is not published exclusively on the expected loopback endpoint')
@@ -1153,8 +1183,12 @@ def exercise_environment(extension=None):
     if len(matches) != 1:
         raise Failure('exact disposable Server was not provisioned')
     server_id = identity(matches[0])
+    REPORT['automatic_server_policies'] = disable_server_automatic_effects(
+        admin, server_id, 'mcp-smoke-server')
     alternate = admin.write('CreateServer', {'name':'mcp-smoke-alternate','config':{
-        'address':'http://unreachable.invalid:8120','enabled':False}})
+        'address':'http://unreachable.invalid:8120','enabled':False,'auto_prune':False,
+        'send_unreachable_alerts':False,'send_cpu_alerts':False,'send_mem_alerts':False,
+        'send_disk_alerts':False,'send_version_mismatch_alerts':False}})
     alternate_server_id = identity(alternate)
     poll(lambda: admin.read('GetServerState', {'server': server_id})['status'] == 'Ok', 'private Periphery/daemon readiness')
     periphery = admin.read('GetPeripheryInformation', {'server': server_id})
@@ -1212,6 +1246,11 @@ def exercise_environment(extension=None):
             'alternate_server_id':alternate_server_id,'periphery':periphery,
             'operator':credentials[0],'reader':credentials[1],'editor':credentials[2],
             'deleter':credentials[3],'users':REPORT['scope']['non_admin_identities']})
+    if not retain_legacy:
+        REPORT['passed'] = True
+        REPORT['retained_legacy_workflow'] = False
+        return
+    REPORT['retained_legacy_workflow'] = True
     asyncio.run(exercise(address, credentials[0],credentials[1],stack_id,deployment_id))
     asyncio.run(exercise_configuration(address,credentials[2],stack_id))
     asyncio.run(exercise_stack_definitions(address,credentials[2],stack_id,server_id,alternate_server_id))
@@ -1303,7 +1342,8 @@ def build_candidate():
     return expected
 
 
-def entry(argv=None, *, fixture_customizer=None, exercise_extension=None, before_cleanup=None):
+def entry(argv=None, *, fixture_customizer=None, exercise_extension=None, before_cleanup=None,
+          retain_legacy=True):
     global ROOT, PROJECT, OWNER, DOCKER, COMPOSE, BINARY, EVIDENCE, RESERVED
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--docker-context',required=True,help='explicit local Unix-socket Docker context')
@@ -1345,7 +1385,10 @@ def entry(argv=None, *, fixture_customizer=None, exercise_extension=None, before
         if exercise_extension is None:
             exercise_environment()
         else:
-            exercise_environment(exercise_extension)
+            if retain_legacy:
+                exercise_environment(exercise_extension)
+            else:
+                exercise_environment(exercise_extension, retain_legacy=False)
     except BaseException as error:
         result = 1
         REPORT['passed'] = False

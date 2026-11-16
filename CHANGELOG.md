@@ -7,6 +7,7 @@ notes: short, categorized bullets with links to the relevant pull requests.
 
 ### Added
 
+- Add a complete Swarm and administration walkthrough and disposable integration validation. ([#122](https://github.com/enthouan/komodo-mcp/pull/122))
 - Execute one bounded command in a fresh owned terminal behind a separate opt-in. ([#121](https://github.com/enthouan/komodo-mcp/pull/121))
 - Preview and explicitly apply Docker category pruning behind a separate opt-in. ([#120](https://github.com/enthouan/komodo-mcp/pull/120))
 - Inspect users, groups and effective access, and apply scoped administration changes. ([#119](https://github.com/enthouan/komodo-mcp/pull/119))
