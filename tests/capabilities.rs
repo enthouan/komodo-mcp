@@ -451,9 +451,9 @@ async fn production_keeps_all_reads_and_recovery_history_for_every_policy() {
                 .tools;
             assert_eq!(
                 tools.len(),
-                58 + 20 * usize::from(operate)
-                    + 54 * usize::from(edit)
-                    + 3 * usize::from(operate && edit)
+                64 + 20 * usize::from(operate)
+                    + 55 * usize::from(edit)
+                    + 4 * usize::from(operate && edit)
             );
             for tool in tools {
                 let mutation = [

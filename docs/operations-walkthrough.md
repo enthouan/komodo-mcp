@@ -9,6 +9,9 @@ workflow](scaling.md), including intentional zero and service recreation effects
 For deletion, use the separate [deliberate preview/apply workflow](deletion.md):
 Core can perform teardown inside a definition write, and removal is observed
 separately from cleanup. Both local grants and Core Write are required.
+For user/group administration, follow the separate [access workflow](access.md).
+Direct records and current-caller effective access are distinct; every access
+apply requires both local grants and actual Core admin/super-admin authority.
 
 ## Inspect, act, follow and check health
 
@@ -21,7 +24,7 @@ the permission authority, including a denial recorded after acknowledgement.
    `KOMODO_API_SECRET`, `KOMODO_ALLOW_OPERATE=true` and
    `KOMODO_ALLOW_CONFIGURATION_EDIT=false`. These are process environment values;
    `.env` files are not loaded. Restart the child after changing capabilities.
-   With both optional grants disabled, discovery contains fifty-eight read tools,
+   With both optional grants disabled, discovery contains sixty-four read tools,
    including exact [discovery by tag](tags.md).
    Operate adds twenty tools; configuration editing independently adds typed
    preview/apply tools. See [client configuration](../README.md#local-capabilities-and-core-permissions)

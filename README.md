@@ -11,7 +11,7 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.9.0 SDK](https://docs.rs/rmcp/3.9.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Fifty-three read-only tools list and inspect
+exactly with optional features disabled. Sixty-four read-only tools list and inspect
 Servers, Stacks, Deployments, Repos, Builders, Builds, Procedures and Actions, summarize fleet health, inspect alerts/update
 history, read bounded logs, and diagnose a stack in one call.
 The [scoped TOML export](docs/export.md) returns a sanitized inspection document
@@ -25,6 +25,9 @@ The [managed Swarm scaling tools](docs/scaling.md) preview and save replica
 counts, explicitly deploy the saved definition, and separately observe current
 tasks. Save and deploy grants remain independent; zero is deliberate. Core
 recreates the service, so interruption and a new service ID are possible.
+The [access tools](docs/access.md) inspect users, groups, direct grants and the
+current caller's effective permissions. Typed previews support one scoped
+administration change, with both local grants and Core admin authority at apply.
 Optional operate-enabled tools deploy one existing workload or clone/pull a saved
 Repo, or run/cancel a saved Server-backed Build, Procedure or Action, and return
 its Core update receipt.
@@ -150,7 +153,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All fifty-eight read tools remain locally available in every grant
+All sixty-four read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -169,6 +172,15 @@ creation, value updates and deletion with both grants, plus description edits
 with configuration-edit alone. Every write also requires an enabled Core
 administrator. Secret values and authentication payloads remain omitted;
 variable history is sanitized even after restart.
+
+The [access workflow](docs/access.md) adds safe user/group inspection, direct
+permission records and Core's effective permission result for the current
+credential. Typed private previews cover service users, base/admin permissions,
+groups, additive membership and explicit scoped/type-wide grants. Every apply
+requires both local grants and enabled Core admin authority; admin-status edits
+require super-admin. Direct records do not establish another user's effective
+access, and deletion reports visible leftovers without claiming credential
+erasure or transactional cleanup.
 
 The [Alerter workflow](docs/alerters.md) adds safe configuration inspection,
 private create/update previews and explicit single-target test delivery. New

@@ -65,9 +65,9 @@ async fn profiles_discovery_and_direct_calls_enforce_independent_grants_before_i
             let tools = s.list_tools(None).await.unwrap().tools;
             assert_eq!(
                 tools.len(),
-                58 + 20 * usize::from(operate)
-                    + 54 * usize::from(edit)
-                    + 3 * usize::from(operate && edit)
+                64 + 20 * usize::from(operate)
+                    + 55 * usize::from(edit)
+                    + 4 * usize::from(operate && edit)
             );
             for name in ["list_variables", "get_variable", "list_core_secret_names"] {
                 assert!(tools.iter().any(|t| t.name == name));

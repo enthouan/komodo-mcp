@@ -1,5 +1,6 @@
 //! Read-only Core inventory, bounded fleet observations, and safe reporting.
 
+pub mod access;
 pub mod action_observation;
 pub mod action_operations;
 pub mod actions;

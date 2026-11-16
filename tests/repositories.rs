@@ -207,9 +207,9 @@ async fn independent_grants_guard_discovery_direct_dispatch_and_webhook_enable_b
             let tools = s.list_tools(None).await.unwrap().tools;
             assert_eq!(
                 tools.len(),
-                58 + 20 * usize::from(operate)
-                    + 54 * usize::from(edit_grant)
-                    + 3 * usize::from(operate && edit_grant)
+                64 + 20 * usize::from(operate)
+                    + 55 * usize::from(edit_grant)
+                    + 4 * usize::from(operate && edit_grant)
             );
             for (name, enabled) in [
                 ("list_repos", true),
