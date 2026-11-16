@@ -133,6 +133,20 @@ fn members(g: &Value) -> Result<Vec<String>, AppError> {
         })
         .collect()
 }
+async fn bind_group_grants(
+    client: &CoreClient,
+    baseline: &mut Value,
+    group: &Value,
+) -> Result<(), AppError> {
+    let subject = SubjectView {
+        kind: "group",
+        id: id(group)?.into(),
+        name: label(client, group["name"].as_str().ok_or_else(invalid)?),
+    };
+    let (records, _) = permissions(client, &subject, true).await?;
+    baseline["permissions"] = json!(records);
+    Ok(())
+}
 fn merge_grant(current: &Value, p: &GrantPatch) -> Result<GrantView, AppError> {
     if p.add_specific.len() > 5 || p.remove_specific.len() > 5 {
         return Err(args(
@@ -250,6 +264,7 @@ async fn prepare(client: &CoreClient, change: &Change) -> Result<Prepared, AppEr
         } => {
             text(description, 4096)?;
             let u = user(client, target).await?;
+            unprotected(&caller, &u, false)?;
             if u["config"]["type"] != "Service" || !u["config"]["data"]["description"].is_string() {
                 return Err(AppError::new(ErrorKind::UnsupportedTarget, OP, None));
             }
@@ -264,7 +279,7 @@ async fn prepare(client: &CoreClient, change: &Change) -> Result<Prepared, AppEr
                 ("user", Some(&u), &username),
                 Some(entity(client, "user", &after)?),
                 false,
-                false,
+                u["admin"] == true,
             )?;
             (
                 "UpdateServiceUserDescription",
@@ -485,6 +500,7 @@ async fn prepare(client: &CoreClient, change: &Change) -> Result<Prepared, AppEr
             after["users"] = json!(ids);
             baseline["entity"] = g.clone();
             baseline["member"] = u;
+            bind_group_grants(client, &mut baseline, &g).await?;
             let r = result(
                 client,
                 "set_group_member",
@@ -519,6 +535,7 @@ async fn prepare(client: &CoreClient, change: &Change) -> Result<Prepared, AppEr
             let mut after = g.clone();
             after["everyone"] = json!(everyone);
             baseline["entity"] = g.clone();
+            bind_group_grants(client, &mut baseline, &g).await?;
             let r = result(
                 client,
                 "set_group_everyone",

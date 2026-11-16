@@ -59,8 +59,10 @@ pub struct Data {
     pub current_reads: usize,
     pub find_reads: usize,
     pub group_reads: usize,
+    pub permission_reads: usize,
     pub drift_user: Option<(usize, Value)>,
     pub drift_group: Option<(usize, Value)>,
+    pub drift_permissions: Option<(usize, Vec<Value>)>,
     pub drift_role: Option<(usize, Value)>,
     pub after_write_user: Option<Value>,
     pub after_write_group: Option<Value>,
@@ -117,8 +119,10 @@ impl Core {
             current_reads: 0,
             find_reads: 0,
             group_reads: 0,
+            permission_reads: 0,
             drift_user: None,
             drift_group: None,
+            drift_permissions: None,
             drift_role: None,
             after_write_user: None,
             after_write_group: None,
@@ -325,13 +329,21 @@ async fn read(State(d): State<Arc<Mutex<Data>>>, h: HeaderMap, Json(b): Json<Val
                 .collect::<Vec<_>>()
         ))
         .into_response(),
-        "ListUserTargetPermissions" => Json(json!(
-            d.permissions
-                .iter()
-                .filter(|v| v["user_target"] == p["user_target"])
-                .collect::<Vec<_>>()
-        ))
-        .into_response(),
+        "ListUserTargetPermissions" => {
+            d.permission_reads += 1;
+            if let Some((at, records)) = d.drift_permissions.clone()
+                && d.permission_reads == at
+            {
+                d.permissions = records;
+            }
+            Json(json!(
+                d.permissions
+                    .iter()
+                    .filter(|v| v["user_target"] == p["user_target"])
+                    .collect::<Vec<_>>()
+            ))
+            .into_response()
+        }
         "GetPermission" => {
             assert_eq!(p["target"]["type"], "Server");
             if p["target"]["id"] != SERVER {

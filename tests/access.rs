@@ -931,3 +931,65 @@ async fn a_matching_scoped_grant_does_not_verify_a_failed_parent_observation() {
     assert_eq!(c.writes().len(), 1);
     finish(p, s, &c).await;
 }
+
+#[tokio::test]
+async fn service_descriptions_enforce_protected_admin_and_super_admin_targets() {
+    let c = Core::start().await;
+    c.data.lock().unwrap().users.get_mut(USER).unwrap()["admin"] = json!(true);
+    let (p, s) = Process::start_profile(&c.address, true, true).await;
+    let ch = json!({"kind":"set_service_user_description","target":target(USER),"description":"reviewed metadata"});
+    assert_eq!(
+        error(call(&s, "preview_access_change", json!({"change":ch})).await)["kind"],
+        "permission_denied"
+    );
+    assert!(c.writes().is_empty());
+    c.data.lock().unwrap().role["super_admin"] = json!(true);
+    let v = preview(&s, &ch).await;
+    assert_eq!(v["requires_super_admin"], true);
+    assert_eq!(data(apply(&s, &ch, &v).await)["saved_state_matches"], true);
+    let v = preview(&s, &ch).await;
+    c.data.lock().unwrap().users.get_mut(USER).unwrap()["super_admin"] = json!(true);
+    assert_eq!(error(apply(&s, &ch, &v).await)["kind"], "permission_denied");
+    assert_eq!(
+        error(call(&s, "preview_access_change", json!({"change":ch})).await)["kind"],
+        "permission_denied"
+    );
+    assert_eq!(c.writes().len(), 1);
+    finish(p, s, &c).await;
+}
+
+#[tokio::test]
+async fn membership_and_everyone_changes_bind_separate_scoped_group_grants() {
+    for final_transport in [false, true] {
+        for ch in [
+            member(USER, true),
+            member(USER, false),
+            json!({"kind":"set_group_everyone","target":target(GROUP),"everyone":true}),
+        ] {
+            let c = Core::start().await;
+            if ch["present"] == true {
+                c.data.lock().unwrap().groups.get_mut(GROUP).unwrap()["users"] = json!([OTHER]);
+            }
+            let (p, s) = Process::start_profile(&c.address, true, true).await;
+            let v = preview(&s, &ch).await;
+            {
+                let mut d = c.data.lock().unwrap();
+                let mut changed = d.permissions.clone();
+                let rec = changed
+                    .iter_mut()
+                    .find(|v| v["user_target"]["type"] == "UserGroup")
+                    .unwrap();
+                rec["specific"] = json!(["Logs", "Terminal"]);
+                if final_transport {
+                    d.drift_permissions = Some((3, changed));
+                } else {
+                    d.permissions = changed;
+                }
+            }
+            assert_eq!(error(apply(&s, &ch, &v).await)["kind"], "stale_preview");
+            assert!(c.writes().is_empty());
+            assert_eq!(error(apply(&s, &ch, &v).await)["kind"], "invalid_preview");
+            finish(p, s, &c).await;
+        }
+    }
+}
