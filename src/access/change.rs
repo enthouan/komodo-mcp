@@ -147,6 +147,56 @@ async fn bind_group_grants(
     baseline["permissions"] = json!(records);
     Ok(())
 }
+async fn bind_enabled_user_access(
+    client: &CoreClient,
+    baseline: &mut Value,
+    user: &Value,
+) -> Result<(), AppError> {
+    let uid = id(user)?;
+    let subject = SubjectView {
+        kind: "user",
+        id: uid.into(),
+        name: label(client, user["username"].as_str().ok_or_else(invalid)?),
+    };
+    let (direct, _) = permissions(client, &subject, true).await?;
+    baseline["enabled_user_direct"] = json!(direct);
+    private_bound(baseline)?;
+    let (directory, _) = groups(client, true).await?;
+    let mut inherited = Vec::new();
+    for group in &directory {
+        let ids = members(group)?;
+        if group["everyone"] == true || ids.iter().any(|id| id == uid) {
+            inherited.push(group);
+        }
+    }
+    if inherited.len() > 16 {
+        return Err(AppError {
+            correction: Some(
+                "Re-enabling requires a complete bounded access baseline, including at most 16 explicit/everyone groups and their scoped grants; no write was submitted.",
+            ),
+            ..AppError::new(ErrorKind::IncompleteResolution, OP, None)
+        });
+    }
+    // Bind the complete directory too: adding the user to a formerly unrelated
+    // group, or making it an everyone group, must invalidate this preview.
+    baseline["enabled_user_groups"] = json!(directory);
+    baseline["enabled_user_inherited"] = json!([]);
+    private_bound(baseline)?;
+    for group in inherited {
+        let subject = SubjectView {
+            kind: "group",
+            id: id(group)?.into(),
+            name: label(client, group["name"].as_str().ok_or_else(invalid)?),
+        };
+        let (records, _) = permissions(client, &subject, true).await?;
+        baseline["enabled_user_inherited"]
+            .as_array_mut()
+            .expect("initialized")
+            .push(json!({"group_id":subject.id,"permissions":records}));
+        private_bound(baseline)?;
+    }
+    Ok(())
+}
 fn merge_grant(current: &Value, p: &GrantPatch) -> Result<GrantView, AppError> {
     if p.add_specific.len() > 5 || p.remove_specific.len() > 5 {
         return Err(args(
@@ -318,6 +368,9 @@ async fn prepare(client: &CoreClient, change: &Change) -> Result<Prepared, AppEr
                 }
             }
             baseline["entity"] = u.clone();
+            if *enabled == Some(true) {
+                bind_enabled_user_access(client, &mut baseline, &u).await?;
+            }
             let r = result(
                 client,
                 "set_user_base",

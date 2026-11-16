@@ -59,10 +59,13 @@ pub struct Data {
     pub current_reads: usize,
     pub find_reads: usize,
     pub group_reads: usize,
+    pub group_list_reads: usize,
     pub permission_reads: usize,
     pub drift_user: Option<(usize, Value)>,
     pub drift_group: Option<(usize, Value)>,
+    pub drift_group_directory: Option<(usize, BTreeMap<String, Value>)>,
     pub drift_permissions: Option<(usize, Vec<Value>)>,
+    pub group_permission_status: Option<u16>,
     pub drift_role: Option<(usize, Value)>,
     pub after_write_user: Option<Value>,
     pub after_write_group: Option<Value>,
@@ -119,10 +122,13 @@ impl Core {
             current_reads: 0,
             find_reads: 0,
             group_reads: 0,
+            group_list_reads: 0,
             permission_reads: 0,
             drift_user: None,
             drift_group: None,
+            drift_group_directory: None,
             drift_permissions: None,
+            group_permission_status: None,
             drift_role: None,
             after_write_user: None,
             after_write_group: None,
@@ -284,6 +290,12 @@ async fn read(State(d): State<Arc<Mutex<Data>>>, h: HeaderMap, Json(b): Json<Val
             }
         }
         "ListUserGroups" => {
+            d.group_list_reads += 1;
+            if let Some((at, directory)) = d.drift_group_directory.clone()
+                && d.group_list_reads == at
+            {
+                d.groups = directory;
+            }
             let a = d
                 .groups
                 .values()
@@ -330,6 +342,11 @@ async fn read(State(d): State<Arc<Mutex<Data>>>, h: HeaderMap, Json(b): Json<Val
         ))
         .into_response(),
         "ListUserTargetPermissions" => {
+            if p["user_target"]["type"] == "UserGroup"
+                && let Some(status) = d.group_permission_status
+            {
+                return fail(status);
+            }
             d.permission_reads += 1;
             if let Some((at, records)) = d.drift_permissions.clone()
                 && d.permission_reads == at

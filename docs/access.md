@@ -110,6 +110,10 @@ bind the typed input, current caller identity/authority, full raw user/group
 state, relevant membership/direct grants and the complete selected resource.
 Membership and everyone changes bind the group's separate scoped permission
 records as well as its type-wide grants before exposing that inherited access.
+An explicit `enabled:true` also binds the user's direct scoped records, the
+complete group directory and the scoped grants of every explicit/everyone group
+that applies to that user. Re-enable is refused if that proof is unreadable,
+incomplete, exceeds 16 applicable groups or exceeds the private byte budget.
 This detects private authentication, secret/reference and unknown-field drift
 without displaying those values or a baseline hash. Apply consumes its token,
 revalidates again at the final shared transport, and submits at most one typed

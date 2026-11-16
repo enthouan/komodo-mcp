@@ -993,3 +993,117 @@ async fn membership_and_everyone_changes_bind_separate_scoped_group_grants() {
         }
     }
 }
+
+#[tokio::test]
+async fn reenable_binds_direct_membership_everyone_and_inherited_grants_at_both_checks() {
+    for final_transport in [false, true] {
+        for field in [
+            "direct",
+            "group_grant",
+            "membership",
+            "everyone",
+            "everyone_grant",
+            "typewide",
+        ] {
+            let c = Core::start().await;
+            {
+                let mut d = c.data.lock().unwrap();
+                d.users.get_mut(USER).unwrap()["enabled"] = json!(false);
+                if matches!(field, "membership" | "everyone" | "everyone_grant") {
+                    d.groups.get_mut(GROUP).unwrap()["users"] = json!([OTHER]);
+                }
+                if field == "everyone_grant" {
+                    d.groups.get_mut(GROUP).unwrap()["everyone"] = json!(true);
+                }
+            }
+            let (p, s) = Process::start_profile(&c.address, true, true).await;
+            let ch = base(USER, true);
+            let v = preview(&s, &ch).await;
+            {
+                let mut d = c.data.lock().unwrap();
+                if matches!(field, "direct" | "group_grant" | "everyone_grant") {
+                    let mut changed = d.permissions.clone();
+                    let kind = if field == "direct" {
+                        "User"
+                    } else {
+                        "UserGroup"
+                    };
+                    changed
+                        .iter_mut()
+                        .find(|v| v["user_target"]["type"] == kind)
+                        .unwrap()["level"] = json!("Write");
+                    if final_transport {
+                        d.drift_permissions =
+                            Some((if field == "direct" { 5 } else { 6 }, changed));
+                    } else {
+                        d.permissions = changed;
+                    }
+                } else {
+                    let mut changed = d.groups.clone();
+                    match field {
+                        "membership" => {
+                            changed.get_mut(GROUP).unwrap()["users"] = json!([OTHER, USER])
+                        }
+                        "everyone" => changed.get_mut(GROUP).unwrap()["everyone"] = json!(true),
+                        _ => changed.get_mut(GROUP).unwrap()["all"]["Build"] = json!("Write"),
+                    }
+                    if final_transport {
+                        d.drift_group_directory = Some((3, changed));
+                    } else {
+                        d.groups = changed;
+                    }
+                }
+            }
+            assert_eq!(
+                error(apply(&s, &ch, &v).await)["kind"],
+                "stale_preview",
+                "{field}, final={final_transport}"
+            );
+            assert!(c.writes().is_empty());
+            assert_eq!(c.data.lock().unwrap().users[USER]["enabled"], false);
+            finish(p, s, &c).await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn reenable_refuses_incomplete_or_unreadable_inherited_access() {
+    for case in ["limit", "denied", "membership"] {
+        let c = Core::start().await;
+        {
+            let mut d = c.data.lock().unwrap();
+            d.users.get_mut(USER).unwrap()["enabled"] = json!(false);
+            match case {
+                "limit" => {
+                    for n in 0x300..0x311 {
+                        let gid = format!("{n:024x}");
+                        d.groups
+                            .insert(gid.clone(), group(&gid, &format!("owned-group-{n}")));
+                    }
+                }
+                "denied" => d.group_permission_status = Some(403),
+                _ => d.groups.get_mut(GROUP).unwrap()["users"] = json!([{}]),
+            }
+        }
+        let (p, s) = Process::start_profile(&c.address, true, true).await;
+        let r = error(
+            call(
+                &s,
+                "preview_access_change",
+                json!({"change":base(USER,true)}),
+            )
+            .await,
+        );
+        assert_eq!(
+            r["kind"],
+            match case {
+                "limit" => "incomplete_resolution",
+                "denied" => "permission_denied",
+                _ => "invalid_response",
+            }
+        );
+        assert!(c.writes().is_empty());
+        assert_eq!(c.data.lock().unwrap().users[USER]["enabled"], false);
+        finish(p, s, &c).await;
+    }
+}
