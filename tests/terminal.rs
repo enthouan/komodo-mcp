@@ -232,6 +232,40 @@ async fn strict_input_rejects_unknown_session_controls_prefixes_and_swarm_target
 }
 
 #[tokio::test]
+async fn shell_escaping_and_periphery_envelope_are_bounded_before_any_core_io() {
+    let c = Core::start().await;
+    let (p, s) = start(&c).await;
+    for command in [
+        format!("printf %s \"{}\"", "'".repeat(1500)),
+        format!("printf %s {}", "a".repeat(4000)),
+        format!("printf %s \"{}\"", "é".repeat(2000)),
+    ] {
+        assert!(command.len() <= 4096);
+        let mut v = input();
+        v["command"] = json!(command);
+        let before = c.data.lock().unwrap().requests.len();
+        let error = error(call(&s, "execute_terminal", v).await);
+        assert_eq!(error["kind"], "invalid_arguments");
+        assert_eq!(c.data.lock().unwrap().requests.len(), before);
+    }
+    // A substantial quoted UTF-8 command still takes the one-shot path when
+    // its complete physical line fits; quoting is preserved in the actual wire.
+    let mut v = input();
+    v["command"] = json!(format!("printf %s \"{}\"", "é'".repeat(300)));
+    assert_eq!(
+        run(&s, v).await["attempts"],
+        json!({"create":1,"command":1,"delete":1})
+    );
+    let sent = c.requests("terminal");
+    let wrapped = sent[0].params["command"].as_str().unwrap();
+    let envelope = format!(
+        "printf '\\n__KOMODO_START_OF_OUTPUT__\\n\\n'; {wrapped}; rc=$?; printf '\\n__KOMODO_EXIT_CODE:%d\\n__KOMODO_END_OF_OUTPUT__\\n' \"$rc\"\n"
+    );
+    assert!(envelope.len() <= 4095);
+    finish(p, s, &c).await;
+}
+
+#[tokio::test]
 async fn core_read_and_terminal_are_required_execute_write_and_admin_payloads_cannot_substitute() {
     for permission in [
         json!("Write"),

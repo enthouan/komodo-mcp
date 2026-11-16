@@ -35,6 +35,13 @@ const OP: &str = "execute_terminal";
 const GUARD_TIME: Duration = Duration::from_secs(10);
 const LIFECYCLE_TIME: Duration = Duration::from_secs(10);
 const TTL: u64 = 90;
+// Pinned Periphery 2.3.2 writes this complete physical line into a default
+// canonical Linux PTY. Count UTF-8 bytes after POSIX quoting, including its
+// status envelope and newline, conservatively within the 4095-byte capacity.
+const PTY_LINE_BYTES: usize = 4095;
+const PTY_PREFIX: &str = "printf '\\n__KOMODO_START_OF_OUTPUT__\\n\\n'; ";
+const PTY_SUFFIX: &str =
+    "; rc=$?; printf '\\n__KOMODO_EXIT_CODE:%d\\n__KOMODO_END_OF_OUTPUT__\\n' \"$rc\"\n";
 
 #[derive(Clone, Deserialize, JsonSchema)]
 #[serde(untagged, deny_unknown_fields)]
@@ -124,6 +131,7 @@ impl Input {
                 server
             }
         };
+        wrapped_command(&self.command)?;
         export::validate_selector(selector)
     }
 }
@@ -386,6 +394,16 @@ pub async fn execute(
 fn quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
+fn wrapped_command(line: &str) -> Result<String, AppError> {
+    let command = format!("sh -c {}", quote(line));
+    if PTY_PREFIX.len() + command.len() + PTY_SUFFIX.len() > PTY_LINE_BYTES {
+        return Err(AppError::arguments(
+            OP,
+            "The fully shell-escaped command plus pinned Periphery status envelope must fit within 4095 UTF-8 bytes; shorten the command or reduce literal apostrophes",
+        ));
+    }
+    Ok(command)
+}
 async fn worker(
     client: &CoreClient,
     input: Input,
@@ -394,6 +412,7 @@ async fn worker(
     mut cancel: watch::Receiver<bool>,
 ) -> Result<Output, AppError> {
     let start = Instant::now();
+    let command = wrapped_command(&input.command)?;
     let pinned = tokio::select! {
         _=cancelled(&mut cancel)=>return Err(AppError::new(ErrorKind::Timeout,OP,None)),
         r=tokio::time::timeout(GUARD_TIME,target::prepare(client,input.target,true))=>r.map_err(|_|AppError::new(ErrorKind::Timeout,OP,None))??,
@@ -410,7 +429,7 @@ async fn worker(
         name,
         initializer,
         expected_command,
-        command: format!("sh -c {}", quote(&input.command)),
+        command,
         record: None,
         create_attempts: AtomicUsize::new(0),
         command_attempts: AtomicUsize::new(0),

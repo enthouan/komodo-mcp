@@ -39,7 +39,10 @@ For example, send one tool call after resolving the intended disposable target:
 ```
 
 Commands are one nonempty physical line, at most 4096 UTF-8 bytes, without control
-characters or physical CR/LF. Shell metacharacters have shell meaning. The tool
+characters or physical CR/LF. The fully escaped command **plus Periphery's
+status envelope and newline** must also fit within 4095 bytes for its canonical
+Linux PTY. Literal apostrophes expand during quoting, so even a shorter original
+line can be rejected before any Core I/O. Shell metacharacters have shell meaning. The tool
 wraps the line in a separately quoted `sh -c` to keep trailing comments and `exit`
 from consuming Core's appended status marker. It sends **one** authenticated
 `POST /terminal/execute` with an explicit owned name and `init: null`. It never
