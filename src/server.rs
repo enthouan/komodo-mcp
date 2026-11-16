@@ -23,7 +23,8 @@ impl KomodoServer {
             Self::tool_router(),
             self.client.capabilities(),
             |name| match name {
-                "list_images"
+                "observe_deployment_scale"
+                | "list_images"
                 | "get_image"
                 | "get_image_history"
                 | "list_networks"
@@ -75,7 +76,9 @@ impl KomodoServer {
                 | "get_stack_logs"
                 | "stack_diagnose"
                 | "find_resources_by_tag" => Some(Capability::Read),
-                "deploy_stack"
+                "review_deployment_scale_deploy"
+                | "deploy_scaled_deployment"
+                | "deploy_stack"
                 | "deploy_deployment"
                 | "start_stack"
                 | "stop_stack"
@@ -95,7 +98,9 @@ impl KomodoServer {
                 "apply_resource_delete" | "apply_tag_delete" | "apply_resource_sync" => {
                     Some(Capability::Destructive)
                 }
-                "preview_stack_update"
+                "preview_deployment_scale"
+                | "apply_deployment_scale"
+                | "preview_stack_update"
                 | "apply_stack_update"
                 | "preview_repo_create"
                 | "preview_resource_sync_create"
@@ -149,6 +154,51 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="Preview saved/current/requested replicas 0–1000 for one managed Swarm Deployment. Reuse the private definition preview; manage only --replicas=N and preserve other fields/secrets. Configuration-edit, Deployment/Swarm/Build Read and Swarm Inspect. Reject Stack/global targets. Save and explicit recreating Deploy remain separate.",input_schema=schema_for_input::<crate::scaling::ScaleInput>().expect("scale schema"),output_schema=inventory::output_schema::<crate::scaling::ScalePreview>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
+    async fn preview_deployment_scale(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_deployment_scale") {
+            Ok(input) => crate::scaling::preview(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Save a reviewed replica count and its managed --replicas=N argument through the existing Deployment apply contract. Revalidate full private configuration/Swarm/Build references and current service, independently read back. Configuration-edit, Core Write, Swarm Read+Inspect; zero Deploy submissions, no automatic retries.",input_schema=schema_for_input::<crate::scaling::ApplyInput>().expect("scale schema"),output_schema=inventory::output_schema::<crate::scaling::ScaleSave>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=false))]
+    async fn apply_deployment_scale(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_deployment_scale") {
+            Ok(input) => crate::scaling::save(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Review an already saved managed Swarm Deployment replica count before explicit Deploy, including after MCP restart. Operate grant; Deployment/Swarm/Build Read and Swarm Inspect. Bind full private definition/references and exact current replicated service. No writes or execution.",input_schema=schema_for_input::<crate::scaling::ScaleInput>().expect("scale schema"),output_schema=inventory::output_schema::<crate::scaling::DeployReview>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
+    async fn review_deployment_scale_deploy(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "review_deployment_scale_deploy") {
+            Ok(input) => crate::scaling::review_deploy(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Consume one saved-scale deploy review, recheck its private target/configuration/references/service and submit the existing Core Deploy at most once. Operate plus Core Execute. Removes/recreates service; report denied/failed/unknown deployment as partial, retain known update ID, never roll back or replay. Does not prove replicas or health.",input_schema=schema_for_input::<crate::scaling::ApplyInput>().expect("scale schema"),output_schema=inventory::output_schema::<crate::scaling::ScaleDeployment>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn deploy_scaled_deployment(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "deploy_scaled_deployment") {
+            Ok(input) => crate::scaling::deploy(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Observe requested replicas on one managed Swarm Deployment without mutations. Bound current-service tasks, exclude historical/old-service counts, block zero while terminating tasks remain. Deployment Read and Swarm Read+Inspect. Separate cached matching evidence, fresh desired/task state, execution and application health; bounded wait never deploys or rolls back.",input_schema=schema_for_input::<crate::scaling::ObserveInput>().expect("scale schema"),output_schema=inventory::output_schema::<crate::scaling::ScaleObservation>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn observe_deployment_scale(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "observe_deployment_scale") {
+            Ok(input) => crate::scaling::observe(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description="List cached images on exactly one Server with full content IDs, safe references, size and cached use. Core Read only. Bound local pages and 512-row scan; unknown cache coverage, zero mutations. Not a prune dry run.",input_schema=schema_for_input::<crate::docker::ListInput>().expect("docker schema"),output_schema=inventory::output_schema::<crate::docker::Observation<crate::docker::Page<crate::docker::ImageSummary>>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn list_images(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_images") {

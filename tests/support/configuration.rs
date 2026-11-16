@@ -1,4 +1,6 @@
 //! Mutable pinned-wire fixture; captures the actual authenticated HTTP bodies.
+#[path = "configuration/scaling.rs"]
+pub mod scaling;
 use crate::support::{
     KEY, SECRET,
     inventory::Family,
@@ -79,6 +81,7 @@ pub const SWARM: &str = "000000000000000000000009";
 pub const REPO: &str = "00000000000000000000000a";
 pub const BUILD: &str = "00000000000000000000000b";
 pub struct Data {
+    pub scaling: Option<scaling::ScaleData>,
     pub stack: Value,
     pub created: BTreeMap<String, Value>,
     pub deployment: Value,
@@ -154,6 +157,7 @@ impl Core {
         })
         .unwrap();
         let data = Arc::new(Mutex::new(Data {
+            scaling: None,
             stack,
             created: BTreeMap::new(),
             deployment,
@@ -311,6 +315,11 @@ async fn read(
             .into_response();
     }
     let operation = value["type"].as_str().unwrap();
+    if data.scaling.is_some()
+        && let Some(response) = scaling::read(&mut data, &value)
+    {
+        return response;
+    }
     if data.tags_enabled
         && let Some(response) = tag_read(&data, &value)
     {
@@ -414,7 +423,11 @@ async fn execute(
     headers: HeaderMap,
     Json(value): Json<Value>,
 ) -> Response {
-    record(&mut data.lock().unwrap(), &headers, "execute", &value);
+    let mut data = data.lock().unwrap();
+    record(&mut data, &headers, "execute", &value);
+    if data.scaling.is_some() {
+        return scaling::execute(&mut data, &value);
+    }
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         "unexpected fixture execution",

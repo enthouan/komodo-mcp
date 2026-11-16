@@ -4,6 +4,8 @@ This walkthrough uses the production stdio server and the supported Core 2.3.2
 API. It covers existing Server-backed Stacks/Deployments and exact Compose service
 scope. See the [target/action matrix](operations.md#supported-targets)
 for whole-workload Swarm deploy and the rejected Swarm filters/lifecycle actions.
+For managed Swarm replicas, use the separate [save, deploy and task-observation
+workflow](scaling.md), including intentional zero and service recreation effects.
 For deletion, use the separate [deliberate preview/apply workflow](deletion.md):
 Core can perform teardown inside a definition write, and removal is observed
 separately from cleanup. Both local grants and Core Write are required.
@@ -19,9 +21,9 @@ the permission authority, including a denial recorded after acknowledgement.
    `KOMODO_API_SECRET`, `KOMODO_ALLOW_OPERATE=true` and
    `KOMODO_ALLOW_CONFIGURATION_EDIT=false`. These are process environment values;
    `.env` files are not loaded. Restart the child after changing capabilities.
-   With both optional grants disabled, discovery contains fifty-two read tools,
+   With both optional grants disabled, discovery contains fifty-three read tools,
    including exact [discovery by tag](tags.md).
-   Operate adds seventeen tools; configuration editing independently adds typed
+   Operate adds nineteen tools; configuration editing independently adds typed
    preview/apply tools. See [client configuration](../README.md#local-capabilities-and-core-permissions)
    and the [configuration workflow](configuration.md).
 2. Initialize your stdio client and call `tools/list`. Resolve an exact workload

@@ -547,9 +547,33 @@ pub async fn deployment_operation(
     input: DetailInput,
     action: WorkloadOperation,
 ) -> Result<SubmissionReceipt, AppError> {
+    deployment_operation_inner(client, input, action, None).await
+}
+
+/// Scale reviews use the same Deploy path, with a final saved-definition check
+/// at this resolution rather than an earlier, subsequently unchecked read.
+pub(crate) async fn deploy_reviewed_deployment(
+    client: &CoreClient,
+    input: DetailInput,
+    baseline: &serde_json::Value,
+) -> Result<SubmissionReceipt, AppError> {
+    deployment_operation_inner(client, input, WorkloadOperation::Deploy, Some(baseline)).await
+}
+
+async fn deployment_operation_inner(
+    client: &CoreClient,
+    input: DetailInput,
+    action: WorkloadOperation,
+    baseline: Option<&serde_json::Value>,
+) -> Result<SubmissionReceipt, AppError> {
     let (operation, core_operation) = action.deployment_variant()?;
     require_operate(client, operation)?;
     let (_, deployment) = inventory::resolve_deployment(&client.bounded_evidence(), input).await?;
+    if baseline.is_some_and(|expected| {
+        crate::configuration::resource_baseline("deployment", &deployment) != *expected
+    }) {
+        return Err(AppError::new(ErrorKind::StalePreview, operation, None));
+    }
     check_target(
         deployment.template,
         &deployment.config.server_id,
