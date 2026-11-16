@@ -36,7 +36,7 @@ async def exercise():
         async with await f.Mcp.start(proxy.address, fixture.roles['ordinary-admin']['credentials'],
                                     configuration_edit=True) as process:
             mcp = f.Audited(process, proxy)
-            result = await mcp.tool('deploy_deployment', {'target': {'id': did}})
+            result = await mcp.tool('deploy_deployment', {'id': did})
             await complete(mcp, result['update_id'])
             report['initial_deploy_update_id'] = result['update_id']
             service = s.poll(exact_service, 'managed service creation')
