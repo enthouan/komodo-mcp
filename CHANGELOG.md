@@ -7,6 +7,7 @@ notes: short, categorized bullets with links to the relevant pull requests.
 
 ### Added
 
+- Manage ordinary variables and edit secret metadata without returning secret values. ([#117](https://github.com/enthouan/komodo-mcp/pull/117))
 - Preview, save, deploy and observe managed Swarm Deployment replicas, including zero. ([#116](https://github.com/enthouan/komodo-mcp/pull/116))
 - Inspect Docker images, networks and volumes, including safe image history. ([#115](https://github.com/enthouan/komodo-mcp/pull/115))
 - Inspect Swarm nodes, services and tasks, diagnose placement failures, and read exact-service logs. ([#114](https://github.com/enthouan/komodo-mcp/pull/114))
