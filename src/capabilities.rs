@@ -14,6 +14,8 @@ pub enum Capability {
     Destructive,
     /// Docker category pruning requires its own opt-in and operate, not edit.
     Prune,
+    /// One-command terminals require their separate opt-in and operate.
+    Terminal,
 }
 
 /// Independent, immutable startup grants. Reads are always locally enabled.
@@ -22,6 +24,7 @@ pub struct CapabilityPolicy {
     operate: bool,
     configuration_edit: bool,
     pruning: bool,
+    terminal: bool,
 }
 
 pub(crate) fn parse_grant(field: &'static str, value: Option<&str>) -> Result<bool, AppError> {
@@ -41,6 +44,7 @@ impl CapabilityPolicy {
             operate,
             configuration_edit,
             pruning: false,
+            terminal: false,
         }
     }
 
@@ -64,6 +68,15 @@ impl CapabilityPolicy {
         self.pruning
     }
 
+    pub fn with_terminal(mut self, enabled: bool) -> Self {
+        self.terminal = enabled;
+        self
+    }
+
+    pub fn terminal_enabled(self) -> bool {
+        self.terminal
+    }
+
     pub fn allows(self, capability: Capability) -> bool {
         match capability {
             Capability::Read => true,
@@ -71,6 +84,7 @@ impl CapabilityPolicy {
             Capability::ConfigurationEdit => self.configuration_edit,
             Capability::Destructive => self.operate && self.configuration_edit,
             Capability::Prune => self.operate && self.pruning,
+            Capability::Terminal => self.operate && self.terminal,
         }
     }
 }

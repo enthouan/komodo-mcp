@@ -145,6 +145,7 @@ The process reads independent optional grants at startup:
 | `KOMODO_ALLOW_OPERATE` | `false` | Single-workload operations and explicit Repo clone/pull |
 | `KOMODO_ALLOW_CONFIGURATION_EDIT` | `false` | Typed configuration preview/apply tools |
 | `KOMODO_ALLOW_PRUNE` | `false` | Docker category preview/apply, also requiring operate and Core Execute |
+| `KOMODO_ALLOW_TERMINAL` | `false` | One command in a fresh private terminal, also requiring operate and Core Read + Terminal |
 
 Each value must be exactly `true` or `false`. An unset variable means `false`;
 an empty, misspelled, whitespace-padded, or non-Unicode value fails startup with
@@ -156,6 +157,9 @@ change the caller's Core credentials or Core permissions.
 The pruning opt-in controls explicit MCP tools. Core's independent daily Server
 `auto_prune` policy remains configured upstream; the pruning preview shows its
 saved state without changing it.
+The [terminal tool](docs/terminal.md) adds one bounded command in a fresh owned
+session on an exact Server or supported container target, with separate cleanup
+and completion uncertainty reporting.
 
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,

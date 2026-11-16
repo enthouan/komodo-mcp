@@ -41,6 +41,10 @@ impl Config {
         .with_pruning(crate::capabilities::parse_grant(
             "KOMODO_ALLOW_PRUNE",
             optional("KOMODO_ALLOW_PRUNE")?.as_deref(),
+        )?)
+        .with_terminal(crate::capabilities::parse_grant(
+            "KOMODO_ALLOW_TERMINAL",
+            optional("KOMODO_ALLOW_TERMINAL")?.as_deref(),
         )?);
         Ok(Self::parse(
             &read("KOMODO_ADDRESS")?,

@@ -730,6 +730,15 @@ impl Process {
         edit: bool,
         pruning: bool,
     ) -> (Self, Session) {
+        Self::start_profile_terminal(address, operate, edit, pruning, false).await
+    }
+    pub async fn start_profile_terminal(
+        address: &str,
+        operate: bool,
+        edit: bool,
+        pruning: bool,
+        terminal: bool,
+    ) -> (Self, Session) {
         let mut child = Command::new(env!("CARGO_BIN_EXE_komodo-mcp"))
             .env_clear()
             .env("KOMODO_ADDRESS", address)
@@ -740,6 +749,10 @@ impl Process {
                 if operate { "true" } else { "false" },
             )
             .env("KOMODO_ALLOW_PRUNE", if pruning { "true" } else { "false" })
+            .env(
+                "KOMODO_ALLOW_TERMINAL",
+                if terminal { "true" } else { "false" },
+            )
             .env("RUST_LOG", "trace")
             .env(
                 "KOMODO_ALLOW_CONFIGURATION_EDIT",

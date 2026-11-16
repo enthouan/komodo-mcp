@@ -206,7 +206,7 @@ class Mcp:
         env = {'PATH': os.environ.get('PATH', ''), 'KOMODO_ADDRESS': address,
                'KOMODO_API_KEY': credentials['key'], 'KOMODO_API_SECRET': credentials['secret'],
                'KOMODO_ALLOW_OPERATE': str(operate).lower(),
-               'KOMODO_ALLOW_CONFIGURATION_EDIT': str(configuration_edit).lower(), 'KOMODO_ALLOW_PRUNE': 'false', 'RUST_LOG': 'info'}
+               'KOMODO_ALLOW_CONFIGURATION_EDIT': str(configuration_edit).lower(), 'KOMODO_ALLOW_PRUNE': 'false', 'KOMODO_ALLOW_TERMINAL': 'false', 'RUST_LOG': 'info'}
         self.process = await asyncio.create_subprocess_exec(str(BINARY), env=env,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE, limit=MAX_BODY)

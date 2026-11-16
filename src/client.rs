@@ -45,6 +45,8 @@ struct Inner {
     execute_request: reqwest::RequestBuilder,
     write_request: reqwest::RequestBuilder,
     current_caller_request: reqwest::RequestBuilder,
+    terminal_request: reqwest::RequestBuilder,
+    terminals: Arc<crate::terminal::Runtime>,
     previews: crate::configuration::PreviewStore,
     policy: RequestPolicy,
     redactor: Redactor,
@@ -114,6 +116,10 @@ impl CoreClient {
             .get(format!("{}/user", config.address))
             .header("x-api-key", &config.key)
             .header("x-api-secret", &config.secret);
+        let terminal_request = http
+            .post(format!("{}/terminal/execute", config.address))
+            .header("x-api-key", &config.key)
+            .header("x-api-secret", &config.secret);
         let sdk = KomodoClient::new(config.address, config.key, config.secret).set_reqwest(http);
         Ok(Self(
             Arc::new(Inner {
@@ -122,6 +128,8 @@ impl CoreClient {
                 execute_request,
                 write_request,
                 current_caller_request,
+                terminal_request,
+                terminals: Default::default(),
                 previews: Default::default(),
                 policy,
                 redactor,
@@ -133,6 +141,95 @@ impl CoreClient {
 
     pub fn capabilities(&self) -> CapabilityPolicy {
         self.0.capabilities
+    }
+
+    pub(crate) fn terminal_runtime(&self) -> &Arc<crate::terminal::Runtime> {
+        &self.0.terminals
+    }
+
+    /// Cancel observations and allow bounded owned cleanup before runtime exit.
+    pub async fn shutdown_terminals(&self) {
+        self.0.terminals.shutdown().await;
+    }
+
+    /// Closed terminal lifecycle surface. Generic configuration writes still
+    /// reject these operations, and configuration-edit never substitutes for
+    /// the independent terminal + operate grants or Core Read + Terminal.
+    pub(crate) async fn terminal_step(
+        &self,
+        owned: &crate::terminal::Owned,
+        phase: crate::terminal::Phase,
+    ) -> Result<serde_json::Value, AppError> {
+        use crate::terminal::Phase;
+        let operation = match phase {
+            Phase::Create => "CreateTerminal",
+            Phase::Delete => "DeleteTerminal",
+            Phase::Command => {
+                return Err(AppError::new(
+                    ErrorKind::UnsupportedTarget,
+                    "terminal_write",
+                    None,
+                ));
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(10), owned.guard(self, phase))
+            .await
+            .map_err(|_| AppError::new(ErrorKind::Timeout, operation, None))??;
+        let body = serde_json::json!({"type":operation,"params":owned.body(phase)?});
+        let request = self
+            .clone_request(&self.0.write_request, operation)?
+            .json(&body);
+        tokio::time::timeout(Duration::from_secs(10), async {
+            owned.mark_attempt(phase);
+            let mut response = request
+                .send()
+                .await
+                .map_err(|e| AppError::from_upstream(operation, e.into()))?;
+            self.decode_bounded_body(&mut response, operation, None)
+                .await
+        })
+        .await
+        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
+    }
+
+    /// Authenticated one-shot streaming endpoint, fixed path, no initializer,
+    /// redirects or retries. Only the sealed private session proof can reach it.
+    pub(crate) async fn terminal_stream(
+        &self,
+        owned: &crate::terminal::Owned,
+    ) -> Result<Vec<u8>, AppError> {
+        const OP: &str = "ExecuteTerminal";
+        use crate::terminal::Phase;
+        tokio::time::timeout(Duration::from_secs(10), owned.guard(self, Phase::Command))
+            .await
+            .map_err(|_| AppError::new(ErrorKind::Timeout, OP, None))??;
+        let request = self
+            .clone_request(&self.0.terminal_request, OP)?
+            .json(&owned.body(Phase::Command)?);
+        owned.mark_attempt(Phase::Command);
+        let mut response = request
+            .send()
+            .await
+            .map_err(|e| AppError::from_upstream(OP, e.into()))?;
+        if !response.status().is_success() {
+            return Err(AppError::from_http_failure(OP, response.status(), &[]));
+        }
+        const LIMIT: usize = 65_536;
+        if response.content_length().is_some_and(|v| v > LIMIT as u64) {
+            return Err(AppError::new(ErrorKind::ResponseTooLarge, OP, None));
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| AppError::new(ErrorKind::InvalidResponse, OP, None))?
+        {
+            if chunk.len() > LIMIT - bytes.len() {
+                return Err(AppError::new(ErrorKind::ResponseTooLarge, OP, None));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(bytes)
     }
 
     pub(crate) fn previews(&self) -> &crate::configuration::PreviewStore {
@@ -605,6 +702,11 @@ impl CoreClient {
             "GetRepo" => "GetRepo",
             "GetStack" => "GetStack",
             "GetDeployment" => "GetDeployment",
+            op @ ("ListTerminals"
+            | "InspectContainer"
+            | "InspectStackContainer"
+            | "InspectDeploymentContainer"
+            | "ListStackServices") => op,
             "ListGitProviderAccounts" => "ListGitProviderAccounts",
             "ListImageRegistryAccounts" => "ListImageRegistryAccounts",
             "ListGitProvidersFromConfig" => "ListGitProvidersFromConfig",

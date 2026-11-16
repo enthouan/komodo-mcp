@@ -67,23 +67,30 @@ async fn run() -> Result<(), StartupError> {
     tracing::info!(version = %core_version, "connected to Komodo Core");
 
     tracing::info!("starting komodo-mcp over stdio");
-    let service = KomodoServer {
-        client,
-        core_version,
-    }
-    .serve(stdio())
-    .await
-    .map_err(|_| StartupError::Runtime("failed to initialize MCP service over stdio"))?;
-
-    match service
-        .waiting()
+    let outcome = async {
+        let service = KomodoServer {
+            client: client.clone(),
+            core_version,
+        }
+        .serve(stdio())
         .await
-        .map_err(|_| StartupError::Runtime("MCP service task failed"))?
-    {
-        // rmcp reports stdin EOF as Closed after a session has initialized.
-        QuitReason::Closed => tracing::info!("MCP session closed"),
-        QuitReason::JoinError(_) => return Err(StartupError::Runtime("MCP request task failed")),
-        _ => return Err(StartupError::Runtime("MCP service stopped unexpectedly")),
+        .map_err(|_| StartupError::Runtime("failed to initialize MCP service over stdio"))?;
+
+        match service
+            .waiting()
+            .await
+            .map_err(|_| StartupError::Runtime("MCP service task failed"))?
+        {
+            // rmcp reports stdin EOF as Closed after a session has initialized.
+            QuitReason::Closed => tracing::info!("MCP session closed"),
+            QuitReason::JoinError(_) => {
+                return Err(StartupError::Runtime("MCP request task failed"));
+            }
+            _ => return Err(StartupError::Runtime("MCP service stopped unexpectedly")),
+        }
+        Ok(())
     }
-    Ok(())
+    .await;
+    client.shutdown_terminals().await;
+    outcome
 }
