@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import select
 import socket
 import subprocess
 import threading
@@ -218,6 +219,8 @@ class Proxy:
                 self.wfile.write(body)
             def forward(self):
                 connection = timer = transport = response = None
+                monitor = None
+                monitor_stop = threading.Event()
                 terminal_response = False
                 try:
                     s.require(self.path in ['/user', '/read', '/write', '/execute', '/terminal/execute']
@@ -258,6 +261,22 @@ class Proxy:
                     budget = 65536 if self.path == '/terminal/execute' else s.MAX_BODY
                     if self.path == '/terminal/execute':
                         terminal_response = True
+                        def downstream_lifetime():
+                            # A passive proxy must preserve client cancellation:
+                            # keeping Core's stream open after MCP drops its body
+                            # can retain Periphery's execution lock and alter
+                            # the cleanup behavior under test.
+                            while not monitor_stop.wait(.05):
+                                try:
+                                    ready, _, _ = select.select([self.connection], [], [], .05)
+                                    if ready and not self.connection.recv(1, socket.MSG_PEEK):
+                                        abort()
+                                        return
+                                except OSError:
+                                    abort()
+                                    return
+                        monitor = threading.Thread(target=downstream_lifetime, daemon=True)
+                        monitor.start()
                         self.send_response(response.status)
                         self.send_header('Connection', 'close')
                         self.end_headers()
@@ -298,6 +317,8 @@ class Proxy:
                     try: self.reply(502, b'{"fixture":"audit forwarding failed"}')
                     except OSError: pass
                 finally:
+                    monitor_stop.set()
+                    if monitor: monitor.join(timeout=1)
                     if timer:
                         timer.cancel()
                         timer.join(timeout=1)
