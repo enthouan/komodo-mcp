@@ -41,6 +41,7 @@ pub mod swarms;
 pub mod sync_observation;
 pub mod sync_plans;
 pub mod tags;
+pub mod terminal;
 pub mod triage;
 pub mod variables;
 pub mod wait;

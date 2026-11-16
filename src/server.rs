@@ -23,6 +23,7 @@ impl KomodoServer {
             Self::tool_router(),
             self.client.capabilities(),
             |name| match name {
+                "execute_terminal" => Some(Capability::Terminal),
                 "preview_docker_prune" | "apply_docker_prune" => Some(Capability::Prune),
                 "list_users"
                 | "get_user"
@@ -175,6 +176,21 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="Send one bounded command through Core to one exact Server, container, named service of a Server-backed Stack, or Server-backed Deployment. Requires independent KOMODO_ALLOW_TERMINAL=true plus operate, and Core Read + Terminal; container identity additionally needs Inspect. Creates a fresh private 90-second shell, never attaches/recreates, streams once, and checks owned cleanup even after cancellation. No Swarm tasks, persistent state, replay or update ID. A spoofable upstream exit marker is reported separately from removal/termination uncertainty. Core/Periphery may record commands; arbitrary output cannot be guaranteed secret-free.",input_schema=schema_for_input::<crate::terminal::Input>().expect("terminal schema"),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn execute_terminal(
+        &self,
+        arguments: JsonObject,
+        context: RequestContext<RoleServer>,
+    ) -> CallToolResult {
+        let result = match inventory::parse(arguments, "execute_terminal") {
+            Ok(input) => {
+                crate::terminal::execute(&self.client, input, context.ct.cancelled()).await
+            }
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description="Preview one Docker category on one exact enabled Server with pruning opt-in, operate and Core Execute. Show the stable ID and real destructive scope: all-unused images, stopped containers, unused networks, volumes including named volumes, or system including anonymous volumes/build cache. Cached Docker inventory is supporting evidence, never an atomic dry run or named-object list. No prune or write. Private review expires after ten minutes and is single-use.",input_schema=schema_for_input::<crate::pruning::PreviewInput>().expect("prune schema"),output_schema=inventory::output_schema::<crate::pruning::PruneResult>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
     async fn preview_docker_prune(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "preview_docker_prune") {
