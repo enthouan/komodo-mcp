@@ -23,7 +23,13 @@ impl KomodoServer {
             Self::tool_router(),
             self.client.capabilities(),
             |name| match name {
-                "list_alerters"
+                "list_users"
+                | "get_user"
+                | "list_user_groups"
+                | "get_user_group"
+                | "list_direct_permissions"
+                | "get_effective_permission"
+                | "list_alerters"
                 | "get_alerter"
                 | "list_variables"
                 | "get_variable"
@@ -101,10 +107,12 @@ impl KomodoServer {
                 | "run_action"
                 | "cancel_action"
                 | "refresh_resource_sync_pending" => Some(Capability::Operate),
-                "apply_resource_delete" | "apply_tag_delete" | "apply_resource_sync" => {
-                    Some(Capability::Destructive)
-                }
-                "preview_alerter_create"
+                "apply_resource_delete"
+                | "apply_tag_delete"
+                | "apply_resource_sync"
+                | "apply_access_change" => Some(Capability::Destructive),
+                "preview_access_change"
+                | "preview_alerter_create"
                 | "apply_alerter_create"
                 | "preview_alerter_update"
                 | "apply_alerter_update"
@@ -166,6 +174,78 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="List bounded users/service users under Core administrator authority. Return IDs, names, roles, base flags and direct type-wide grants only. Local pages 1–50/512-entry scan and 2 MiB body do not bound Core enumeration. Omit all authentication payloads and descriptions; no credential issuance or mutation.",input_schema=schema_for_input::<crate::access::UserListInput>().expect("access schema"),output_schema=inventory::output_schema::<crate::access::Page<crate::access::UserView>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_users(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_users") {
+            Ok(input) => crate::access::list_users(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Inspect one positively resolved persisted user/service user by stable ID or exact username with Core admin authority. Omit passwords, tokens, authentication configuration, keys and descriptions. Roles and direct grants are metadata, not an effective access result for that user. No mutation.",input_schema=schema_for_input::<DetailInput>().expect("access schema"),output_schema=inventory::output_schema::<crate::access::UserView>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_user(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_user") {
+            Ok(input) => crate::access::get_user(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="List bounded visible groups, explicit membership IDs and direct type-wide grants. Core non-admin visibility excludes groups without explicit membership, including some everyone groups. Local pages/512 scan/2 MiB body; never reconstruct effective access from the visible list. No mutation.",input_schema=schema_for_input::<crate::access::ListInput>().expect("access schema"),output_schema=inventory::output_schema::<crate::access::Page<crate::access::GroupView>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_user_groups(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_user_groups") {
+            Ok(input) => crate::access::list_groups(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Inspect one exact visible group, bounded explicit membership IDs, everyone scope and direct type-wide grants. Core retains visibility rules; positive ID/name resolution never falls back to another group. Direct records are not effective member access. No mutation.",input_schema=schema_for_input::<DetailInput>().expect("access schema"),output_schema=inventory::output_schema::<crate::access::GroupView>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_user_group(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_user_group") {
+            Ok(input) => crate::access::get_group(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Inspect explicitly current-caller scoped direct records, or administrator-selected User/Group records plus type-wide grants. Current-caller ListPermissions excludes user.all and group inheritance. Selected records never claim other-user effective access. Known specifics projected; unknown values omitted with incomplete evidence. No mutation.",input_schema=schema_for_input::<crate::access::DirectInput>().expect("access schema"),output_schema=inventory::output_schema::<crate::access::DirectPermissions>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_direct_permissions(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_direct_permissions") {
+            Ok(input) => crate::access::direct(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Ask Core GetPermission for the current credential only, including group/everyone, type-wide, resource-base and specific flags. Resolve names/readable IDs positively; a no-access stable-ID result discloses no resource metadata and does not independently establish existence. Core admin shortcut alone cannot prove existence. No impersonation, other-user effective calculation, mutation or future authorization guarantee.",input_schema=schema_for_input::<crate::access::EffectiveInput>().expect("access schema"),output_schema=inventory::output_schema::<crate::access::EffectivePermission>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_effective_permission(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_effective_permission") {
+            Ok(input) => crate::access::effective(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Prepare one typed private access preview: service-user create/description, user base/admin/delete, group create/rename/delete/additive member/everyone, or direct grant on one explicit resource or resource type. Configuration-edit and actual Core admin/super-admin rules. Show broad scope and preserved specifics; complete raw auth/grant baselines stay private in the shared ten-minute single-use store. No write or credential issuance.",input_schema=schema_for_input::<crate::access::PreviewInput>().expect("access schema"),output_schema=inventory::output_schema::<crate::access::AccessResult>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
+    async fn preview_access_change(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_access_change") {
+            Ok(input) => crate::access::preview(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Consume one matching access preview with BOTH local grants and actual enabled Core admin/super-admin authority. Revalidate complete private caller/user/group/resource/grant baselines inside the shared transport before at most one scoped typed write. Preserve unrelated members/specifics; reject self-lockout/protected targets. Separate acknowledgement, independent read-back and deletion leftovers. No automatic retry, fallback, invented update ID, hidden cleanup write or credential issuance.",input_schema=schema_for_input::<crate::access::ApplyInput>().expect("access schema"),output_schema=inventory::output_schema::<crate::access::AccessResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn apply_access_change(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_access_change") {
+            Ok(input) => crate::access::apply(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description="List bounded visible Alerters with enabled and endpoint type only. Core Read; no endpoint URLs, tokens or recipient details. No sends or writes.", input_schema=schema_for_input::<ListInput>().expect("alerter schema"), output_schema=inventory::output_schema::<Page<crate::alerters::Summary>>(), annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn list_alerters(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_alerters") {

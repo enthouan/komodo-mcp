@@ -183,9 +183,9 @@ async fn all_four_profiles_enforce_discovery_and_direct_dispatch_before_any_core
             let tools = session.list_tools(None).await.unwrap().tools;
             assert_eq!(
                 tools.len(),
-                58 + 20 * usize::from(operate)
-                    + 54 * usize::from(edit)
-                    + 3 * usize::from(operate && edit)
+                64 + 20 * usize::from(operate)
+                    + 55 * usize::from(edit)
+                    + 4 * usize::from(operate && edit)
             );
             for name in [
                 "preview_stack_update",

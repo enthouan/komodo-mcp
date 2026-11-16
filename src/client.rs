@@ -192,6 +192,50 @@ impl CoreClient {
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None))))
     }
 
+    /// Administration uses its own closed whitelist and final private authority /
+    /// baseline check. Generic configuration writes cannot issue credentials or
+    /// bypass this boundary; response authentication objects stay raw and private.
+    pub(crate) async fn access_write_checked<T>(
+        &self,
+        request: T,
+        proof: &serde_json::Value,
+    ) -> Result<Result<serde_json::Value, AppError>, AppError>
+    where
+        T: Serialize + KomodoWriteRequest,
+    {
+        let operation = match T::req_type() {
+            op @ ("CreateServiceUser"
+            | "UpdateServiceUserDescription"
+            | "UpdateUserBasePermissions"
+            | "UpdateUserAdmin"
+            | "DeleteUser"
+            | "CreateUserGroup"
+            | "RenameUserGroup"
+            | "DeleteUserGroup"
+            | "AddUserToUserGroup"
+            | "RemoveUserFromUserGroup"
+            | "SetEveryoneUserGroup"
+            | "UpdatePermissionOnTarget"
+            | "UpdatePermissionOnResourceType") => op,
+            _ => {
+                return Err(AppError::new(
+                    ErrorKind::UnsupportedTarget,
+                    "access_write",
+                    None,
+                ));
+            }
+        };
+        let parameters = serde_json::to_value(request)
+            .map_err(|_| AppError::new(ErrorKind::InvalidArguments, operation, None))?;
+        crate::access::guard_write(self, operation, &parameters, proof).await?;
+        Ok(tokio::time::timeout(
+            self.0.policy.operation_timeout,
+            self.request_bounded_body(&self.0.write_request, parameters, operation, operation),
+        )
+        .await
+        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None))))
+    }
+
     /// One typed configuration submission. No redirects, mutation retries or
     /// credential fallback; the same deadlines and streaming body cap apply.
     pub(crate) async fn write<T>(&self, request: T) -> Result<T::Response, AppError>
@@ -511,6 +555,13 @@ impl CoreClient {
             | "ListRepos" | "ListBuilders" | "ListAlerters" | "ListProcedures"
             | "ListActions" | "ListResourceSyncs" | "GetSwarm" | "GetBuild"
             | "GetProcedure" | "GetAction" | "GetResourceSync") => op,
+            op @ ("ListUsers"
+            | "FindUser"
+            | "ListUserGroups"
+            | "GetUserGroup"
+            | "ListPermissions"
+            | "ListUserTargetPermissions"
+            | "GetPermission") => op,
             "ListFullBuilders" => "ListFullBuilders",
             "ListFullAlerters" => "ListFullAlerters",
             "ListFullRepos" => "ListFullRepos",
