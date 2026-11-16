@@ -452,18 +452,42 @@ fn targets(v: &Value) -> Vec<crate::history::HistoryTarget> {
         })
         .collect()
 }
+fn maintenance_metadata(w: &Value) -> Value {
+    let schedule = match w["schedule_type"].as_str() {
+        Some(s @ ("Daily" | "Weekly" | "OneTime")) => Some(s),
+        _ => None,
+    };
+    let mut safe = json!({
+        "enabled": w["enabled"].as_bool(),
+        "hour": w["hour"].as_u64().filter(|n| *n <= 23),
+        "minute": w["minute"].as_u64().filter(|n| *n <= 59),
+        "duration_minutes": w["duration_minutes"].as_u64(),
+        "schedule_type": schedule,
+    });
+    if let Some(day) = w["day_of_week"]
+        .as_str()
+        .filter(|d| serde_json::from_value::<Weekday>(json!(d)).is_ok())
+    {
+        safe["day_of_week"] = json!(day);
+    }
+    if let Some(date) = w["date"].as_str().filter(|d| valid_date(d)) {
+        safe["date"] = json!(date);
+    }
+    if let Some(tz) = w["timezone"].as_str().filter(|t| {
+        t.len() <= 128
+            && t.bytes()
+                .all(|b| b.is_ascii_alphabetic() || b"_/-+:0123456789".contains(&b))
+    }) {
+        safe["timezone"] = json!(tz);
+    }
+    safe
+}
 fn summary(v: &Value) -> Result<DefinitionSummary, AppError> {
     let c: AlerterConfig = serde_json::from_value(v.clone()).map_err(|_| invalid())?;
     let resources = targets(&v["resources"]);
     let except = targets(&v["except_resources"]);
     let windows = v["maintenance_windows"].as_array().ok_or_else(invalid)?;
-    let maintenance_windows=windows.iter().take(16).map(|w|{
-        let mut safe=json!({"enabled":w["enabled"].as_bool(),"hour":w["hour"].as_u64().filter(|n|*n<=23),"minute":w["minute"].as_u64().filter(|n|*n<=59),"duration_minutes":w["duration_minutes"].as_u64(),"schedule_type":match w["schedule_type"].as_str(){Some(s @ ("Daily"|"Weekly"|"OneTime"))=>Some(s),_=>None}});
-        if let Some(day)=w["day_of_week"].as_str().filter(|d|serde_json::from_value::<Weekday>(json!(d)).is_ok()){safe["day_of_week"]=json!(day);}
-        if let Some(date)=w["date"].as_str().filter(|d|valid_date(d)){safe["date"]=json!(date);}
-        if let Some(tz)=w["timezone"].as_str().filter(|t|t.len()<=128 && t.bytes().all(|b|b.is_ascii_alphabetic() || b"_/-+:0123456789".contains(&b))){safe["timezone"]=json!(tz);}
-        safe
-    }).collect();
+    let maintenance_windows = windows.iter().take(16).map(maintenance_metadata).collect();
     Ok(DefinitionSummary {
         enabled: c.enabled,
         endpoint_type: endpoint_kind(&v["endpoint"]).ok_or_else(invalid)?.into(),
