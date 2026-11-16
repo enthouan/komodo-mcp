@@ -121,6 +121,7 @@ impl RecoveryInput {
         }
         self.target.id.make_ascii_lowercase();
         let compatible = match self.target.kind {
+            WorkloadKind::Server => matches!(self.operation, WorkloadOperation::Prune),
             WorkloadKind::Repo => matches!(
                 self.operation,
                 WorkloadOperation::Clone | WorkloadOperation::Pull
@@ -143,6 +144,7 @@ impl RecoveryInput {
             return Err(invalid());
         }
         match (&self.target.kind, &self.requested_scope) {
+            (WorkloadKind::Server, RequestedScope::DockerPrune { .. }) => (),
             (WorkloadKind::Stack, RequestedScope::WholeStack {})
             | (WorkloadKind::Deployment, RequestedScope::WholeDeployment {}) => (),
             (WorkloadKind::Repo, RequestedScope::WholeRepo {}) => (),
@@ -257,6 +259,7 @@ pub async fn reconcile_operation(
     input.validate()?;
     let target = HistoryTarget {
         kind: match input.target.kind {
+            WorkloadKind::Server => ResourceKind::Server,
             WorkloadKind::Alerter => ResourceKind::Alerter,
             WorkloadKind::Stack => ResourceKind::Stack,
             WorkloadKind::Deployment => ResourceKind::Deployment,
@@ -269,6 +272,7 @@ pub async fn reconcile_operation(
         id: input.target.id.clone(),
     };
     let expected_target = match input.target.kind {
+        WorkloadKind::Server => ResourceTarget::Server(input.target.id.clone()),
         WorkloadKind::Alerter => ResourceTarget::Alerter(input.target.id.clone()),
         WorkloadKind::Stack => ResourceTarget::Stack(input.target.id.clone()),
         WorkloadKind::Deployment => ResourceTarget::Deployment(input.target.id.clone()),
@@ -279,6 +283,10 @@ pub async fn reconcile_operation(
         WorkloadKind::ResourceSync => ResourceTarget::ResourceSync(input.target.id.clone()),
     };
     let operation = match input.target.kind {
+        WorkloadKind::Server => match input.requested_scope {
+            RequestedScope::DockerPrune { category } => category.core(),
+            _ => unreachable!("validated prune scope"),
+        },
         WorkloadKind::Alerter => komodo_client::entities::Operation::TestAlerter,
         WorkloadKind::ResourceSync => komodo_client::entities::Operation::RunSync,
         WorkloadKind::Stack => {

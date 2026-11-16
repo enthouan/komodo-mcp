@@ -42,6 +42,7 @@ fn operation(c: &Context) -> &'static str {
 fn history_target(r: &OperationResource) -> HistoryTarget {
     HistoryTarget {
         kind: match r.kind {
+            WorkloadKind::Server => ResourceKind::Server,
             WorkloadKind::Build => ResourceKind::Build,
             WorkloadKind::Procedure => ResourceKind::Procedure,
             WorkloadKind::Action => ResourceKind::Action,

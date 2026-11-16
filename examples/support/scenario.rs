@@ -201,6 +201,7 @@ impl Process {
             "KOMODO_API_SECRET",
             "KOMODO_ALLOW_OPERATE",
             "KOMODO_ALLOW_CONFIGURATION_EDIT",
+            "KOMODO_ALLOW_PRUNE",
         ] {
             command.env_remove(field);
         }

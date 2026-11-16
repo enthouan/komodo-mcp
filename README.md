@@ -21,6 +21,9 @@ services and tasks, trace placement failures, and read bounded exact-service log
 Cached lists and fresh inspection remain distinct.
 The [Docker inspection tools](docs/docker.md) list and inspect images, networks
 and volumes on one Server, with safe image history and explicit cache limits.
+The [pruning workflow](docs/pruning.md) adds a separate default-off opt-in for
+one reviewed category on one Server, with explicit destructive acknowledgement
+and read-only recovery after uncertain replies.
 The [managed Swarm scaling tools](docs/scaling.md) preview and save replica
 counts, explicitly deploy the saved definition, and separately observe current
 tasks. Save and deploy grants remain independent; zero is deliberate. Core
@@ -135,20 +138,21 @@ A permission-filtered empty inventory is a successful result.
 
 ### Local capabilities and Core permissions
 
-The process reads two independent optional grants at startup:
+The process reads independent optional grants at startup:
 
 | Variable | Default | Enables |
 | --- | --- | --- |
 | `KOMODO_ALLOW_OPERATE` | `false` | Single-workload operations and explicit Repo clone/pull |
 | `KOMODO_ALLOW_CONFIGURATION_EDIT` | `false` | Typed configuration preview/apply tools |
+| `KOMODO_ALLOW_PRUNE` | `false` | Docker category preview/apply, also requiring operate and Core Execute |
 
 Each value must be exactly `true` or `false`. An unset variable means `false`;
 an empty, misspelled, whitespace-padded, or non-Unicode value fails startup with
 a safe configuration error before contacting Core. Restart the MCP process after
 changing a grant. For example, set `KOMODO_ALLOW_OPERATE=true` in the MCP client's
 server environment to opt into operations while configuration editing stays off.
-Enabling configuration editing alone never enables operations. Neither grant
-changes the caller's Core credentials or Core permissions.
+Enabling configuration editing alone never enables operations. These grants never
+change the caller's Core credentials or Core permissions.
 
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,

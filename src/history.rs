@@ -208,6 +208,7 @@ fn observed_revision(client: &CoreClient, update: &Update) -> Option<RevisionObs
     if update.operation == komodo_client::entities::Operation::RunSync
         || crate::variables::private_history(update.operation)
         || crate::alerters::private_history(update.operation)
+        || crate::pruning::private_history(update.operation)
     {
         return None;
     }
@@ -597,7 +598,16 @@ pub(crate) fn project_update_detail(
         .map(|(index, log)| {
             // Sync and trusted automation output can disclose raw source,
             // arguments or administrator credentials, including after restart.
-            if crate::alerters::private_history(update.operation) {
+            if crate::pruning::private_history(update.operation) {
+                let mut safe = log.clone();
+                safe.stage = "Docker prune operation".into();
+                safe.stderr = if log.stderr.is_empty() { String::new() } else {
+                    "Prune output omitted because Core history may contain private object names, registry references or daemon errors. Inspect the update outcome and independently verify removals and surviving resources.".into()
+                };
+                let mut stage = project_stage(client, index, &safe);
+                stage.stderr_truncated = !log.stderr.is_empty();
+                stage
+            } else if crate::alerters::private_history(update.operation) {
                 let mut safe = log.clone();
                 safe.stage = "Alerter operation".into();
                 safe.stderr = if log.stderr.is_empty() { String::new() } else {

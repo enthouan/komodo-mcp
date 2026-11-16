@@ -37,7 +37,11 @@ impl Config {
         let capabilities = CapabilityPolicy::parse(
             optional("KOMODO_ALLOW_OPERATE")?.as_deref(),
             optional("KOMODO_ALLOW_CONFIGURATION_EDIT")?.as_deref(),
-        )?;
+        )?
+        .with_pruning(crate::capabilities::parse_grant(
+            "KOMODO_ALLOW_PRUNE",
+            optional("KOMODO_ALLOW_PRUNE")?.as_deref(),
+        )?);
         Ok(Self::parse(
             &read("KOMODO_ADDRESS")?,
             &read("KOMODO_API_KEY")?,

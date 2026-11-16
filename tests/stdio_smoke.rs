@@ -50,6 +50,7 @@ impl Process {
             "KOMODO_API_SECRET",
             "KOMODO_ALLOW_OPERATE",
             "KOMODO_ALLOW_CONFIGURATION_EDIT",
+            "KOMODO_ALLOW_PRUNE",
         ] {
             command.env_remove(field);
         }
@@ -608,6 +609,7 @@ async fn missing_and_invalid_environment_fail_safely() -> Result<()> {
         ("KOMODO_API_SECRET", String::new()),
         ("KOMODO_ALLOW_OPERATE", format!("true {KEY} {SECRET}")),
         ("KOMODO_ALLOW_CONFIGURATION_EDIT", "TRUE".into()),
+        ("KOMODO_ALLOW_PRUNE", format!("true {KEY} {SECRET}")),
     ] {
         startup_failure(
             &[
