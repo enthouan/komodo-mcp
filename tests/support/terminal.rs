@@ -67,6 +67,7 @@ pub struct Data {
     pub delete_lost: bool,
     pub list_status: u16,
     pub inspect_status: u16,
+    pub reads: BTreeMap<String, Value>,
 }
 pub struct Core {
     pub address: String,
@@ -102,6 +103,7 @@ impl Core {
             delete_lost: false,
             list_status: 200,
             inspect_status: 200,
+            reads: BTreeMap::new(),
         }));
         let state = data.clone();
         let task = Task(tokio::spawn(async move {
@@ -177,6 +179,9 @@ fn respond(d: &mut Data, path: &str, v: Value) -> Reply {
         operation: op.clone(),
         params: p.clone(),
     });
+    if let Some(raw) = d.reads.get(&op) {
+        return value(raw.clone());
+    }
     match op.as_str() {
         "GetVersion" => value(json!({"version":"2.3.2"})),
         "CurrentCaller" => value(d.caller.clone()),

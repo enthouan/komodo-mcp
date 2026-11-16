@@ -235,6 +235,11 @@ refresh, rejects detected drift, and submits at most one RunSync.
 `wait_for_resource_sync_update` resumes a retained update ID through read-only
 identity checks. Parent success, independent resource observations and workload
 health remain separate; see [reviewed application](docs/resource-syncs.md#apply-a-reviewed-selection).
+
+Follow the [Swarm and administration walkthrough](docs/swarm-admin-walkthrough.md)
+for the complete operator workflow and opt-in manager/worker acceptance, including
+all retained Core, automation and ResourceSync regressions.
+
 Follow the [ResourceSync operator walkthrough](docs/resource-sync-walkthrough.md)
 for export through independent inspection, source/reset/deletion semantics,
 recovery and the opt-in full disposable Core/automation integration smoke.
