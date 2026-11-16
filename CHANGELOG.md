@@ -5,17 +5,15 @@ notes: short, categorized bullets with links to the relevant pull requests.
 
 ## Unreleased
 
+## v0.7.0
+
 ### Added
 
-- Add a complete Swarm and administration walkthrough and disposable integration validation. ([#122](https://github.com/enthouan/komodo-mcp/pull/122))
+- Inspect Swarm placement and scale managed Deployments, including zero. ([#114](https://github.com/enthouan/komodo-mcp/pull/114), [#116](https://github.com/enthouan/komodo-mcp/pull/116))
+- Inspect Docker objects and explicitly prune one selected Server behind a separate opt-in. ([#115](https://github.com/enthouan/komodo-mcp/pull/115), [#120](https://github.com/enthouan/komodo-mcp/pull/120))
+- Manage ordinary variables, secret metadata, Alerters and scoped access. ([#117](https://github.com/enthouan/komodo-mcp/pull/117), [#118](https://github.com/enthouan/komodo-mcp/pull/118), [#119](https://github.com/enthouan/komodo-mcp/pull/119))
 - Execute one bounded command in a fresh owned terminal behind a separate opt-in. ([#121](https://github.com/enthouan/komodo-mcp/pull/121))
-- Preview and explicitly apply Docker category pruning behind a separate opt-in. ([#120](https://github.com/enthouan/komodo-mcp/pull/120))
-- Inspect users, groups and effective access, and apply scoped administration changes. ([#119](https://github.com/enthouan/komodo-mcp/pull/119))
-- Configure named Alerters and explicitly test one saved endpoint with safe delivery reporting. ([#118](https://github.com/enthouan/komodo-mcp/pull/118))
-- Manage ordinary variables and edit secret metadata without returning secret values. ([#117](https://github.com/enthouan/komodo-mcp/pull/117))
-- Preview, save, deploy and observe managed Swarm Deployment replicas, including zero. ([#116](https://github.com/enthouan/komodo-mcp/pull/116))
-- Inspect Docker images, networks and volumes, including safe image history. ([#115](https://github.com/enthouan/komodo-mcp/pull/115))
-- Inspect Swarm nodes, services and tasks, diagnose placement failures, and read exact-service logs. ([#114](https://github.com/enthouan/komodo-mcp/pull/114))
+- Follow the complete Swarm and administration walkthrough and disposable integration validation. ([#122](https://github.com/enthouan/komodo-mcp/pull/122))
 
 ## v0.6.0
 
