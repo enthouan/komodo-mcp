@@ -458,7 +458,7 @@ async fn production_keeps_all_reads_and_recovery_history_for_every_policy() {
             for tool in tools {
                 let mutation = [
                     "deploy_", "start_", "stop_", "restart_", "clone_", "pull_", "run_", "cancel_",
-                    "refresh_",
+                    "refresh_", "test_",
                 ]
                 .iter()
                 .any(|prefix| tool.name.starts_with(prefix))
