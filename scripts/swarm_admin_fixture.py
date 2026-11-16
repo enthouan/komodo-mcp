@@ -57,7 +57,6 @@ def customize(config):
     for svc in config['services'].values():
         svc['image'] = PINS.get(svc['image'], svc['image'])
         svc['restart'] = 'no'
-    config['services']['core']['environment']['KOMODO_TIMEZONE'] = 'UTC'
     for name in ['PERIPHERY_DISABLE_TERMINALS', 'PERIPHERY_DISABLE_CONTAINER_TERMINALS']:
         config['services']['periphery']['environment'][name] = 'false'
     worker = copy.deepcopy(config['services']['docker'])
@@ -425,11 +424,11 @@ class Fixture:
             self.private_save()
             self.admin.write('UpdateUserBasePermissions', {'user_id': row['id'], 'enabled': True,
                 'create_servers': False, 'create_builds': False})
-            if role in ['ordinary-admin', 'super-admin']:
-                self.admin.write('UpdateUserAdmin', {'user_id': row['id'], 'admin': True})
             level = 'Execute' if role == 'pruner' else 'Read'
             specifics = ['Inspect', 'Logs', 'Terminal'] if role == 'terminal' else ['Inspect', 'Logs'] if role == 'reader' else []
             self.grant(role, 'Server', self.sid, level, specifics)
+            if role in ['ordinary-admin', 'super-admin']:
+                self.admin.write('UpdateUserAdmin', {'user_id': row['id'], 'admin': True})
             keys = self.admin.write('CreateApiKeyForServiceUser', {'user_id': row['id'],
                 'name': self.prefix + role, 'expires': int(time.time()*1000) + 12*3600000})
             s.SECRETS.extend([keys['key'], keys['secret']])
