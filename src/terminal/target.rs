@@ -74,7 +74,13 @@ fn inspect(raw: Value) -> Result<Value, AppError> {
         .filter(|s| !s.is_empty() && s.len() <= 128)
         .ok_or_else(invalid)?;
     let labels = &raw["Config"]["Labels"];
-    if !labels.is_null() && !labels.is_object() {
+    // Pinned Core serializes ContainerConfig.labels as a nonoptional map.
+    // Missing/null Config or Labels is incomplete evidence, never proof that
+    // this container lacks Swarm task/service identity labels.
+    if !labels
+        .as_object()
+        .is_some_and(|labels| labels.values().all(Value::is_string))
+    {
         return Err(invalid());
     }
     if labels

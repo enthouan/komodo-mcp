@@ -28,7 +28,9 @@ Each resource selector accepts exactly one stable 24-hex `id` or exact `name`.
 Stacks require a unique cached service, matching complete fresh container ID,
 name and Compose project/service labels. Deployments require the actual deployed
 container name. Unknown, duplicate, stale or unreadable identities fail closed.
-Swarm-backed parents and containers with Docker Swarm task/service/node labels
+Missing or malformed container label metadata is incomplete evidence, rather
+than proof that a container is outside Swarm. Pinned Core's complete empty label
+map remains supported. Swarm-backed parents and containers with Docker Swarm task/service/node labels
 are unsupported on every path. Docker ID prefixes, arbitrary target variants,
 fleet execution and fallback targets are unsupported.
 

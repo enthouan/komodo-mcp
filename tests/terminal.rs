@@ -357,6 +357,40 @@ async fn swarm_parents_tasks_stale_container_names_and_duplicate_services_never_
 }
 
 #[tokio::test]
+async fn incomplete_container_labels_never_mean_not_a_swarm_task_and_a_complete_empty_map_is_supported()
+ {
+    for config in [
+        Value::Null,
+        json!({}),
+        json!({"Labels":null}),
+        json!({"Labels":[]}),
+        json!({"Labels":{"invalid":false}}),
+    ] {
+        let c = Core::start().await;
+        c.data.lock().unwrap().container["Config"] = config;
+        let (p, s) = start(&c).await;
+        let mut v = input();
+        v["target"] = json!({"kind":"container","server":{"id":SERVER},"container":{"id":cid()}});
+        assert_eq!(
+            error(call(&s, "execute_terminal", v).await)["kind"],
+            "invalid_response"
+        );
+        assert_eq!(mutations(&c), 0);
+        finish(p, s, &c).await;
+    }
+    let c = Core::start().await;
+    c.data.lock().unwrap().container["Config"]["Labels"] = json!({});
+    let (p, s) = start(&c).await;
+    let mut v = input();
+    v["target"] = json!({"kind":"container","server":{"id":SERVER},"container":{"id":cid()}});
+    assert_eq!(
+        run(&s, v).await["attempts"],
+        json!({"create":1,"command":1,"delete":1})
+    );
+    finish(p, s, &c).await;
+}
+
+#[tokio::test]
 async fn foreign_collision_is_preserved_and_does_not_attach_create_execute_or_delete() {
     let c = Core::start().await;
     c.data.lock().unwrap().collision = true;
