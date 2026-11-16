@@ -203,7 +203,9 @@ pub struct RevisionObservation {
 fn observed_revision(client: &CoreClient, update: &Update) -> Option<RevisionObservation> {
     // Pinned RunSync does not bind a revision to its update. Pending/last-sync
     // hashes can describe a later refresh and cannot be attributed to this run.
-    if update.operation == komodo_client::entities::Operation::RunSync {
+    if update.operation == komodo_client::entities::Operation::RunSync
+        || crate::variables::private_history(update.operation)
+    {
         return None;
     }
     if let Some(revision) = crate::repositories::revision(client, &update.commit_hash) {
@@ -592,7 +594,16 @@ pub(crate) fn project_update_detail(
         .map(|(index, log)| {
             // Sync and trusted automation output can disclose raw source,
             // arguments or administrator credentials, including after restart.
-            if update.operation == komodo_client::entities::Operation::RunSync {
+            if crate::variables::private_history(update.operation) {
+                let mut safe = log.clone();
+                safe.stage = "Variable operation".into();
+                safe.stderr = if log.stderr.is_empty() { String::new() } else {
+                    "Variable output omitted because pinned Core history can contain raw values, including external secret writes. Inspect status and variable metadata separately.".into()
+                };
+                let mut stage = project_stage(client, index, &safe);
+                stage.stderr_truncated = !log.stderr.is_empty();
+                stage
+            } else if update.operation == komodo_client::entities::Operation::RunSync {
                 let mut safe=log.clone();
                 safe.stage=crate::sync_observation::stage(&log.stage).0.into();
                 safe.stderr=if log.stderr.is_empty() {String::new()} else {

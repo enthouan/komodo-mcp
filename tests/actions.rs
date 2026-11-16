@@ -62,8 +62,8 @@ async fn all_profiles_guard_discovery_direct_dispatch_and_existing_execution_eff
             let tools = s.list_tools(None).await.unwrap().tools;
             assert_eq!(
                 tools.len(),
-                53 + 19 * usize::from(operate)
-                    + 48 * usize::from(edit_grant)
+                56 + 19 * usize::from(operate)
+                    + 50 * usize::from(edit_grant)
                     + 3 * usize::from(operate && edit_grant)
             );
             for name in [

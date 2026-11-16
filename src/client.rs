@@ -44,6 +44,7 @@ struct Inner {
     bounded_request: reqwest::RequestBuilder,
     execute_request: reqwest::RequestBuilder,
     write_request: reqwest::RequestBuilder,
+    current_caller_request: reqwest::RequestBuilder,
     previews: crate::configuration::PreviewStore,
     policy: RequestPolicy,
     redactor: Redactor,
@@ -107,6 +108,12 @@ impl CoreClient {
             .post(format!("{}/write", config.address))
             .header("x-api-key", &config.key)
             .header("x-api-secret", &config.secret);
+        // Pinned Core exposes the authenticated current caller through GET
+        // /user, outside the typed Rust read API. No caller-supplied path.
+        let current_caller_request = http
+            .get(format!("{}/user", config.address))
+            .header("x-api-key", &config.key)
+            .header("x-api-secret", &config.secret);
         let sdk = KomodoClient::new(config.address, config.key, config.secret).set_reqwest(http);
         Ok(Self(
             Arc::new(Inner {
@@ -114,6 +121,7 @@ impl CoreClient {
                 bounded_request,
                 execute_request,
                 write_request,
+                current_caller_request,
                 previews: Default::default(),
                 policy,
                 redactor,
@@ -129,6 +137,59 @@ impl CoreClient {
 
     pub(crate) fn previews(&self) -> &crate::configuration::PreviewStore {
         &self.0.previews
+    }
+
+    /// Drop authentication configuration immediately, regardless of upstream
+    /// sanitization. GET /user itself allows disabled callers in pinned Core;
+    /// mutation handlers explicitly require enabled administrator authority.
+    pub(crate) async fn current_caller(&self) -> Result<serde_json::Value, AppError> {
+        const OP: &str = "CurrentCaller";
+        tokio::time::timeout(self.0.policy.operation_timeout, async {
+            let mut response = self.clone_request(&self.0.current_caller_request, OP)?
+                .send().await.map_err(|e| AppError::from_upstream(OP, e.into()))?;
+            let raw: serde_json::Value = self.decode_bounded_body(&mut response, OP, None).await?;
+            if !raw["_id"]["$oid"].as_str().is_some_and(crate::deletion::object_id)
+                || !raw["username"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 500 && !s.chars().any(char::is_control))
+                || ["enabled", "admin", "super_admin"].iter().any(|k| !raw[*k].is_boolean())
+            {
+                return Err(AppError::new(ErrorKind::InvalidResponse, OP, None));
+            }
+            Ok(serde_json::json!({"id":raw["_id"]["$oid"],"username":raw["username"],"enabled":raw["enabled"],"admin":raw["admin"],"super_admin":raw["super_admin"]}))
+        }).await.unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, OP, None)))
+    }
+
+    /// One narrowly typed variable write with independent local policy and a
+    /// final complete private baseline/authority check. No SDK defaults or retry.
+    pub(crate) async fn variable_write_checked<T>(
+        &self,
+        request: T,
+        baseline: &serde_json::Value,
+    ) -> Result<Result<serde_json::Value, AppError>, AppError>
+    where
+        T: Serialize + KomodoWriteRequest,
+    {
+        let operation = match T::req_type() {
+            op @ ("CreateVariable"
+            | "UpdateVariableValue"
+            | "UpdateVariableDescription"
+            | "DeleteVariable") => op,
+            _ => {
+                return Err(AppError::new(
+                    ErrorKind::UnsupportedTarget,
+                    "variable_write",
+                    None,
+                ));
+            }
+        };
+        let parameters = serde_json::to_value(request)
+            .map_err(|_| AppError::new(ErrorKind::InvalidArguments, operation, None))?;
+        crate::variables::guard_write(self, operation, &parameters, baseline).await?;
+        Ok(tokio::time::timeout(
+            self.0.policy.operation_timeout,
+            self.request_bounded_body(&self.0.write_request, parameters, operation, operation),
+        )
+        .await
+        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None))))
     }
 
     /// One typed configuration submission. No redirects, mutation retries or
@@ -440,11 +501,11 @@ impl CoreClient {
         T: Serialize + KomodoReadRequest,
     {
         let operation = match T::req_type() {
-            op @ ("ListTags" | "ListVariables" | "ListServers" | "ListStacks"
-            | "ListDeployments" | "ListSwarms" | "ListBuilds" | "ListRepos"
-            | "ListBuilders" | "ListAlerters" | "ListProcedures" | "ListActions"
-            | "ListResourceSyncs" | "GetSwarm" | "GetBuild" | "GetProcedure"
-            | "GetAction" | "GetResourceSync") => op,
+            op @ ("ListTags" | "ListVariables" | "GetVariable" | "ListSecrets" | "ListServers"
+            | "ListStacks" | "ListDeployments" | "ListSwarms" | "ListBuilds"
+            | "ListRepos" | "ListBuilders" | "ListAlerters" | "ListProcedures"
+            | "ListActions" | "ListResourceSyncs" | "GetSwarm" | "GetBuild"
+            | "GetProcedure" | "GetAction" | "GetResourceSync") => op,
             "ListFullBuilders" => "ListFullBuilders",
             "ListFullAlerters" => "ListFullAlerters",
             "ListFullRepos" => "ListFullRepos",
@@ -484,6 +545,9 @@ impl CoreClient {
     {
         let operation = match T::req_type() {
             "GetVersion" => "GetVersion",
+            "ListVariables" => "ListVariables",
+            "GetVariable" => "GetVariable",
+            "ListSecrets" => "ListSecrets",
             "ListServers" => "ListServers",
             "GetServer" => "GetServer",
             "ListStacks" => "ListStacks",
@@ -550,6 +614,9 @@ impl CoreClient {
                 || matches!(
                     T::req_type(),
                     "GetContainerLog"
+                        | "ListVariables"
+                        | "GetVariable"
+                        | "ListSecrets"
                         | "ListImages"
                         | "InspectImage"
                         | "ListImageHistory"
@@ -615,6 +682,12 @@ impl CoreClient {
         R: DeserializeOwned,
     {
         let body = serde_json::json!({"type":request_type,"params":request});
+        if request_type == "ListSecrets" && !body["params"]["target"].is_null() {
+            return Err(AppError::arguments(
+                "ListSecrets",
+                "Only configured Core secret key names with target=None are supported; Server/Builder expansion and configured values are not exposed",
+            ));
+        }
         let inspected_object = match operation {
             "InspectContainer" => body["params"]["container"].as_str(),
             "InspectImage" | "ListImageHistory" => body["params"]["image"].as_str(),
@@ -737,6 +810,150 @@ mod write_policy_tests {
             stack::PartialStackConfig,
         },
     };
+
+    #[tokio::test]
+    async fn shared_variable_transport_guards_effects_and_forbidden_routes_before_io() {
+        use komodo_client::api::write::{
+            CreateVariable, DeleteVariable, UpdateVariableDescription, UpdateVariableIsSecret,
+            UpdateVariableValue,
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        for operate in [false, true] {
+            for edit in [false, true] {
+                let client = CoreClient::new(
+                    Config::parse(
+                        &format!("http://{}", listener.local_addr().unwrap()),
+                        "fixture-key",
+                        "fixture-secret",
+                    )
+                    .unwrap()
+                    .with_capabilities(CapabilityPolicy::new(operate, edit)),
+                    RequestPolicy::default(),
+                )
+                .unwrap();
+                if !operate || !edit {
+                    assert!(
+                        matches!(client.variable_write_checked(CreateVariable{name:"APP_MODE".into(),value:"blue".into(),description:String::new(),is_secret:false},&serde_json::Value::Null).await,Err(e)if e.kind==ErrorKind::CapabilityDisabled)
+                    );
+                    assert!(
+                        matches!(client.variable_write_checked(UpdateVariableValue{name:"APP_MODE".into(),value:"green".into()},&serde_json::Value::Null).await,Err(e)if e.kind==ErrorKind::CapabilityDisabled)
+                    );
+                    assert!(
+                        matches!(client.variable_write_checked(DeleteVariable{name:"APP_MODE".into()},&serde_json::Value::Null).await,Err(e)if e.kind==ErrorKind::CapabilityDisabled)
+                    );
+                }
+                if !edit {
+                    assert!(
+                        matches!(client.variable_write_checked(UpdateVariableDescription{name:"APP_MODE".into(),description:String::new()},&serde_json::Value::Null).await,Err(e)if e.kind==ErrorKind::CapabilityDisabled)
+                    );
+                }
+                assert!(
+                    client
+                        .variable_write_checked(
+                            CreateVariable {
+                                name: "NEW_SECRET".into(),
+                                value: "forbidden".into(),
+                                description: String::new(),
+                                is_secret: true
+                            },
+                            &serde_json::Value::Null
+                        )
+                        .await
+                        .is_err()
+                );
+                assert!(
+                    matches!(client.variable_write_checked(UpdateVariableIsSecret{name:"APP_MODE".into(),is_secret:false},&serde_json::Value::Null).await,Err(e)if e.kind==ErrorKind::UnsupportedTarget)
+                );
+                assert!(
+                    matches!(client.write(CreateVariable{name:"APP_MODE".into(),value:"blue".into(),description:String::new(),is_secret:false}).await,Err(e)if e.kind==ErrorKind::UnsupportedTarget)
+                );
+                assert!(
+                    matches!(client.delete(DeleteVariable{name:"APP_MODE".into()}).await,Err(e)if e.kind==ErrorKind::UnsupportedTarget)
+                );
+            }
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn shared_secret_name_reads_refuse_server_and_builder_expansion_before_io() {
+        use komodo_client::{api::read::ListSecrets, entities::ResourceTarget};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = CoreClient::new(
+            Config::parse(
+                &format!("http://{}", listener.local_addr().unwrap()),
+                "fixture-key",
+                "fixture-secret",
+            )
+            .unwrap()
+            .with_capabilities(CapabilityPolicy::new(true, true)),
+            RequestPolicy::default(),
+        )
+        .unwrap();
+        for target in [
+            ResourceTarget::Server("000000000000000000000001".into()),
+            ResourceTarget::Builder("000000000000000000000002".into()),
+        ] {
+            assert!(
+                matches!(client.read(ListSecrets{target:Some(target.clone())}).await,Err(e)if e.kind==ErrorKind::InvalidArguments)
+            );
+            assert!(
+                matches!(client.read_references(ListSecrets{target:Some(target)}).await,Err(e)if e.kind==ErrorKind::InvalidArguments)
+            );
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn shared_variable_payload_cannot_smuggle_unclassified_fields_before_io() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = CoreClient::new(
+            Config::parse(
+                &format!("http://{}", listener.local_addr().unwrap()),
+                "fixture-key",
+                "fixture-secret",
+            )
+            .unwrap()
+            .with_capabilities(CapabilityPolicy::new(true, true)),
+            RequestPolicy::default(),
+        )
+        .unwrap();
+        for (operation, params) in [
+            (
+                "CreateVariable",
+                serde_json::json!({"name":"APP_MODE","value":"blue","description":"","is_secret":false,"future_field":"forbidden"}),
+            ),
+            (
+                "UpdateVariableValue",
+                serde_json::json!({"name":"APP_MODE","value":"blue","is_secret":false}),
+            ),
+            (
+                "UpdateVariableDescription",
+                serde_json::json!({"name":"APP_MODE","description":"metadata","value":"forbidden"}),
+            ),
+            (
+                "DeleteVariable",
+                serde_json::json!({"name":"APP_MODE","all":true}),
+            ),
+        ] {
+            assert!(
+                matches!(crate::variables::guard_write(&client,operation,&params,&serde_json::Value::Null).await,Err(e)if e.kind==ErrorKind::InvalidArguments)
+            );
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), listener.accept())
+                .await
+                .is_err()
+        );
+    }
 
     #[tokio::test]
     async fn refresh_transport_requires_operate_and_exact_id_and_has_no_generic_write_escape() {

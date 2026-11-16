@@ -451,8 +451,8 @@ async fn production_keeps_all_reads_and_recovery_history_for_every_policy() {
                 .tools;
             assert_eq!(
                 tools.len(),
-                53 + 19 * usize::from(operate)
-                    + 48 * usize::from(edit)
+                56 + 19 * usize::from(operate)
+                    + 50 * usize::from(edit)
                     + 3 * usize::from(operate && edit)
             );
             for tool in tools {
