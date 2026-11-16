@@ -150,7 +150,7 @@ changes the caller's Core credentials or Core permissions.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All fifty-three read tools remain locally available in every grant
+All fifty-six read tools remain locally available in every grant
 combination, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
@@ -162,6 +162,14 @@ Core auto-deploy effects, no-op and uncertain submissions.
 Applying a supplied Stack source requires both local grants because Core can
 auto-deploy; configuration-only access still permits creation and ordinary
 settings/attachment edits.
+
+The [variable workflow](docs/variables.md) adds bounded ordinary/secret metadata
+and configured Core secret key names. Its typed preview/apply supports ordinary
+creation, value updates and deletion with both grants, plus description edits
+with configuration-edit alone. Every write also requires an enabled Core
+administrator. Secret values and authentication payloads remain omitted;
+variable history is sanitized even after restart.
+
 Deployment definitions add `preview_deployment_create`/`apply_deployment_create`
 and `preview_deployment_update`/`apply_deployment_update` through the same contract.
 Image/Build updates also require both local grants; Core can inspect registries
@@ -309,6 +317,9 @@ RUST_LOG=komodo_mcp=debug,rmcp=warn ./target/release/komodo-mcp
 | `list_actions` / `get_action` | Inspect safe Action settings and delegated host/administrator execution authority |
 | `list_schedules` / `get_schedule` | Inspect saved Action/Procedure schedules and separate Core cache/parse/next-run evidence |
 | `export_resources_toml` | Export explicit resources/groups and optional all-variable metadata as sanitized, incomplete inspection TOML |
+| `list_variables` | Page through variable metadata without returning any values |
+| `get_variable` | Inspect one exact name; return only ordinary values passing the safe projection |
+| `list_core_secret_names` | List configured Core key names without values or Server/Builder expansion |
 | `get_resource_sync_pending` | Inspect cached desired-state changes, deployment intent and distinct errors without mutations |
 | `review_resource_sync_pending` | Audit an explicit selection and retain a bounded private review reference without Core mutations |
 | `wait_for_resource_sync_update` | Resume an explicitly known RunSync update ID with sync/operation checks on every read |

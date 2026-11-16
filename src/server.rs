@@ -23,7 +23,10 @@ impl KomodoServer {
             Self::tool_router(),
             self.client.capabilities(),
             |name| match name {
-                "observe_deployment_scale"
+                "list_variables"
+                | "get_variable"
+                | "list_core_secret_names"
+                | "observe_deployment_scale"
                 | "list_images"
                 | "get_image"
                 | "get_image_history"
@@ -98,7 +101,9 @@ impl KomodoServer {
                 "apply_resource_delete" | "apply_tag_delete" | "apply_resource_sync" => {
                     Some(Capability::Destructive)
                 }
-                "preview_deployment_scale"
+                "preview_variable_change"
+                | "apply_variable_change"
+                | "preview_deployment_scale"
                 | "apply_deployment_scale"
                 | "preview_stack_update"
                 | "apply_stack_update"
@@ -154,6 +159,51 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="List bounded variable metadata by local page: exact names, descriptions and explicitly validated secret classification. Values are omitted from lists, including administrator secret responses. At most 512 entries scanned, 50 per page, 2 MiB Core response; local pagination does not bound Core enumeration. No mutation.",input_schema=schema_for_input::<crate::variables::PageInput>().expect("variable schema"),output_schema=inventory::output_schema::<crate::variables::VariablePage>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_variables(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_variables") {
+            Ok(input) => crate::variables::list(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Inspect one exact case-sensitive variable name. Secret values and masked text/length are omitted even for administrators. Ordinary values are included only when at most 1024 bytes, control-free, without URLs, configured credentials or common credential markers; otherwise omit the whole value. Complete bounded name lookup, no mutation or secret reveal.",input_schema=schema_for_input::<crate::variables::NameInput>().expect("variable schema"),output_schema=inventory::output_schema::<crate::variables::VariableView>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_variable(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_variable") {
+            Ok(input) => crate::variables::get(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="List configured Core secret key names only, using authenticated ListSecrets with target=None. Separate from is_secret variable metadata. Bounded local pages/512-name scan; unsafe names omitted. Never expand Server/Builder secrets, reveal values, access host configuration or write files. No mutation.",input_schema=schema_for_input::<crate::variables::PageInput>().expect("secret names schema"),output_schema=inventory::output_schema::<crate::variables::CoreSecretNames>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_core_secret_names(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_core_secret_names") {
+            Ok(input) => crate::variables::core_secret_names(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Prepare a private single-use variable change: create ordinary, set ordinary value, set description, or delete ordinary. Configuration-edit and enabled Core administrator required. Bind complete raw entry including secret-only changes and caller authority. Only description edits are supported for secret entries. Show safe metadata/effects; no write, execution, delivery or secret provisioning.",input_schema=schema_for_input::<crate::variables::PreviewInput>().expect("variable change schema"),output_schema=inventory::output_schema::<crate::variables::VariableResult>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
+    async fn preview_variable_change(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_variable_change") {
+            Ok(input) => crate::variables::preview(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Consume a matching private variable preview, recheck authority/full raw baseline and submit at most one typed write with independent read-back. Configuration-edit plus enabled Core administrator; ordinary create/value/delete also need operate because future automatic consumers can change. Description-only edits may target secrets. No secret values/reclassification, no implicit execution/delivery, no automatic retry; lost acknowledgements stay uncertain even when saved state matches.",input_schema=schema_for_input::<crate::variables::ApplyInput>().expect("variable apply schema"),output_schema=inventory::output_schema::<crate::variables::VariableResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn apply_variable_change(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_variable_change") {
+            Ok(input) => crate::variables::apply(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description="Preview saved/current/requested replicas 0–1000 for one managed Swarm Deployment. Reuse the private definition preview; manage only --replicas=N and preserve other fields/secrets. Configuration-edit, Deployment/Swarm/Build Read and Swarm Inspect. Reject Stack/global targets. Save and explicit recreating Deploy remain separate.",input_schema=schema_for_input::<crate::scaling::ScaleInput>().expect("scale schema"),output_schema=inventory::output_schema::<crate::scaling::ScalePreview>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
     async fn preview_deployment_scale(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "preview_deployment_scale") {
