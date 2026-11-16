@@ -28,6 +28,7 @@ pub mod operations;
 pub mod procedure_observation;
 pub mod procedure_operations;
 pub mod procedures;
+pub mod pruning;
 pub mod recovery;
 pub mod repositories;
 pub mod resource_syncs;

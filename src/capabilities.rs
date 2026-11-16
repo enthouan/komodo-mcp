@@ -12,6 +12,8 @@ pub enum Capability {
     /// Deliberate deletion can implicitly remove live workloads through Core.
     /// Both independent startup grants are necessary.
     Destructive,
+    /// Docker category pruning requires its own opt-in and operate, not edit.
+    Prune,
 }
 
 /// Independent, immutable startup grants. Reads are always locally enabled.
@@ -19,6 +21,18 @@ pub enum Capability {
 pub struct CapabilityPolicy {
     operate: bool,
     configuration_edit: bool,
+    pruning: bool,
+}
+
+pub(crate) fn parse_grant(field: &'static str, value: Option<&str>) -> Result<bool, AppError> {
+    match value {
+        None | Some("false") => Ok(false),
+        Some("true") => Ok(true),
+        _ => Err(AppError::configuration(
+            field,
+            "must be exactly true or false, or unset for false",
+        )),
+    }
 }
 
 impl CapabilityPolicy {
@@ -26,6 +40,7 @@ impl CapabilityPolicy {
         Self {
             operate,
             configuration_edit,
+            pruning: false,
         }
     }
 
@@ -34,20 +49,19 @@ impl CapabilityPolicy {
         operate: Option<&str>,
         configuration_edit: Option<&str>,
     ) -> Result<Self, AppError> {
-        fn grant(field: &'static str, value: Option<&str>) -> Result<bool, AppError> {
-            match value {
-                None | Some("false") => Ok(false),
-                Some("true") => Ok(true),
-                _ => Err(AppError::configuration(
-                    field,
-                    "must be exactly true or false, or unset for false",
-                )),
-            }
-        }
         Ok(Self::new(
-            grant("KOMODO_ALLOW_OPERATE", operate)?,
-            grant("KOMODO_ALLOW_CONFIGURATION_EDIT", configuration_edit)?,
+            parse_grant("KOMODO_ALLOW_OPERATE", operate)?,
+            parse_grant("KOMODO_ALLOW_CONFIGURATION_EDIT", configuration_edit)?,
         ))
+    }
+
+    pub fn with_pruning(mut self, enabled: bool) -> Self {
+        self.pruning = enabled;
+        self
+    }
+
+    pub fn pruning_enabled(self) -> bool {
+        self.pruning
     }
 
     pub fn allows(self, capability: Capability) -> bool {
@@ -56,6 +70,7 @@ impl CapabilityPolicy {
             Capability::Operate => self.operate,
             Capability::ConfigurationEdit => self.configuration_edit,
             Capability::Destructive => self.operate && self.configuration_edit,
+            Capability::Prune => self.operate && self.pruning,
         }
     }
 }

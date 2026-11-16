@@ -23,6 +23,7 @@ impl KomodoServer {
             Self::tool_router(),
             self.client.capabilities(),
             |name| match name {
+                "preview_docker_prune" | "apply_docker_prune" => Some(Capability::Prune),
                 "list_users"
                 | "get_user"
                 | "list_user_groups"
@@ -174,6 +175,24 @@ impl KomodoServer {
 
 #[tool_router]
 impl KomodoServer {
+    #[tool(description="Preview one Docker category on one exact enabled Server with pruning opt-in, operate and Core Execute. Show the stable ID and real destructive scope: all-unused images, stopped containers, unused networks, volumes including named volumes, or system including anonymous volumes/build cache. Cached Docker inventory is supporting evidence, never an atomic dry run or named-object list. No prune or write. Private review expires after ten minutes and is single-use.",input_schema=schema_for_input::<crate::pruning::PreviewInput>().expect("prune schema"),output_schema=inventory::output_schema::<crate::pruning::PruneResult>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
+    async fn preview_docker_prune(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "preview_docker_prune") {
+            Ok(input) => crate::pruning::preview(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Consume one exact Docker prune preview and explicitly acknowledge its destructive effects. Requires KOMODO_ALLOW_PRUNE plus operate and actual Core Execute in the handler and final narrow transport. Recheck stable Server, complete private connection/caller/permission baseline, then submit at most one typed category. The eligible object set can change. Preserve known Core update and read-only wait/recovery after lost replies; never replay. No fleet, named-object deletion, flags, builder/buildx surface, exact dry run or rollback.",input_schema=schema_for_input::<crate::pruning::ApplyInput>().expect("prune schema"),output_schema=inventory::output_schema::<crate::pruning::PruneResult>(),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
+    async fn apply_docker_prune(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "apply_docker_prune") {
+            Ok(input) => crate::pruning::apply(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
     #[tool(description="List bounded users/service users under Core administrator authority. Return IDs, names, roles, base flags and direct type-wide grants only. Local pages 1–50/512-entry scan and 2 MiB body do not bound Core enumeration. Omit all authentication payloads and descriptions; no credential issuance or mutation.",input_schema=schema_for_input::<crate::access::UserListInput>().expect("access schema"),output_schema=inventory::output_schema::<crate::access::Page<crate::access::UserView>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
     async fn list_users(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_users") {

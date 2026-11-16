@@ -51,6 +51,7 @@ pub struct StackOperationInput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkloadKind {
+    Server,
     Stack,
     Deployment,
     Repo,
@@ -73,6 +74,9 @@ pub struct OperationResource {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RequestedScope {
+    DockerPrune {
+        category: crate::pruning::Category,
+    },
     WholeStack {},
     Service {
         service: String,
@@ -91,6 +95,7 @@ pub enum RequestedScope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkloadOperation {
+    Prune,
     Deploy,
     Start,
     Stop,
@@ -737,6 +742,7 @@ pub(crate) async fn submit_future(
         }
         Ok(update) => {
             let expected = match receipt.resource.kind {
+                WorkloadKind::Server => ResourceTarget::Server(receipt.resource.id.clone()),
                 WorkloadKind::Alerter => ResourceTarget::Alerter(receipt.resource.id.clone()),
                 WorkloadKind::Stack => ResourceTarget::Stack(receipt.resource.id.clone()),
                 WorkloadKind::Deployment => ResourceTarget::Deployment(receipt.resource.id.clone()),

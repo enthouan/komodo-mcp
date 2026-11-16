@@ -518,6 +518,38 @@ impl CoreClient {
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None))))
     }
 
+    /// Closed prune transport: the ordinary operate/configuration surfaces cannot
+    /// invoke it, and the complete private review is checked again before send.
+    pub(crate) async fn prune_checked<T>(
+        &self,
+        request: T,
+        proof: &serde_json::Value,
+    ) -> Result<Result<komodo_client::entities::update::Update, AppError>, AppError>
+    where
+        T: Serialize + KomodoExecuteRequest<Response = komodo_client::entities::update::Update>,
+    {
+        let operation = match T::req_type() {
+            op @ ("PruneImages" | "PruneContainers" | "PruneNetworks" | "PruneVolumes"
+            | "PruneSystem") => op,
+            _ => {
+                return Err(AppError::new(
+                    ErrorKind::UnsupportedTarget,
+                    "docker_prune",
+                    None,
+                ));
+            }
+        };
+        let params = serde_json::to_value(request)
+            .map_err(|_| AppError::new(ErrorKind::InvalidArguments, operation, None))?;
+        crate::pruning::guard_execute(self, operation, &params, proof).await?;
+        Ok(tokio::time::timeout(
+            self.0.policy.operation_timeout,
+            self.request_bounded_body(&self.0.execute_request, params, operation, operation),
+        )
+        .await
+        .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None))))
+    }
+
     /// Single-use reviewed sync transport; unavailable to generic execute<T>.
     pub(crate) async fn execute_reviewed_sync(
         &self,
