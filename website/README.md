@@ -110,14 +110,19 @@ to the Cloudflare Pages Git integration.
 | --- | --- |
 | Project | `komodo-mcp` (Pages, connected to `enthouan/komodo-mcp`) |
 | Production branch | `main` |
-| Root directory | repository root |
-| Build command | `pnpm website:build` |
-| Build output directory | `website/dist` |
-| Environment variables | `NODE_VERSION=24.17.0`, `PNPM_VERSION=10.34.1` |
+| Root directory | `website` |
+| Build command | `cd .. && corepack pnpm install --frozen-lockfile && corepack pnpm --dir website build` |
+| Build output directory | `dist` (that is, `website/dist`) |
+| Environment variables | `NODE_VERSION=24.17.0`, `SKIP_DEPENDENCY_INSTALL=1`, `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` |
 | Preview deployments | Pull-request branches (Cloudflare default) |
 | Web Analytics | Off: do not enable it for the project or the zone, and leave automatic setup and Zaraz disabled |
 
-Cloudflare installs dependencies from `pnpm-lock.yaml` before the build command. `public/_headers`
+The root directory is `website`, not the repository root, because Cloudflare's build image runs asdf
+on a `.tool-versions` file in the root directory and has no plugin for the Rust toolchain pinned there.
+Cloudflare's automatic dependency installation is skipped because the lockfile lives at the repository
+root; the build command installs the pnpm workspace from that frozen lockfile instead, using the pnpm
+version from the root `packageManager` field through corepack, which ships with Node 24. It does not
+rely on a `pnpm` binary on `PATH`. `public/_headers`
 adds conservative security headers. Cloudflare Pages [sends `X-Robots-Tag: noindex` on preview
 deployments](https://developers.cloudflare.com/pages/configuration/preview-deployments/), so previews
 can use the same canonical artifact without becoming duplicate search results; the production
@@ -173,8 +178,11 @@ published install paths from #40–#42. Issue #45 then verifies the production s
 
 ### Deployment troubleshooting
 
-- **Build fails installing dependencies:** confirm `PNPM_VERSION` matches `packageManager` and the
-  lockfile is committed; never switch to a non-frozen install.
+- **Build fails reading `.tool-versions`** (for example `rust plugin is not installed`): the root
+  directory must be `website`, not the repository root.
+- **Build fails installing dependencies:** keep `SKIP_DEPENDENCY_INSTALL=1` and the build command above,
+  confirm the lockfile is committed, and never switch to a non-frozen install. The pnpm version comes
+  from `packageManager` in the root `package.json`.
 - **Wrong Node version:** set `NODE_VERSION` to the `.nvmrc` value.
 - **Last-updated dates missing:** the build reads Git history; Cloudflare's clone must include it.
 - **GitHub links return 404 for visitors:** the source repository must be public for the GitHub,
