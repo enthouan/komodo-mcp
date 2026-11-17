@@ -3,7 +3,7 @@ import { OPERATOR_GUIDES } from "../../src/data/operator-guides.js";
 export const CANONICAL_WEBSITE_URL = "https://komodo-mcp.com/";
 export const CANONICAL_WEBSITE_ORIGIN = new URL(CANONICAL_WEBSITE_URL).origin;
 export const FOOTER_ATTRIBUTION =
-  "komodo-mcp is free software released under the GNU General Public License, version 3 or later, and maintained by Antoine Ménard.";
+  "komodo-mcp is free software released under the GNU General Public License and maintained by Antoine Ménard.";
 export const FOOTER_DISCLAIMER =
   "It is not an official Komodo product and is not affiliated with or endorsed by the Komodo project.";
 export const COPY_FAILURE_MESSAGE = "Copy failed. Select the code and copy it manually.";
