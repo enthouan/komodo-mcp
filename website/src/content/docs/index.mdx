@@ -1,0 +1,174 @@
+---
+title: Independent, self-hosted Rust MCP server for Komodo
+description: komodo-mcp is an independent, self-hosted Rust Model Context Protocol server for Komodo. Inspect stacks, diagnose failures, and run reviewed operations with your own Core credentials.
+template: splash
+hero:
+  title: 'Operate Komodo<br>from your MCP client.'
+  tagline: An independent, self-hosted Rust Model Context Protocol (MCP) server for Komodo. List your stacks, diagnose failures with bounded evidence, and opt into reviewed changes using your own Core credentials and permissions.
+  image:
+    html: '<img src="/favicon.svg" width="400" height="400" alt="komodo-mcp stacked-status mark">'
+  actions:
+    - text: Get started
+      link: /getting-started/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/enthouan/komodo-mcp
+      icon: github
+      variant: secondary
+      attrs:
+        data-github-action: true
+        iconPlacement: start
+        rel: external
+        referrerpolicy: no-referrer
+tableOfContents: false
+lastUpdated: false
+---
+
+import { Aside, Card, CardGrid, LinkButton, LinkCard, Steps } from '@astrojs/starlight/components';
+import { PROJECT_LICENSE, RELEASE_TAG, RELEASE_URL } from '../../data/project.js';
+
+<Aside type="note" title="Independent project for Komodo">
+  komodo-mcp is an independent, community-maintained project. It is not an official Komodo product and is not affiliated with, endorsed by, or sponsored by the Komodo project.
+
+  Komodo itself is documented at [komo.do](https://komo.do/). komodo-mcp connects to a Komodo Core you already run.
+</Aside>
+
+<CardGrid>
+  <Card title="Read-only by default" icon="approve-check-circle">
+    Every read tool is available in every profile. Operations, configuration edits, pruning, and terminal commands each need a separate local grant that defaults to `false`.
+  </Card>
+  <Card title="Your Core permissions decide" icon="padlock">
+    The server calls Core with one API key and secret from its process environment. Core decides what that identity can read or change; local grants never add Core permissions.
+  </Card>
+  <Card title="Native stdio, no listener" icon="laptop">
+    Your MCP client launches the compiled Rust executable. MCP messages use stdout only, diagnostics go to stderr, and no network port is opened.
+  </Card>
+  <Card title="Bounded, honest evidence" icon="magnifier">
+    Pages, logs, history, and diagnosis are bounded. Cached, unavailable, permission-limited, and incomplete evidence is reported as such instead of guessed.
+  </Card>
+</CardGrid>
+
+## Start by listing your stacks
+
+The first successful read lists the Stacks your Core identity can see. It changes nothing in Komodo.
+
+```text title="First read: list your stacks"
+List the stacks I can access in Komodo and show their current status.
+Use list_stacks and do not change anything.
+```
+
+<Steps>
+1. **Build and connect.** [Build the executable](/getting-started/stdio/) with the pinned Rust toolchain, then [add it to your MCP client](/getting-started/clients/) with your Core address, API key, and secret.
+
+2. **Approve one read.** Your client should propose `list_stacks`. It is read-only and returns at most 30 Stacks per page by default.
+
+3. **Review the answer.** Each Stack has a stable ID, its Core state such as `running`, `stopped`, or `unknown`, and its active Server or Swarm target. Follow `next_page` until `has_more` is false; an empty list is valid when the identity can read no Stacks.
+</Steps>
+
+## Diagnose a failed stack without changing it
+
+When a Stack looks unhealthy, keep the investigation read-only and let the server report what it could and could not observe.
+
+```text title="Read-only diagnosis prompt"
+One of my Komodo stacks looks unhealthy. Find it with list_stacks,
+confirm its exact ID with get_stack, then run stack_diagnose on that ID.
+Report the outcome, the affected services, and any evidence gaps.
+Do not deploy, restart, or change anything.
+```
+
+<Steps>
+1. **Discover the visible Stack.** `list_stacks` (or `fleet_health` across the fleet) shows only resources your identity can read.
+
+2. **Resolve its exact identity.** `get_stack` accepts an exact, case-sensitive name or a 24-character ID. Ambiguous or incomplete name resolution fails safely and asks you to retry by ID.
+
+3. **Inspect the evidence.** `stack_diagnose` combines inventory, service state, recent updates and alerts, and one bounded log tail in at most seven Core reads. It returns `healthy`, `unhealthy`, or `inconclusive` with supporting IDs.
+
+4. **Read the gaps honestly.** A denied, timed-out, oversized, or unavailable source becomes an explicit gap while other evidence remains. Summaries can lag Docker, and correlated history is evidence, not proof of cause. Follow up with `get_update` or `get_stack_logs` if you need more.
+</Steps>
+
+[Read the diagnosis bounds and evidence model](/docs/diagnostics/#stack-diagnosis).
+
+## Pick your MCP client
+
+Each recipe launches the same compiled executable over stdio. These labels describe what has actually been checked; see the dated [compatibility evidence](/getting-started/compatibility/).
+
+First time connecting? [Prepare a Komodo Core identity and API key](/getting-started/komodo-credentials/) before configuring your client.
+
+<CardGrid>
+  <LinkCard title="Codex" description="Configuration reviewed for native stdio." href="/getting-started/clients/#codex" data-client-icon="openai" />
+  <LinkCard title="Claude Code" description="Configuration reviewed for native stdio." href="/getting-started/clients/#claude-code" data-client-icon="claude" />
+  <LinkCard title="Claude Desktop" description="Configuration reviewed for native stdio." href="/getting-started/clients/#claude-desktop" data-client-icon="claude" />
+  <LinkCard title="VS Code" description="Configuration reviewed for native stdio." href="/getting-started/clients/#vscode" data-client-icon="vscode" />
+  <LinkCard title="OpenCode" description="Configuration reviewed for native stdio." href="/getting-started/clients/#opencode" data-client-icon="opencode" />
+  <LinkCard title="All compatibility evidence" description="See tested scope, Core version evidence, and what remains unverified." href="/getting-started/compatibility/" data-client-icon="evidence" />
+</CardGrid>
+
+<Aside type="caution" title="Before enabling changes">
+  Start read-only. Enable a grant such as `KOMODO_ALLOW_OPERATE=true` only for the process that needs it, review each proposed call, and never let a client automatically repeat an operation whose outcome is uncertain.
+</Aside>
+
+## Useful by design
+
+Ask in natural language; the client chains the tools the server exposes for the identity and grants you configured.
+
+<CardGrid>
+  <Card title="Inventory and fleet health" icon="list-format">
+    Page through Servers, Stacks, and Deployments, then rank what needs attention across the fleet.
+
+    `list_servers → list_stacks → fleet_health`
+  </Card>
+  <Card title="Stack diagnosis and bounded logs" icon="magnifier">
+    Diagnose one Stack, then follow its failed update and a bounded, redacted log tail.
+
+    `stack_diagnose → get_update → get_stack_logs`
+  </Card>
+  <Card title="Reviewed configuration and explicit operations" icon="pencil">
+    Preview a typed change before applying it, deploy once with an update receipt, and wait or reconcile without resubmitting.
+
+    `preview_stack_update → apply_stack_update → deploy_stack → wait_for_update`
+  </Card>
+  <Card title="ResourceSync review and apply" icon="seti:config">
+    Inspect cached pending changes, review an explicit selection, and apply that exact review at most once.
+
+    `get_resource_sync_pending → review_resource_sync_pending → apply_resource_sync`
+  </Card>
+  <Card title="Swarm inspection and scaling" icon="seti:pipeline">
+    Inspect Swarm services and tasks, preview a replica change, deploy it explicitly, and observe tasks separately.
+
+    `list_swarm_services → preview_deployment_scale → deploy_scaled_deployment`
+  </Card>
+  <Card title="Administration with explicit boundaries" icon="setting">
+    Inspect groups and effective permissions, then preview and apply one scoped change with both grants and Core admin authority.
+
+    `get_effective_permission → preview_access_change → apply_access_change`
+  </Card>
+</CardGrid>
+
+<LinkButton href="/guides/workflows/" variant="primary" icon="right-arrow">
+  Follow the workflow guide
+</LinkButton>
+
+## Tool reference
+
+Your MCP client discovers the exact tools, input schemas, output schemas, and effect annotations through `tools/list`; disabled tools are absent from discovery and rejected if called directly. The [tool reference](/reference/tools/) renders the inventory, operation, fleet-health, and error contracts straight from the repository README, and each [operator guide](/guides/workflows/#operator-guides) is rendered from the versioned `docs/` directory.
+
+<Aside type="note" title="Generated catalog in progress">
+  A searchable catalog generated from the runtime tool registry, with CI drift detection, is tracked in [#43](https://github.com/enthouan/komodo-mcp/issues/43). Until it lands, this site does not publish tool counts or a hand-maintained tool list.
+</Aside>
+
+<LinkButton href="/reference/tools/" variant="primary" icon="right-arrow">
+  Open the tool reference
+</LinkButton>
+
+## Know when to use it
+
+Choose komodo-mcp when you run your own Komodo Core and want an MCP client to inspect and, only when you opt in, change it under that identity's Core permissions, from an auditable GPL-licensed executable you build yourself. Today it runs as a local stdio process; a container image and authenticated HTTP for persistent deployments are [planned, not available](/getting-started/#choose-an-installation-path).
+
+The current release is <a href={RELEASE_URL}>{RELEASE_TAG}</a>, licensed {PROJECT_LICENSE}. This site documents the repository's `main` branch.
+
+<CardGrid>
+  <LinkCard title="Security & Data" description="Follow credentials, Core data, local grants, logs, and operations across every trust boundary." href="/guides/security/" />
+  <LinkCard title="Configuration" description="Every environment variable, its default, and the boundary it controls." href="/reference/configuration/" />
+  <LinkCard title="Troubleshooting" description="Separate build, client, Core authentication, permission, reachability, version, grant, and timeout problems." href="/guides/troubleshooting/" />
+  <LinkCard title="FAQ" description="Hosting, credentials, transports, Core permissions, and what komodo-mcp is not." href="/guides/faq/" />
+</CardGrid>

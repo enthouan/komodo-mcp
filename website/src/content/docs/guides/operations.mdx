@@ -1,0 +1,48 @@
+---
+title: Operate komodo-mcp
+description: Upgrade, roll back, restart, inspect logs, change grants, and rotate Core credentials for a komodo-mcp stdio installation.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import { RELEASE_TAG } from '../../../data/project.js';
+
+A stdio installation is one executable launched by your MCP client. Operating it means managing that file, the client's server environment, and the Core identity behind it.
+
+## Upgrade or roll back
+
+<Steps>
+1. **Read the changes.** Check the [CHANGELOG](https://github.com/enthouan/komodo-mcp/blob/main/CHANGELOG.md) and the [release notes](https://github.com/enthouan/komodo-mcp/releases).
+
+2. **Build the target version.** In your checkout, run `git fetch --tags`, check out the release tag (currently `{RELEASE_TAG}`), and run `cargo build --locked --release --bin komodo-mcp`. Use the toolchain pinned by that tag's `rust-toolchain.toml`.
+
+3. **Restart the server.** Restart the MCP client or reload its servers so it launches the new executable. A running process keeps the old binary until it exits.
+
+4. **Verify.** Confirm tool discovery and run the `list_stacks` read again.
+</Steps>
+
+To roll back, check out the previous tag, rebuild, and restart the same way. Keeping a copy of a known-good executable at a separate absolute path makes rollback a one-line client change.
+
+## Change grants
+
+Grants are read only at startup. Edit `KOMODO_ALLOW_OPERATE`, `KOMODO_ALLOW_CONFIGURATION_EDIT`, `KOMODO_ALLOW_PRUNE`, or `KOMODO_ALLOW_TERMINAL` in the client's server environment and restart the server. Each value must be exactly `true` or `false`; anything else fails startup safely.
+
+## Logs
+
+Diagnostics go to stderr at `info` level by default. Set `RUST_LOG`, for example `komodo_mcp=debug,rmcp=warn`, in the server environment for more detail. Credential values are redacted. Where stderr ends up depends on the client; Claude Desktop, for example, writes `mcp-server-komodo.log` in its log directory.
+
+## Rotate Core credentials
+
+<Steps>
+1. Create a new API key and secret for the same identity in Komodo.
+2. Update `KOMODO_API_KEY` and `KOMODO_API_SECRET` where the client gets them.
+3. Restart the server and verify with `list_stacks`.
+4. Delete the old key in Komodo.
+</Steps>
+
+## Stop
+
+Closing the client, or disabling the server in it, closes stdin; the process exits successfully. There is no background service to stop.
+
+<Aside type="note" title="Interrupted operations survive restarts">
+  Update IDs are Core records. `wait_for_update` and `reconcile_operation` work from a new session after a timeout, cancellation, or restart. Preview references and ResourceSync reviews are process-local and do not survive a restart; prepare a new one.
+</Aside>

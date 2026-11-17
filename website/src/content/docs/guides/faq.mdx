@@ -1,0 +1,48 @@
+---
+title: FAQ
+description: Answers about komodo-mcp hosting, credentials, transports, Core permissions, read-only use, data handling, licensing, and its relationship to Komodo.
+---
+
+## Is this an official Komodo project?
+
+No. komodo-mcp is an independent, community-maintained project. It is not an official Komodo product and is not affiliated with, endorsed by, or sponsored by the Komodo project. It uses Komodo's published `komodo_client` crate to talk to a Core you run.
+
+## Do I need to run a server?
+
+Not a separate one. Your MCP client starts the komodo-mcp executable as a local child process and stops it when the session ends. It needs network access to your Komodo Core.
+
+## Is there a Docker image, binary download, or HTTP endpoint?
+
+Not yet. The supported path today is building the executable from source and running it over stdio. Prebuilt binaries with matching source ([#42](https://github.com/enthouan/komodo-mcp/issues/42)), container images with Docker Compose ([#41](https://github.com/enthouan/komodo-mcp/issues/41)), and authenticated Streamable HTTP ([#40](https://github.com/enthouan/komodo-mcp/issues/40)) are planned.
+
+## Do I need Node.js?
+
+No. komodo-mcp is a Rust executable. Node is only used to build this website.
+
+## Can it change my infrastructure?
+
+Only if you allow it twice: locally, by setting a `KOMODO_ALLOW_*` grant to `true`, and in Core, by giving the identity the matching permission. With the default configuration it exposes read tools only. Even then your client should ask you to approve each call.
+
+## Which Core permissions does it need?
+
+For read-only use: an enabled user with Read on the Servers, Stacks, and Deployments you want to inspect, and Logs where a log API needs it. Admin, Write, Execute, and Create are not required. See [Komodo Core credentials](/getting-started/komodo-credentials/).
+
+## Why do I see fewer resources than in the Komodo UI?
+
+komodo-mcp sees exactly what its identity may read. If you use a dedicated identity with narrower grants than your own account, lists are smaller. That is intentional.
+
+## Where do my Komodo data and credentials go?
+
+Credentials stay in the server process environment and go only to your Core. Tool results, which contain bounded Core data, go to your MCP client and the model it uses. See [Security & Data](/guides/security/).
+
+## Which Komodo versions are supported?
+
+It is built and tested against Komodo Core 2.3.2 wire fixtures. Other versions may work but are not claimed. See [Compatibility](/getting-started/compatibility/).
+
+## What does an operation timeout mean?
+
+That the outcome is unknown, not that it failed. Observe it by update ID with `wait_for_update`, or use `reconcile_operation`; never resubmit automatically. See [Troubleshooting](/guides/troubleshooting/#timeouts-and-uncertain-outcomes).
+
+## What is the license?
+
+GNU General Public License, version 3 or later (GPL-3.0-or-later). See the [license text](https://github.com/enthouan/komodo-mcp/blob/main/LICENSE). If you redistribute an executable, include the license and provide the corresponding source.

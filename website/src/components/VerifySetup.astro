@@ -1,0 +1,23 @@
+---
+import { Aside, Code } from "@astrojs/starlight/components";
+import { VERIFY_EXAMPLE, VERIFY_EXPECTED, VERIFY_PROMPT } from "../data/clients.js";
+
+interface Props {
+  headingId?: string;
+}
+
+const { headingId = "verify-setup" } = Astro.props;
+---
+
+<section aria-labelledby={headingId}>
+  <h3 id={headingId}>Verify it works</h3>
+  <p>
+    After the client initializes the server and discovers its tools, ask for your first read and
+    approve only the named read-only call:
+  </p>
+  <Code code={VERIFY_PROMPT} lang="text" meta='title="First read: list your stacks"' />
+  <Aside type="tip" title="Expected result">
+    <p>{VERIFY_EXPECTED}</p>
+    <Code code={VERIFY_EXAMPLE} lang="json" meta='title="Example: list_stacks with page_size 2 against the synthetic mock Core"' />
+  </Aside>
+</section>

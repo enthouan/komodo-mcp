@@ -1,0 +1,26 @@
+---
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+import { OPERATOR_GUIDE_GROUPS, operatorGuideRoute } from "../data/operator-guides.js";
+
+interface Props {
+  /** Heading level for group labels. */
+  level?: 3;
+}
+
+const groups = OPERATOR_GUIDE_GROUPS.filter(({ label }) => label !== "Project");
+---
+
+<div class="operator-guide-index">
+  {
+    groups.map((group) => (
+      <section>
+        <h3>{group.label}</h3>
+        <CardGrid>
+          {group.guides.map((guide) => (
+            <LinkCard title={guide.label} description={guide.description} href={operatorGuideRoute(guide.slug)} />
+          ))}
+        </CardGrid>
+      </section>
+    ))
+  }
+</div>

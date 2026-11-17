@@ -5,10 +5,13 @@
 [Dependabot](../.github/dependabot.yml) checks Cargo on Mondays at 09:00 and
 GitHub Actions at 09:30, in `America/Los_Angeles` (including daylight saving).
 Cargo covers the root `Cargo.toml` and `Cargo.lock`; GitHub Actions covers the
-workflow files under `.github/workflows`. No npm manifest is committed here.
+workflow files under `.github/workflows`. The npm ecosystem checks the website's
+pnpm workspace (`package.json`, `website/package.json`, `pnpm-lock.yaml`) on
+Mondays at 10:00. Those packages build only the static website in `website/`;
+the Rust executable never depends on Node.
 
 Minor and patch updates are grouped by ecosystem. Major updates remain separate.
-Cargo allows five open version-update PRs and Actions allows three. Security
+Cargo allows five open version-update PRs; Actions and npm allow three each. Security
 updates use GitHub's separate limits. No dependency PR is automatically merged.
 
 The exact `komodo_client` and `rmcp` pins in `Cargo.toml` are excluded from the
@@ -30,6 +33,11 @@ The benchmark reference is an external checkout pinned in
 Changing its release/commit requires explicit comparator review, corresponding
 oracle updates, and fresh measurements with exact source/executable identities.
 Preserve previous archives and follow [benchmark reproduction](../benchmarks/README.md).
+
+The separate `Website` workflow builds the site and runs its contracts and
+browser checks; it is reported on every pull request but is not one of the
+required checks below. Its failures still block a ready-to-merge assessment.
+Website deployment belongs to Cloudflare Pages, not CI; see `website/README.md`.
 
 Both required workflows use `pull_request`, `contents: read`, no Actions secrets,
 and synthetic Core credentials. There is no actor filter or privileged

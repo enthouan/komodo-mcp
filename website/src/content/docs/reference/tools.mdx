@@ -1,0 +1,36 @@
+---
+title: Tool reference
+description: How komodo-mcp tools are discovered and gated, plus the inventory, operation, fleet-health, and error contracts rendered from the repository README.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import OperatorGuideIndex from '../../../components/OperatorGuideIndex.astro';
+import RepositorySection from '../../../components/RepositorySection.astro';
+
+The authoritative tool list is what your MCP client receives from `tools/list`: names, descriptions, input and output JSON schemas, and effect annotations for the tools this process enables. Read tools are always present; operation, configuration, prune, and terminal tools appear only when their local grants are `true`.
+
+<Aside type="note" title="Generated catalog pending">
+  A searchable catalog generated from the runtime tool registry, with profile availability, input bounds, output shapes, mutation behavior, and CI drift detection, is tracked in [#43](https://github.com/enthouan/komodo-mcp/issues/43). This page does not hand-maintain a tool list or tool counts in the meantime. The sections below are rendered directly from the repository README.
+</Aside>
+
+## Inventory tools
+
+<RepositorySection id="readme-inventory-tools" />
+
+## Workload operations
+
+<RepositorySection id="readme-workload-operations" />
+
+## Fleet health
+
+<RepositorySection id="readme-fleet-health" />
+
+## Client and error foundation
+
+<RepositorySection id="readme-client-and-error-foundation" />
+
+## Tools by area
+
+Every other tool family is specified in its operator guide, rendered from the repository's `docs/` directory.
+
+<OperatorGuideIndex />

@@ -1,0 +1,74 @@
+---
+title: Workflows
+description: Practical Komodo workflows through komodo-mcp, from read-only inventory and diagnosis to reviewed changes, ResourceSync, Swarm scaling, and administration.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import OperatorGuideIndex from '../../../components/OperatorGuideIndex.astro';
+
+These workflows describe what the current `main` branch supports. Start every session read-only; each change needs its local grant, the matching Core permission, and your approval of the exact call.
+
+## Inventory and fleet health
+
+Read-only in every profile. Lists page through visible resources in ascending name order with `page_size` 1–100 (default 30).
+
+```text title="Example prompt"
+Show my Komodo servers and their state, then summarize fleet health
+and list the workloads that need attention. Do not change anything.
+```
+
+`list_servers → list_stacks → list_deployments → fleet_health`
+
+`fleet_health` keeps healthy, unhealthy, unavailable, and unknown observations distinct, and a failed source keeps the other results. See [Diagnostic tools](/docs/diagnostics/).
+
+## Diagnose a failed stack
+
+Read-only. Resolve the Stack, diagnose it, then follow the evidence it cites.
+
+`list_stacks → get_stack → stack_diagnose → get_update → list_alerts → get_stack_logs`
+
+`stack_diagnose` returns `healthy`, `unhealthy`, or `inconclusive`. It makes at most seven Core reads, keeps one 40-line log tail, and turns every failed source into a gap instead of discarding the rest. Historical rollout failures do not override confirmed current health. See [Stack diagnosis](/docs/diagnostics/#stack-diagnosis).
+
+## Operate one workload and recover safely
+
+Requires `KOMODO_ALLOW_OPERATE=true` and Core `Execute` on the target.
+
+`get_stack → deploy_stack → wait_for_update → stack_diagnose`
+
+Each operation is submitted once and returns Core's update receipt. `wait_for_update` observes that ID for up to 30 seconds and can resume from a new session. If the reply was lost, `reconcile_operation` lists possible matches with unconfirmed attribution and never resubmits. See [Workload operations](/docs/operations/) and the [operation walkthrough](/docs/operations-walkthrough/).
+
+## Review and apply a configuration change
+
+Requires `KOMODO_ALLOW_CONFIGURATION_EDIT=true` and Core `Write`; some fields also need the operate grant because Core can auto-deploy.
+
+`get_stack → preview_stack_update → apply_stack_update → get_stack`
+
+A preview returns a private, single-use reference bound to the exact change; it expires after ten minutes, and apply rejects stale or mismatched previews. Deployments, Servers, Repos, Builds, Procedures, Actions, Alerters, variables, tags, and schedules follow the same contract. See [Typed configuration edits](/docs/configuration/).
+
+## ResourceSync review and apply
+
+`get_resource_sync_pending → review_resource_sync_pending → apply_resource_sync → wait_for_resource_sync_update`
+
+Reading pending changes is read-only. Refreshing them requires operate and Core `Execute`. Applying requires both grants and the exact single-use review; it rejects detected drift and submits at most one RunSync. See [ResourceSync definitions](/docs/resource-syncs/).
+
+## Swarm inspection and scaling
+
+`list_swarms → list_swarm_services → diagnose_swarm_service → preview_deployment_scale → apply_deployment_scale → deploy_scaled_deployment → observe_deployment_scale`
+
+Inspection is read-only in every profile. Saving a replica count and deploying it are separate, explicitly granted steps; Core recreates the service, so interruption and a new service ID are possible. See [Swarm inspection](/docs/swarms/) and [Swarm scaling](/docs/scaling/).
+
+## Administration with explicit boundaries
+
+`list_user_groups → get_effective_permission → preview_access_change → apply_access_change`
+
+Inspection reports direct records and the current caller's effective permissions. Every apply requires both local grants and enabled Core admin authority. See [Users, groups and access](/docs/access/).
+
+<Aside type="caution" title="Pruning and terminal commands stay separate">
+  Docker category pruning (`KOMODO_ALLOW_PRUNE`) and one-command terminals (`KOMODO_ALLOW_TERMINAL`) each have their own default-off grant in addition to operate. They are never part of onboarding. See [Docker pruning](/docs/pruning/) and [One terminal command](/docs/terminal/).
+</Aside>
+
+## Operator guides
+
+Each guide below is rendered directly from the repository's versioned `docs/` directory.
+
+<OperatorGuideIndex />

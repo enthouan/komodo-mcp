@@ -1,0 +1,68 @@
+---
+title: Security and data flow
+description: How komodo-mcp handles Komodo Core credentials, Core data, local capability grants, logs, and operations, and where each trust boundary sits.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+komodo-mcp gives an MCP client, and the model behind it, access to Komodo Core as one identity. Its job is to make that access explicit and bounded. It does not replace Core's permissions or your client's approval prompts.
+
+## Credentials
+
+- `KOMODO_API_KEY` and `KOMODO_API_SECRET` are read from the process environment once at startup. The executable does not read `.env` files or any configuration file.
+- They are sent only to the configured `KOMODO_ADDRESS`. Automatic redirects are disabled so credentials cannot follow a redirect to another host. Normal TLS certificate verification stays enabled.
+- Configuration and client Debug output show `[redacted]`. Log events, error text, and tool output are redacted for the configured credentials, including verbose dependency traces.
+- Wherever your client stores the server's environment is the real secret store. Prefer references to environment variables over literal values in shared files.
+
+## Core data
+
+- Tool results contain Core data visible to the identity: names, IDs, states, targets, bounded history, and redacted log tails. That data passes through your MCP client and its configured model provider. Choose a client and identity accordingly.
+- Raw configuration, environment blocks, Compose content, stored files, upstream error bodies, variable secret values, and authentication payloads are not returned. Logs and diagnosis are size-bounded and redacted.
+- Lists only show what the identity may read. A missing resource and an invisible one look the same, and inaccessible candidates are never revealed.
+
+## Two independent gates for every change
+
+<table tabindex="0">
+  <thead>
+    <tr><th>Gate</th><th>Who controls it</th><th>Effect</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Local grants (<code>KOMODO_ALLOW_*</code>)</td>
+      <td>Whoever configures the MCP process</td>
+      <td>Decide which tools exist in discovery and dispatch. All default to <code>false</code>.</td>
+    </tr>
+    <tr>
+      <td>Core permissions</td>
+      <td>Your Komodo administrators</td>
+      <td>Decide what the identity may read, write, or execute on each resource.</td>
+    </tr>
+  </tbody>
+</table>
+
+Both must allow an action. Grants never add Core permissions, and Core permissions never enable a disabled tool. Your client's approval step is a third, human gate: review the exact target and arguments before approving any tool that is not read-only.
+
+## Transport
+
+The supported transport is local stdio. The process opens no network listener, so only the client that launched it can talk to it. Authenticated Streamable HTTP for persistent deployments is planned in [#40](https://github.com/enthouan/komodo-mcp/issues/40) and is not available.
+
+## Operations and uncertainty
+
+Execution tools are annotated as mutating and non-idempotent, and every change, whether an operation, configuration apply, deletion, prune, or terminal command, is submitted once. A timeout or lost reply means the outcome is uncertain, not that it failed:
+
+1. Do not repeat the call automatically.
+2. Observe a known update ID with `wait_for_update` (or `wait_for_resource_sync_update`).
+3. Without an ID, use `reconcile_operation`, which lists possible matches with unconfirmed attribution.
+4. Verify the workload independently, for example with `stack_diagnose`.
+
+<Aside type="caution" title="Trusted grants">
+  Configuration editing can set commands, mounts, environment, and other executable settings. Actions and Procedures can run with Core administrator authority. Enable those grants only for identities and clients you trust with that authority.
+</Aside>
+
+## This website
+
+komodo-mcp.com is a static site. It never connects to your Core, collects no credentials or form input, uses no analytics, and loads no third-party scripts. The optional GitHub star count in the header is fetched once per browser session from the public GitHub API without cookies or a referrer; if it fails, the plain repository link remains.
+
+## Reporting a vulnerability
+
+See [Reporting issues and support](/reference/reporting-issues/#security-vulnerabilities).
