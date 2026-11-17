@@ -157,17 +157,16 @@ to `https://komodo-mcp.com/` from `www` and from HTTP (path and query preserved)
 noindex` on preview URLs, and a canonical link on the apex origin. A green local build does not prove
 publication.
 
-Then compare the deployed site's requests, cookies, and browser storage with the Security & Data
-disclosure. The privacy browser test fails on any cookie, undisclosed storage key, unexpected origin,
-or injected analytics script such as Cloudflare's beacon:
+Then confirm the deployed site sets no cookies and loads no analytics or tracking script. The privacy
+browser test fails on any cookie, any request to a service other than GitHub's star-count API, or an
+injected script such as Cloudflare's analytics beacon:
 
 ```sh
 PLAYWRIGHT_BASE_URL=https://komodo-mcp.com corepack pnpm --dir website exec \
   playwright test --config playwright.config.ts tests/browser/privacy.spec.ts
 ```
 
-Run it against the preview URL first, then production. When behavior changes, update the disclosure in
-`src/content/docs/guides/security.mdx` and `DISCLOSED_STORAGE` in `tests/support/site.ts` together.
+Run it against the preview URL first, then production.
 
 ### Launch prerequisites
 

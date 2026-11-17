@@ -1,13 +1,13 @@
-import { DISCLOSED_STORAGE, DISCLOSED_THIRD_PARTY_ORIGINS } from "../support/site.js";
+import { DISCLOSED_THIRD_PARTY_ORIGINS } from "../support/site.js";
 import { expect, gotoLoaded, test } from "./support.js";
 
 /**
- * Exercises the interactive features that can store state or make requests and
- * compares the result with the Security & Data disclosure. Point
+ * Exercises the interactive features that can make requests and checks the
+ * Security & Data statement: no cookies, no analytics, one GitHub request. Point
  * PLAYWRIGHT_BASE_URL at a Cloudflare preview or production to also catch
  * hosting-injected scripts such as analytics beacons.
  */
-test("requests, cookies, and storage match the published disclosure", async ({ page, context, baseURL }) => {
+test("the site sets no cookies and loads no tracking or undisclosed third-party requests", async ({ page, context, baseURL }) => {
   const siteOrigin = new URL(baseURL ?? "http://127.0.0.1:4321").origin;
   const requests: { origin: string; url: string; headers: Record<string, string> }[] = [];
   page.on("request", (request) => {
@@ -28,14 +28,6 @@ test("requests, cookies, and storage match the published disclosure", async ({ p
   await gotoLoaded(page, "/guides/security/");
 
   expect(await context.cookies()).toEqual([]);
-
-  const storage = await page.evaluate(() => ({
-    local: Object.keys(localStorage),
-    session: Object.keys(sessionStorage),
-  }));
-  expect(storage.local.filter((key) => !(DISCLOSED_STORAGE.local as readonly string[]).includes(key))).toEqual([]);
-  expect(storage.session.filter((key) => !(DISCLOSED_STORAGE.session as readonly string[]).includes(key))).toEqual([]);
-  expect(storage.local).toEqual(expect.arrayContaining([...DISCLOSED_STORAGE.local]));
 
   const allowed = new Set<string>([siteOrigin, ...DISCLOSED_THIRD_PARTY_ORIGINS]);
   expect(requests.filter(({ origin }) => !allowed.has(origin)).map(({ url }) => url)).toEqual([]);

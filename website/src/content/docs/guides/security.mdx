@@ -61,14 +61,7 @@ Execution tools are annotated as mutating and non-idempotent, and every change, 
 
 ## This website
 
-komodo-mcp.com is a static documentation site hosted on Cloudflare Pages. It never connects to your Komodo Core, has no forms or accounts, sets no cookies, and includes no analytics, tracking pixels, or third-party scripts.
-
-- **Hosting.** Cloudflare serves every page and asset, so it receives ordinary request data such as your IP address, user agent, and the page requested, and handles it under the [Cloudflare privacy policy](https://www.cloudflare.com/privacypolicy/).
-- **GitHub star count.** Once per browser session, your browser requests public repository metadata from `api.github.com` without credentials or a referrer, so GitHub receives that request. The count, or a note that the attempt was made, is kept in session storage as `komodo-mcp:repository-star-count`. If the request fails, the header shows the star without a number.
-- **Preferences in your browser.** Your theme is kept in local storage as `starlight-theme`, and the client and installation tabs you choose as `starlight-synced-tabs__mcp-client` and `starlight-synced-tabs__install-method`. Sidebar state is kept in session storage as `sl-sidebar-state`. These values stay in your browser, are never sent anywhere, and are not analytics.
-- **Search.** Search runs in your browser against an index served from this site.
-
-Project-wide privacy, security-reporting, and support guidance is being written in [#43](https://github.com/enthouan/komodo-mcp/issues/43).
+komodo-mcp.com is a static documentation site hosted on Cloudflare Pages. It never connects to your Komodo Core, and it has no forms, accounts, cookies, analytics, or tracking. The only request to another service is one anonymous request per browser session to GitHub for the repository's star count; if it fails, the header shows the star without a number.
 
 ## Reporting a vulnerability
 
