@@ -191,6 +191,14 @@ describe("canonical documentation sources", () => {
 });
 
 describe("visitor-facing output", () => {
+  it("interpolates every build-time value", async () => {
+    for (const route of PUBLIC_ROUTES) {
+      const text = normalizedVisibleText((await readRoute(route)).document);
+      // `${NAME}` is client substitution syntax shown deliberately; a bare `{NAME}` is a missed MDX expression.
+      expect(text.match(/(?<!\$)\{[A-Z][A-Z0-9_]{2,}\}/g) ?? [], route).toEqual([]);
+    }
+  });
+
   it("contains no copied reference-project identity, claims, or license", async () => {
     for (const route of PUBLIC_ROUTES) {
       const { source } = await readRoute(route);

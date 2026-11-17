@@ -20,7 +20,7 @@ import { KOMODO_CLIENT_VERSION, RMCP_VERSION, MCP_PROTOCOL_VERSION } from '../..
 
 1. The process reads its environment once: the three Core variables and the four optional grants. Invalid values fail before any network request.
 2. It sends one authenticated `GetVersion` read and keeps the observed Core version. A failure exits nonzero with a safe stderr diagnostic and no stdout.
-3. Only then does it serve MCP. The repository's compiled-stdio tests use protocol `{MCP_PROTOCOL_VERSION}`.
+3. Only then does it serve MCP. The repository's compiled-stdio tests use protocol <code>{MCP_PROTOCOL_VERSION}</code>.
 
 ## A tool call
 

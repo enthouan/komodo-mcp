@@ -62,7 +62,7 @@ Use list_stacks and do not change anything.
 
 2. **Approve one read.** Your client should propose `list_stacks`. It is read-only and returns at most 30 Stacks per page by default.
 
-3. **Review the answer.** Each Stack has a stable ID, its Core state such as `running`, `stopped`, or `unknown`, and its active Server or Swarm target. Follow `next_page` until `has_more` is false; an empty list is valid when the identity can read no Stacks.
+3. **Review the answer.** Each Stack has a stable ID, its Core state such as `running`, `stopped`, or `unknown`, and its active Server or Swarm target (`null` when unassigned). Follow `next_page` until `has_more` is false; an empty list is valid when the identity can read no Stacks.
 </Steps>
 
 ## Diagnose a failed stack without changing it

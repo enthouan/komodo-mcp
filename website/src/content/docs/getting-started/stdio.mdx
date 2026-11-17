@@ -33,7 +33,7 @@ Use the absolute path of the executable you built, for example:
 Desktop applications often do not inherit your shell's `PATH` or working directory, so relative paths and bare command names are unreliable. Put the three Core variables in the client's server environment, keep the four optional grants unset or `false` for read-only use, and follow the client-specific recipe in [Set up your MCP client](/getting-started/clients/).
 
 <Steps>
-1. **Initialization.** The server answers MCP initialization only after its startup `GetVersion` probe to Core succeeds. A failed probe exits nonzero with a safe stderr diagnostic and no stdout. The repository's tests use MCP `{MCP_PROTOCOL_VERSION}`.
+1. **Initialization.** The server answers MCP initialization only after its startup `GetVersion` probe to Core succeeds. A failed probe exits nonzero with a safe stderr diagnostic and no stdout. The repository's tests use MCP <code>{MCP_PROTOCOL_VERSION}</code>.
 
 2. **Discovery.** `tools/list` returns only the tools enabled for this process's grants, each with input and output schemas and effect annotations.
 

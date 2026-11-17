@@ -13,7 +13,7 @@ A stdio installation is one executable launched by your MCP client. Operating it
 <Steps>
 1. **Read the changes.** Check the [CHANGELOG](https://github.com/enthouan/komodo-mcp/blob/main/CHANGELOG.md) and the [release notes](https://github.com/enthouan/komodo-mcp/releases).
 
-2. **Build the target version.** In your checkout, run `git fetch --tags`, check out the release tag (currently `{RELEASE_TAG}`), and run `cargo build --locked --release --bin komodo-mcp`. Use the toolchain pinned by that tag's `rust-toolchain.toml`.
+2. **Build the target version.** In your checkout, run `git fetch --tags`, check out the release tag (currently <code>{RELEASE_TAG}</code>), and run `cargo build --locked --release --bin komodo-mcp`. Use the toolchain pinned by that tag's `rust-toolchain.toml`.
 
 3. **Restart the server.** Restart the MCP client or reload its servers so it launches the new executable. A running process keeps the old binary until it exits.
 
