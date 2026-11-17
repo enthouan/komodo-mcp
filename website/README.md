@@ -111,7 +111,7 @@ to the Cloudflare Pages Git integration.
 | Project | `komodo-mcp` (Pages, connected to `enthouan/komodo-mcp`) |
 | Production branch | `main` |
 | Root directory | `website` |
-| Build command | `cd .. && corepack pnpm install --frozen-lockfile && corepack pnpm --dir website build` |
+| Build command | `cd .. && (git fetch --unshallow \|\| true) && corepack pnpm install --frozen-lockfile && corepack pnpm --dir website build` |
 | Build output directory | `dist` (that is, `website/dist`) |
 | Environment variables | `NODE_VERSION=24.17.0`, `SKIP_DEPENDENCY_INSTALL=1`, `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` |
 | Preview deployments | Pull-request branches (Cloudflare default) |
@@ -184,7 +184,8 @@ published install paths from #40–#42. Issue #45 then verifies the production s
   confirm the lockfile is committed, and never switch to a non-frozen install. The pnpm version comes
   from `packageManager` in the root `package.json`.
 - **Wrong Node version:** set `NODE_VERSION` to the `.nvmrc` value.
-- **Last-updated dates missing:** the build reads Git history; Cloudflare's clone must include it.
+- **Every page shows the same last-updated date:** Cloudflare clones only the latest commit. The
+  build command's `git fetch --unshallow` restores the history Starlight reads for per-page dates.
 - **GitHub links return 404 for visitors:** the source repository must be public for the GitHub,
   release, source, and license links to work.
 
