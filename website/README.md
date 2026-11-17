@@ -51,7 +51,7 @@ Run from the repository root with Node 24 (`.nvmrc`) and the pinned pnpm (`packa
 
 ```sh
 corepack pnpm install --frozen-lockfile
-corepack pnpm exec playwright install --with-deps chromium webkit
+corepack pnpm --dir website exec playwright install --with-deps chromium webkit
 corepack pnpm website:dev
 corepack pnpm website:check
 ```
@@ -158,4 +158,5 @@ canonical link on the apex origin. A green local build does not prove publicatio
 
 The site makes no request to a user's Komodo Core and collects no input. The optional GitHub star count
 is fetched once per browser session from the public GitHub API without credentials or a referrer, and
-the plain repository link remains when that request fails.
+the repository link shows the star without a number when that request fails, including while the
+repository is private.

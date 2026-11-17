@@ -22,7 +22,7 @@ The website lives in `website/` and uses Astro Starlight with pnpm. Node is a we
 
 ```sh
 corepack pnpm install --frozen-lockfile
-corepack pnpm exec playwright install chromium webkit
+corepack pnpm --dir website exec playwright install chromium webkit
 corepack pnpm website:dev
 corepack pnpm website:check
 ```

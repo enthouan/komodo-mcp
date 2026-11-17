@@ -135,6 +135,13 @@ test.describe("without JavaScript", () => {
     await expect(fallbacks.filter({ hasText: "VS Code" })).toContainText("~/.copilot/mcp-config.json");
   });
 
+  test("the repository link shows the star without a count", async ({ page }) => {
+    await page.goto("/");
+    const slot = page.locator("header [data-repository-navigation]:visible [data-repository-star-slot]");
+    await expect(slot.locator("svg")).toBeVisible();
+    await expect(slot.locator("[data-repository-star-value]")).toHaveText("");
+  });
+
   test("installation paths and stdio instructions remain readable", async ({ page }) => {
     await page.goto("/getting-started/");
     await expect(page.getByRole("heading", { level: 3, name: "Native stdio · source build" })).toBeVisible();

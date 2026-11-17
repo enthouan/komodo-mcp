@@ -79,7 +79,7 @@ test("theme selection persists and applies the green palette", async ({ page }) 
   }
 });
 
-test("repository star count is optional and resilient", async ({ page }) => {
+test("repository star falls back to the icon without a count", async ({ page }) => {
   const problems = monitorBrowserProblems(page, {
     allowConsole: () => true,
     allowResponse: (response) => response.url().startsWith("https://api.github.com/"),
@@ -92,7 +92,21 @@ test("repository star count is optional and resilient", async ({ page }) => {
   const link = page.locator("header [data-repository-navigation]:visible");
   await expect(link).toHaveAttribute("data-repository-star-state", "complete");
   await expect(link).toHaveAccessibleName("komodo-mcp source repository");
-  await expect(link.locator("[data-repository-star-slot]")).toHaveCSS("visibility", "hidden");
+  const slot = link.locator("[data-repository-star-slot]");
+  await expect(slot).toBeVisible();
+  await expect(slot.locator("svg")).toBeVisible();
+  await expect(slot.locator("[data-repository-star-value]")).toHaveText("");
+  // The star stands alone: no space stays reserved for a missing number.
+  const width = await slot.evaluate((element) => element.getBoundingClientRect().width);
+  expect(width).toBeLessThan(24);
   await expect(link).toHaveAttribute("href", REPOSITORY_URL);
   expect(problems.filter(({ kind }) => kind === "page")).toEqual([]);
+});
+
+test("repository star shows the formatted count when GitHub answers", async ({ page }) => {
+  await gotoLoaded(page, "/getting-started/");
+  const slot = page.locator("header [data-repository-navigation]:visible [data-repository-star-slot]");
+  await expect(slot).toHaveAttribute("data-repository-star-count", "");
+  await expect(slot.locator("[data-repository-star-value]")).toHaveText("1.2K");
+  await expect(slot.locator("svg")).toBeVisible();
 });

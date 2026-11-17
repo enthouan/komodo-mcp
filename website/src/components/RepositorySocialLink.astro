@@ -209,20 +209,25 @@ const links = config.social || [];
       color: var(--sl-color-white);
     }
 
+    /*
+     * The star always renders. Without a count (no JavaScript, GitHub API
+     * failure, private repository) it stands alone with no empty gap; space for
+     * the number is reserved only while loading or once a count is shown.
+     */
     .star-count {
       display: inline-flex;
       gap: 0.2rem;
       align-items: center;
-      flex: 0 0 3.25rem;
-      inline-size: 3.25rem;
+      flex: 0 0 auto;
       font-size: var(--sl-text-sm);
       font-weight: 600;
       line-height: 1;
-      visibility: hidden;
     }
 
+    a[data-repository-star-state="loading"] .star-count,
     .star-count[data-repository-star-count] {
-      visibility: visible;
+      flex-basis: 3.25rem;
+      inline-size: 3.25rem;
     }
   }
 </style>
