@@ -115,12 +115,16 @@ to the Cloudflare Pages Git integration.
 | Build output directory | `website/dist` |
 | Environment variables | `NODE_VERSION=24.17.0`, `PNPM_VERSION=10.34.1` |
 | Preview deployments | Pull-request branches (Cloudflare default) |
+| Web Analytics | Off: do not enable it for the project or the zone, and leave automatic setup and Zaraz disabled |
 
 Cloudflare installs dependencies from `pnpm-lock.yaml` before the build command. `public/_headers`
 adds conservative security headers. Cloudflare Pages [sends `X-Robots-Tag: noindex` on preview
 deployments](https://developers.cloudflare.com/pages/configuration/preview-deployments/), so previews
 can use the same canonical artifact without becoming duplicate search results; the production
 artifact never sets a global `noindex`.
+
+Verify a successful preview deployment, including the checks below, before attaching the production
+domain.
 
 ### Domain and HTTPS
 
@@ -129,8 +133,8 @@ The `komodo-mcp.com` zone is delegated to Cloudflare. Preserve any existing unre
 1. In the Pages project, add the custom domain `komodo-mcp.com`. Cloudflare creates the proxied apex
    record and issues the certificate.
 2. To support `www`, add a proxied `www` DNS record and a single redirect rule
-   `https://www.komodo-mcp.com/*` → `https://komodo-mcp.com/${1}` (301, preserve query string). Never
-   redirect the apex to `www`.
+   `https://www.komodo-mcp.com/*` → `https://komodo-mcp.com/${1}` (301, preserve path and query
+   string). Never redirect the apex to `www`.
 3. Enable **Always Use HTTPS** for the zone.
 
 ### Verify a deployment
@@ -144,8 +148,28 @@ curl -sS https://komodo-mcp.com/ | grep -o '<link rel="canonical"[^>]*>'
 ```
 
 Expect `200` with `X-Content-Type-Options: nosniff` and **no** `X-Robots-Tag` on the apex, a `301`
-to `https://komodo-mcp.com/` from `www` and from HTTP, `X-Robots-Tag: noindex` on preview URLs, and a
-canonical link on the apex origin. A green local build does not prove publication.
+to `https://komodo-mcp.com/` from `www` and from HTTP (path and query preserved), `X-Robots-Tag:
+noindex` on preview URLs, and a canonical link on the apex origin. A green local build does not prove
+publication.
+
+Then compare the deployed site's requests, cookies, and browser storage with the Security & Data
+disclosure. The privacy browser test fails on any cookie, undisclosed storage key, unexpected origin,
+or injected analytics script such as Cloudflare's beacon:
+
+```sh
+PLAYWRIGHT_BASE_URL=https://komodo-mcp.com corepack pnpm --dir website exec \
+  playwright test --config playwright.config.ts tests/browser/privacy.spec.ts
+```
+
+Run it against the preview URL first, then production. When behavior changes, update the disclosure in
+`src/content/docs/guides/security.mdx` and `DISCLOSED_STORAGE` in `tests/support/site.ts` together.
+
+### Launch prerequisites
+
+Issue #44 tracks the public launch. Preparing the project and previews can happen early, but the
+production launch also needs the repository to be public (so GitHub, release, source, and license links
+work without authentication), the generated catalog, guides, and privacy disclosures from #43, and the
+published install paths from #40–#42. Issue #45 then verifies the production site and published beta.
 
 ### Deployment troubleshooting
 

@@ -12,7 +12,7 @@ import {
 } from "../../src/data/project.js";
 import { REPOSITORY_SECTIONS } from "../../src/data/repository-sections.js";
 import { extractSection, rewriteRepositoryLinks } from "../../src/loaders/repository-markdown.js";
-import { DOCUMENT_ROUTES, PUBLIC_ROUTES } from "../support/site.js";
+import { DISCLOSED_STORAGE, DISCLOSED_THIRD_PARTY_ORIGINS, DOCUMENT_ROUTES, PUBLIC_ROUTES } from "../support/site.js";
 import { normalizedVisibleText, readRoute, repositoryRoot } from "./html.js";
 
 const repo = (path: string) => readFile(new URL(path, `file://${repositoryRoot}`), "utf8");
@@ -214,6 +214,15 @@ describe("visitor-facing output", () => {
     expect(text).toContain("independent, self-hosted Rust Model Context Protocol (MCP) server for Komodo");
     expect(text).toMatch(/Start by listing your stacks[\s\S]*Diagnose a failed stack/);
     expect(text).toContain("stack_diagnose");
+  });
+
+  it("discloses every storage key, third-party origin, and the host", async () => {
+    const text = normalizedVisibleText((await readRoute("/guides/security/")).document);
+    for (const key of [...DISCLOSED_STORAGE.local, ...DISCLOSED_STORAGE.session]) expect(text).toContain(key);
+    for (const origin of DISCLOSED_THIRD_PARTY_ORIGINS) expect(text).toContain(new URL(origin).host);
+    expect(text).toContain("sets no cookies");
+    expect(text).toContain("Cloudflare serves every page");
+    expect(text).not.toMatch(/processes no|collects nothing/i);
   });
 
   it("keeps planned paths visibly unavailable", async () => {
