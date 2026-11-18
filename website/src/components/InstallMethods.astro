@@ -1,0 +1,25 @@
+---
+import { TabItem, Tabs } from "@astrojs/starlight/components";
+import { INSTALL_METHODS } from "../data/install.js";
+import InstallMethod from "./InstallMethod.astro";
+---
+
+<div class="install-methods" data-install-methods>
+  <Tabs syncKey="install-method">
+    {
+      INSTALL_METHODS.map((method) => (
+        <TabItem label={method.status === "available" ? method.label : `${method.label} (planned)`}>
+          <InstallMethod method={method.key} showGuideLink />
+        </TabItem>
+      ))
+    }
+  </Tabs>
+  <noscript>
+    <style>
+      [data-install-methods] starlight-tabs {
+        display: none !important;
+      }
+    </style>
+    {INSTALL_METHODS.map((method) => <InstallMethod method={method.key} showGuideLink headingLevel={3} />)}
+  </noscript>
+</div>

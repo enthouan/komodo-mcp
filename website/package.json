@@ -1,0 +1,36 @@
+{
+  "name": "komodo-mcp-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cross-env ASTRO_DEV_BACKGROUND=0 astro dev",
+    "build": "astro build",
+    "preview": "cross-env ASTRO_PREVIEW_BACKGROUND=0 astro preview",
+    "typecheck": "astro check --minimumFailingSeverity warning",
+    "og": "tsx scripts/render-og-image.ts",
+    "og:check": "tsx scripts/render-og-image.ts --check",
+    "contracts:run": "vitest run --config vitest.config.ts",
+    "test:run": "playwright test --config playwright.config.ts",
+    "visual:run": "cross-env VISUAL_QA=1 playwright test --config playwright.config.ts"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.12",
+    "@astrojs/markdown-remark": "7.3.9",
+    "@astrojs/starlight": "0.43.1",
+    "@axe-core/playwright": "4.14.0",
+    "@emnapi/runtime": "1.11.3",
+    "@fortawesome/free-brands-svg-icons": "7.3.1",
+    "@fortawesome/free-solid-svg-icons": "7.3.1",
+    "@playwright/test": "1.65.1",
+    "@types/node": "24.19.2",
+    "astro": "7.4.12",
+    "cross-env": "10.1.0",
+    "github-slugger": "2.0.0",
+    "parse5": "8.1.1",
+    "sharp": "0.35.5",
+    "smol-toml": "1.9.1",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.1.0"
+  }
+}

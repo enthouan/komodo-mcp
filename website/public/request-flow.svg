@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" role="img" aria-labelledby="request-flow-title request-flow-description">
+  <title id="request-flow-title">How a komodo-mcp tool call travels</title>
+  <desc id="request-flow-description">An MCP client launches komodo-mcp over local stdio. komodo-mcp holds the Komodo Core API key and secret, checks local capability grants, and sends typed read, write, or execute requests to Komodo Core over HTTPS. Core enforces the identity's permissions and reaches Periphery agents on your servers. Komodo Core remains the source of truth.</desc>
+  <style>
+    .panel { fill: #f8fbf9; stroke: #b9d3c4; stroke-width: 2; }
+    .core { fill: #e2f5ea; stroke: #047857; stroke-width: 2; }
+    .title { fill: #0f2a1f; font: 700 20px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .mono { fill: #047857; font: 700 20px ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+    .body { fill: #36574a; font: 15px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .label { fill: #064e3b; font: 600 14px ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+    .arrow { stroke: #047857; stroke-width: 2.5; fill: none; }
+    .head { fill: #047857; }
+    @media (prefers-color-scheme: dark) {
+      .panel { fill: #17221d; stroke: #34594a; }
+      .core { fill: #0b2a20; stroke: #34d399; }
+      .title { fill: #eef7f2; }
+      .mono { fill: #6ee7b7; }
+      .body { fill: #b7cdc2; }
+      .label { fill: #c8f2de; }
+      .arrow { stroke: #34d399; }
+      .head { fill: #34d399; }
+    }
+  </style>
+  <rect class="panel" x="16" y="40" width="250" height="230" rx="18" />
+  <text class="title" x="40" y="84">MCP client</text>
+  <text class="body" x="40" y="116">Codex, Claude, VS Code,</text>
+  <text class="body" x="40" y="138">OpenCode, Inspector…</text>
+  <text class="body" x="40" y="176">Proposes tool calls;</text>
+  <text class="body" x="40" y="198">you approve them.</text>
+
+  <rect class="core" x="355" y="40" width="250" height="230" rx="18" />
+  <text class="mono" x="379" y="84">komodo-mcp</text>
+  <text class="body" x="379" y="116">holds Core API key + secret</text>
+  <text class="body" x="379" y="138">checks local grants</text>
+  <text class="body" x="379" y="160">bounds and redacts output</text>
+  <text class="body" x="379" y="198">stdout: MCP only</text>
+  <text class="body" x="379" y="220">stderr: diagnostics</text>
+
+  <rect class="panel" x="694" y="40" width="250" height="230" rx="18" />
+  <text class="title" x="718" y="84">Komodo Core</text>
+  <text class="body" x="718" y="116">enforces the identity’s</text>
+  <text class="body" x="718" y="138">Read / Write / Execute</text>
+  <text class="body" x="718" y="176">reaches Periphery agents</text>
+  <text class="body" x="718" y="198">on your Servers</text>
+
+  <path class="arrow" d="M266 140 H347" />
+  <path class="head" d="M355 140 l-12 -7 v14 z" />
+  <text class="label" x="276" y="128">stdio</text>
+  <path class="arrow" d="M605 140 H686" />
+  <path class="head" d="M694 140 l-12 -7 v14 z" />
+  <text class="label" x="616" y="128">HTTPS</text>
+
+  <text class="body" x="16" y="318">Local stdio · no listener · one Core identity per process</text>
+  <text class="body" x="694" y="318">Komodo Core remains the source of truth</text>
+</svg>

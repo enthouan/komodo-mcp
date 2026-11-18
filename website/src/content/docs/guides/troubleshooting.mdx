@@ -1,0 +1,75 @@
+---
+title: Troubleshooting
+description: Tell apart build and startup failures, client connection problems, Core authentication and permissions, Core reachability, version mismatch, disabled grants, and operation timeouts.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import { KOMODO_CLIENT_VERSION } from '../../../data/project.js';
+
+Start with the server's stderr. The executable writes only safe diagnostics there, and every failure carries a stable category such as `authentication` or `unreachable` plus the operation that failed. Credential values never appear.
+
+<Aside type="tip" title="Isolate startup in a shell">
+  Run the executable with the same environment, stdin closed, and stderr redirected to a file. A healthy configuration gets past the `GetVersion` probe and then reports that no MCP initialization arrived; any earlier failure names its cause.
+
+  ```sh
+  ./target/release/komodo-mcp < /dev/null 2> komodo-mcp-startup.log
+  ```
+</Aside>
+
+## Build and executable problems
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `cargo build` reports an unsupported or missing toolchain | Install the pinned Rust toolchain from `rust-toolchain.toml` (rustup selects it automatically) or run `asdf install`. |
+| `--locked` fails because `Cargo.lock` needs updating | Do not drop `--locked`. Check out a clean release tag or `main`; local edits to `Cargo.toml` require a reviewed lockfile change. |
+| Client reports `ENOENT`, “command not found”, or exits immediately | The configured path is wrong or relative. Use the absolute path to `target/release/komodo-mcp`, and rebuild it if `cargo clean` removed it. |
+
+## Client connection and discovery
+
+| Symptom | Cause and fix |
+| --- | --- |
+| Client shows the server as failed during initialization | The server exits before MCP when the startup probe fails. Read its stderr and continue with the Core sections below. |
+| Server connects but write or operation tools are missing | Only tools enabled by the local grants are discovered. This is expected for read-only use; see [Disabled local capabilities](#disabled-local-capabilities). |
+| Configuration changes have no effect | The environment is read once. Restart the server or client; a `.env` file alone is never loaded. |
+| Claude Code shows a literal `${KOMODO_API_KEY}` warning | The referenced variable was not exported in the environment that started Claude Code. |
+
+There are no transport credentials for stdio: the client that launches the process is the only peer. Inbound HTTP authentication will be documented here once authenticated Streamable HTTP ([#40](https://github.com/enthouan/komodo-mcp/issues/40)) ships; until then any “bearer token” or HTTP URL setup does not apply to komodo-mcp.
+
+## Core authentication and permissions
+
+| Diagnostic | Meaning and fix |
+| --- | --- |
+| `configuration (configure)` with `KOMODO_API_SECRET is required` (or another variable) | The variable is missing, empty, or invalid in the launched process. Set it in the client's server environment. |
+| `authentication (GetVersion)`: “Core rejected authentication; check the API key, secret, and enabled user.” | HTTP 401. The key and secret do not match, were deleted, or belong to a disabled user. |
+| Tool result `kind: permission_denied`: “Core denied access; grant the user the required resource read permission.” | Core refused this resource. Grant the identity the needed level (Read for inspection, Execute for operations, Write for configuration). |
+| `list_stacks` succeeds with an empty `items` list | Not an error: the identity can read no Stacks. Check Read grants, groups, and base permissions in Komodo. |
+| Tool result `kind: not_found` | No exact visible match. Names are case-sensitive; list the family and retry with a current ID. Missing and invisible resources look the same. |
+
+## Core reachability (DNS, network, TLS)
+
+| Diagnostic | Meaning and fix |
+| --- | --- |
+| `unreachable (GetVersion)`: “Unable to reach Core; check KOMODO_ADDRESS, connectivity, and TLS certificates.” | DNS, connection, or TLS failure. Check the hostname, port, VPN or firewall, and that the certificate is valid for that host. Certificate verification is never disabled. |
+| `upstream (GetVersion)` or `invalid_response (GetVersion)` at startup | The address may point at a proxy or web page rather than the Core API, or the proxy redirects. Redirects are not followed; use the final Core URL including any base path. |
+| `configuration` error about `KOMODO_ADDRESS` | Use an absolute `http://` or `https://` URL without user information, query, or fragment. |
+
+## Version compatibility
+
+komodo-mcp is built against `komodo_client` {KOMODO_CLIENT_VERSION}, and its fixtures represent Komodo Core {KOMODO_CLIENT_VERSION}. Startup records the version Core reports but does not refuse other versions, and compatibility with them is not claimed. If Core is a different version and tools fail with `invalid_response` (malformed or incompatible data) or unexpected `upstream` errors, check the version first. `invalid_response (GetVersion)` means the version reply itself was not valid. See [Compatibility](/getting-started/compatibility/).
+
+## Disabled local capabilities
+
+A tool whose grant is off is not registered for this process: it is absent from `tools/list`, and calling it by name fails as an unknown tool before any Core request. A tool that is enabled but needs a second grant for a particular change (for example a Stack source update that also needs operate) fails with `capability_disabled`, again without a Core request. Enable the specific grant (`KOMODO_ALLOW_OPERATE`, `KOMODO_ALLOW_CONFIGURATION_EDIT`, `KOMODO_ALLOW_PRUNE`, or `KOMODO_ALLOW_TERMINAL`) with exactly `true`, restart, and make sure Core also grants the identity the matching permission. A grant value other than `true` or `false` fails startup.
+
+## Timeouts and uncertain outcomes
+
+| Situation | What to do |
+| --- | --- |
+| `timeout (GetVersion)` at startup | Core did not answer within the connection timeout (5 s) or the 15-second request deadline. Check Core health and network latency, then reconnect. |
+| A read tool returns `kind: timeout` | Safe to retry the read. Multi-read lookups can take longer because each read has its own deadline. |
+| An operation or apply timed out or its reply was lost | **Do not repeat it automatically.** The change may have happened. If you have an update ID, call `wait_for_update`; otherwise call `reconcile_operation` with the same target, scope, and action. Then verify the workload independently. |
+| `wait_for_update` returns incomplete | Observation ended within its budget; that does not mean the operation failed. Call it again with the same ID, even from a new session. |
+
+## Still stuck?
+
+Follow the [interactive stdio walkthrough](/docs/mock-stdio/#troubleshooting) to reproduce the problem against a synthetic mock Core, then [report the issue](/reference/reporting-issues/) with sanitized stderr.

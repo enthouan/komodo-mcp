@@ -1,0 +1,34 @@
+---
+title: Contributing
+description: Run the komodo-mcp Rust checks and the website checks, follow the repository's canonical documentation sources, and prepare focused pull requests.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import RepositorySection from '../../../components/RepositorySection.astro';
+
+Contributions go through pull requests against `main` on [GitHub](https://github.com/enthouan/komodo-mcp). Keep each change focused on one issue, and keep secrets and real Core data out of code, tests, logs, and screenshots; the test suite uses synthetic fixtures and credentials only.
+
+## Development
+
+<RepositorySection id="readme-development" />
+
+## Documentation sources
+
+The README and the files in `docs/` are the canonical documentation. This website renders them at build time, so edit the Markdown in the repository rather than the website. A guide that moves or a README section that is renamed fails the website build until the website metadata is updated.
+
+## Website
+
+The website lives in `website/` and uses Astro Starlight with pnpm. Node is a website build dependency only. From the repository root:
+
+```sh
+corepack pnpm install --frozen-lockfile
+corepack pnpm --dir website exec playwright install chromium webkit
+corepack pnpm website:dev
+corepack pnpm website:check
+```
+
+`website:check` verifies the social image, runs Astro diagnostics, builds the production artifact once, then runs output contracts and Playwright browser checks against it. See `website/README.md` for each stage.
+
+<Aside type="note" title="Maintenance and releases">
+  Dependency updates, required checks, and branch protection are described in [Repository maintenance](/docs/maintenance/). Releases follow the repository's release skill and are published only by an authorized maintainer.
+</Aside>

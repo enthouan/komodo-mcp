@@ -13,3 +13,11 @@ target/
 
 # Benchmark Python bytecode
 __pycache__/
+
+# Website (Node is a website build dependency only)
+node_modules/
+website/dist/
+website/.astro/
+website/test-results/
+website/playwright-report/
+website/artifacts/

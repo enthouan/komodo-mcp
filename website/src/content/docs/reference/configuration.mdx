@@ -1,0 +1,66 @@
+---
+title: Configuration reference
+description: Every environment variable komodo-mcp reads, its default, its accepted values, and how local capability grants relate to Komodo Core permissions.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import RepositorySection from '../../../components/RepositorySection.astro';
+import { CAPABILITY_VARIABLES, CORE_CONNECTION_VARIABLES } from '../../../data/configuration.js';
+
+komodo-mcp reads its process environment once at startup. It does not load `.env` files or any configuration file. Restart the server after any change.
+
+## Core connection
+
+All three are required.
+
+<table tabindex="0">
+  <thead>
+    <tr><th>Variable</th><th>Example</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    {CORE_CONNECTION_VARIABLES.map((variable) => (
+      <tr>
+        <td><code>{variable.name}</code></td>
+        <td><code>{variable.placeholder}</code></td>
+        <td>{variable.summary}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+
+## Optional local grants
+
+Each must be exactly `true` or `false`. Unset means `false`. An empty, misspelled, or padded value fails startup before contacting Core.
+
+<table tabindex="0">
+  <thead>
+    <tr><th>Variable</th><th>Default</th><th>Enables</th></tr>
+  </thead>
+  <tbody>
+    {CAPABILITY_VARIABLES.map((variable) => (
+      <tr>
+        <td><code>{variable.name}</code></td>
+        <td><code>{variable.defaultValue}</code></td>
+        <td>{variable.summary}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+
+## Logging
+
+`RUST_LOG` filters diagnostics on stderr; the default level is `info`. For example, `RUST_LOG=komodo_mcp=debug,rmcp=warn`. Credential values are redacted at every level.
+
+## Fixed limits
+
+- Connection timeout: 5 seconds. Each complete Core operation: 15 seconds, including reading the response body.
+- List pages: `page` defaults to 0, `page_size` defaults to 30 and accepts 1–100.
+- Automatic redirects are disabled and TLS certificate verification stays enabled.
+
+<Aside type="note" title="Canonical source">
+  The section below is rendered from the repository README at build time, so it always matches the documented behavior of `main`.
+</Aside>
+
+## Local capabilities and Core permissions
+
+<RepositorySection id="readme-local-capabilities" />

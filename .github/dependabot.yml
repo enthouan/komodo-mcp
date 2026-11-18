@@ -27,3 +27,17 @@ updates:
         patterns: ["*"]
         exclude-patterns: [dtolnay/rust-toolchain]
         update-types: [minor, patch]
+
+  # Website build tooling only (website/ pnpm workspace); never part of the Rust executable.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "10:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 3
+    groups:
+      website-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]

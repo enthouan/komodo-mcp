@@ -1,0 +1,32 @@
+---
+title: Set up your MCP client
+description: Configure Codex, Claude Code, Claude Desktop, VS Code, or OpenCode to launch komodo-mcp over native stdio, then verify the connection by listing your stacks.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import ClientSetup from '../../../components/ClientSetup.astro';
+
+Every recipe launches the same compiled executable over stdio and supplies the Core connection through the server's environment. Replace the executable placeholder with the absolute path to your `target/release/komodo-mcp`.
+
+<Aside type="note" title="What “reviewed” means">
+  Each recipe's syntax was compared with the client's own documentation on the date shown. That is configuration review, not evidence of a successful connection, tool discovery, or Core read in that client. Recorded connection evidence is listed under [Compatibility](/getting-started/compatibility/).
+</Aside>
+
+The recipes set all four optional grants to `"false"`, so the server stays read-only even if the launching environment enables a grant. Change a grant only deliberately, and restart the server afterward. See [Configuration](/reference/configuration/#local-capabilities-and-core-permissions).
+
+## Client recipes
+
+Choose your client. Each tab links directly, for example [`#claude-desktop`](#claude-desktop).
+
+<ClientSetup />
+
+## Other clients and MCP Inspector
+
+Any MCP client that can launch a local stdio process works the same way: run the absolute executable path with no arguments and set the environment variables. For a scripted check without a model, the [interactive stdio walkthrough](/docs/mock-stdio/) generates a verified MCP Inspector 2.14.0 configuration against a synthetic mock Core and lists stacks from the CLI.
+
+## If the server does not connect
+
+- **The client cannot start it:** check that the path is absolute, exists, and is executable. Build it first.
+- **It starts, then closes during initialization:** the startup `GetVersion` probe failed. Read the server's stderr for `configuration`, `authentication`, `unreachable`, or `timeout` and follow [Troubleshooting](/guides/troubleshooting/).
+- **It connects but tools are missing:** only tools enabled by the local grants are discovered. Read tools are always present.
+- **`list_stacks` returns an empty list:** the identity can read no Stacks. Check Core Read permissions; an empty list is not an error.

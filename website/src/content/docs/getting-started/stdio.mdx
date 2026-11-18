@@ -1,0 +1,53 @@
+---
+title: Native stdio
+description: Build the komodo-mcp executable from source, run the synthetic demonstration, and launch it against a real Komodo Core over stdio.
+---
+
+import { Aside, Code, Steps } from '@astrojs/starlight/components';
+import RepositorySection from '../../../components/RepositorySection.astro';
+import { MCP_PROTOCOL_VERSION, RUST_TOOLCHAIN } from '../../../data/project.js';
+import { EXECUTABLE_PLACEHOLDER } from '../../../data/clients.js';
+
+Native stdio is the supported way to run komodo-mcp today. The MCP client starts the compiled executable, writes newline-delimited JSON-RPC to its stdin, and reads MCP responses from its stdout. There is no network listener and no interactive prompt.
+
+<Aside type="note" title="Source build, not a binary download">
+  Prebuilt executables are not published yet ([#42](https://github.com/enthouan/komodo-mcp/issues/42)). The steps below build the locked release executable with Rust {RUST_TOOLCHAIN}.
+</Aside>
+
+## Fresh-checkout demo (synthetic Core)
+
+This demonstration needs no real Core, credentials, Node, or model service. It is fixture-based: it exercises the compiled executable and the MCP path, not Core's authorization engine. CI runs the same command on every pull request.
+
+<RepositorySection id="readme-fresh-checkout-demo" />
+
+## Build and launch
+
+<RepositorySection id="readme-build-and-launch" />
+
+## Connect a client
+
+Use the absolute path of the executable you built, for example:
+
+<Code lang="text" code={EXECUTABLE_PLACEHOLDER} title="Executable path placeholder" />
+
+Desktop applications often do not inherit your shell's `PATH` or working directory, so relative paths and bare command names are unreliable. Put the three Core variables in the client's server environment, keep the four optional grants unset or `false` for read-only use, and follow the client-specific recipe in [Set up your MCP client](/getting-started/clients/).
+
+<Steps>
+1. **Initialization.** The server answers MCP initialization only after its startup `GetVersion` probe to Core succeeds. A failed probe exits nonzero with a safe stderr diagnostic and no stdout. The repository's tests use MCP <code>{MCP_PROTOCOL_VERSION}</code>.
+
+2. **Discovery.** `tools/list` returns only the tools enabled for this process's grants, each with input and output schemas and effect annotations.
+
+3. **First read.** Call `list_stacks` with no arguments, or with `{"page_size": 30}`, and follow `next_page` with the same `page_size`.
+
+4. **Shutdown.** Closing stdin ends the session and the process exits successfully.
+</Steps>
+
+## Diagnostics and logging
+
+All application and SDK diagnostics go to stderr, so stdout carries only MCP messages. Logging defaults to `info` and honors `RUST_LOG`; credential values are redacted from log events, including verbose dependency traces:
+
+```sh
+RUST_LOG=komodo_mcp=debug,rmcp=warn ./target/release/komodo-mcp
+```
+
+Your client decides where child stderr goes. Claude Desktop writes it to `mcp-server-komodo.log` in its log directory; MCP Inspector shows it in its terminal. See [Troubleshooting](/guides/troubleshooting/) for each failure category and the [interactive stdio walkthrough](/docs/mock-stdio/) for a standalone mock Core and a verified MCP Inspector configuration.

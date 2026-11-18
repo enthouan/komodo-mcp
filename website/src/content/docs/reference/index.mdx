@@ -1,0 +1,40 @@
+---
+title: Reference
+description: Configuration, tool contracts, releases, source, license, contribution guidance, and support resources for komodo-mcp.
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+import RepositoryLink from '../../../components/RepositoryLink.astro';
+import RepositorySection from '../../../components/RepositorySection.astro';
+import { KOMODO_CLIENT_VERSION, PROJECT_LICENSE, PROJECT_VERSION, RELEASE_SOURCE_ARCHIVE_URL, RELEASE_TAG, RELEASE_URL, RMCP_VERSION, RUST_TOOLCHAIN } from '../../../data/project.js';
+import { CHANGELOG_URL, LICENSE_URL, RELEASES_URL, REPOSITORY_URL } from '../../../data/repository.js';
+
+<RepositoryLink showIssueLink />
+
+## Project facts
+
+These values are read from the repository's `Cargo.toml` and `rust-toolchain.toml` when the site is built.
+
+<table tabindex="0">
+  <tbody>
+    <tr><th scope="row">Package version on <code>main</code></th><td><code>{PROJECT_VERSION}</code></td></tr>
+    <tr><th scope="row">Latest release</th><td><a href={RELEASE_URL}>{RELEASE_TAG}</a> · <a href={RELEASES_URL}>all releases</a> · <a href={CHANGELOG_URL}>changelog</a></td></tr>
+    <tr><th scope="row">Release source</th><td><a href={RELEASE_SOURCE_ARCHIVE_URL}>{RELEASE_TAG} source archive</a> (binaries are not published yet)</td></tr>
+    <tr><th scope="row">License</th><td><a href={LICENSE_URL}>{PROJECT_LICENSE}</a></td></tr>
+    <tr><th scope="row">Rust toolchain</th><td><code>{RUST_TOOLCHAIN}</code></td></tr>
+    <tr><th scope="row">Komodo client</th><td><code>komodo_client {KOMODO_CLIENT_VERSION}</code></td></tr>
+    <tr><th scope="row">MCP SDK</th><td><code>rmcp {RMCP_VERSION}</code></td></tr>
+    <tr><th scope="row">Source</th><td><a href={REPOSITORY_URL}>{REPOSITORY_URL}</a></td></tr>
+  </tbody>
+</table>
+
+<CardGrid>
+  <LinkCard title="Configuration" description="Environment variables, defaults, local grants, and Core permissions." href="/reference/configuration/" />
+  <LinkCard title="Tool reference" description="Inventory, operation, fleet-health, and error contracts from the README." href="/reference/tools/" />
+  <LinkCard title="Contributing" description="Run the Rust and website checks and follow the repository conventions." href="/reference/contributing/" />
+  <LinkCard title="Reporting issues and support" description="Choose the right channel and prepare a sanitized report." href="/reference/reporting-issues/" />
+</CardGrid>
+
+## License
+
+<RepositorySection id="readme-license" />

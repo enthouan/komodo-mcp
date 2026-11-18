@@ -1,0 +1,35 @@
+---
+title: Reporting issues and support
+description: Choose the right channel for komodo-mcp questions, bugs, and security reports, and prepare a useful, sanitized report.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import RepositoryLink from '../../../components/RepositoryLink.astro';
+import { PROJECT_VERSION } from '../../../data/project.js';
+
+komodo-mcp is maintained as an independent open-source project. Support happens in public on GitHub on a best-effort basis; there is no commercial support or SLA. For Komodo itself, use the [Komodo documentation](https://komo.do/docs/) and its own community channels.
+
+<RepositoryLink showIssueLink />
+
+## Before you report
+
+1. Reproduce with the current release or `main`, and note the release tag or commit you built (the package version on `main` is currently <code>{PROJECT_VERSION}</code>). The Core version appears in the server's startup log line `connected to Komodo Core`.
+2. Check [Troubleshooting](/guides/troubleshooting/) and try the synthetic [interactive stdio walkthrough](/docs/mock-stdio/) to see whether the problem depends on your Core.
+3. Note your Komodo Core version, operating system, MCP client and version, and which `KOMODO_ALLOW_*` grants were `true`.
+
+## Include
+
+- The exact tool name and sanitized arguments.
+- The error `kind`, operation, and message from the tool result or stderr.
+- Whether the problem appears with the mock Core, a real Core, or both.
+
+## Never include
+
+- `KOMODO_API_KEY`, `KOMODO_API_SECRET`, or client configuration files that contain them.
+- Private hostnames, IP addresses, resource names, log lines, or variable values you are not willing to publish. Replace them with placeholders.
+
+## Security vulnerabilities
+
+<Aside type="caution" title="Do not disclose details publicly">
+  Do not post exploit details, credentials, or affected-system data in a public issue. Open an issue that only asks for a private contact channel and wait for the maintainer to respond before sharing details.
+</Aside>

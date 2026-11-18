@@ -1,0 +1,25 @@
+{
+  "name": "komodo-mcp-website-workspace",
+  "private": true,
+  "description": "Website build tooling for komodo-mcp. Not required to build or run the Rust MCP server.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0"
+  },
+  "scripts": {
+    "website:dev": "pnpm --dir website dev",
+    "website:typecheck": "pnpm --dir website typecheck",
+    "website:build": "pnpm --dir website build",
+    "website:preview": "pnpm --dir website preview",
+    "website:og": "pnpm --dir website og",
+    "website:og:check": "pnpm --dir website og:check",
+    "website:contracts:run": "pnpm --dir website contracts:run",
+    "website:contracts": "pnpm website:og:check && pnpm website:build && pnpm website:contracts:run",
+    "website:test:run": "pnpm --dir website test:run",
+    "website:test": "pnpm website:build && pnpm website:test:run",
+    "website:visual": "pnpm website:build && pnpm --dir website visual:run",
+    "website:check": "pnpm website:og:check && pnpm website:typecheck && pnpm website:build && pnpm website:contracts:run && pnpm website:test:run"
+  },
+  "packageManager": "pnpm@10.34.1"
+}

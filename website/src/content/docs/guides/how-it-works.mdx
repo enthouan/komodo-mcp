@@ -1,0 +1,44 @@
+---
+title: How it works
+description: Follow a komodo-mcp tool call from the MCP client over stdio, through local capability checks, to Komodo Core and back.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import { KOMODO_CLIENT_VERSION, RMCP_VERSION, MCP_PROTOCOL_VERSION } from '../../../data/project.js';
+
+<figure class="hero-html">
+  <img src="/request-flow.svg" width="960" height="360" alt="An MCP client launches komodo-mcp over stdio; komodo-mcp holds the Core API key and secret, checks local grants, and calls Komodo Core over HTTPS, which enforces permissions and reaches Periphery agents." />
+</figure>
+
+## The three parts
+
+- **Your MCP client** starts komodo-mcp as a child process and exchanges MCP messages over stdin and stdout. The client and its model decide which tools to propose; you approve them.
+- **komodo-mcp** is a Rust executable built on the official rmcp **{RMCP_VERSION}** SDK. It holds one Core API key and secret, decides which tools this process exposes, validates arguments, and turns Core responses into bounded, redacted, typed results.
+- **Komodo Core** is called through the official `komodo_client` **{KOMODO_CLIENT_VERSION}** crate. Core authenticates the key, enforces that identity's permissions, and reaches Periphery agents on your Servers.
+
+## Startup
+
+1. The process reads its environment once: the three Core variables and the four optional grants. Invalid values fail before any network request.
+2. It sends one authenticated `GetVersion` read and keeps the observed Core version. A failure exits nonzero with a safe stderr diagnostic and no stdout.
+3. Only then does it serve MCP. The repository's compiled-stdio tests use protocol <code>{MCP_PROTOCOL_VERSION}</code>.
+
+## A tool call
+
+1. **Discovery.** `tools/list` returns the tools enabled for this process: every read tool, plus the operation, configuration, prune, or terminal tools whose grants are `true`. Discovery, lookup, and dispatch share one router, so a disabled or unknown tool is rejected before its arguments are even parsed.
+2. **Validation.** List and detail inputs are strict JSON objects. Unknown fields, out-of-range page sizes, conflicting selectors, and similar mistakes fail with `invalid_arguments` before Core is called.
+3. **Resolution.** Detail tools resolve an exact, case-sensitive name or a stable 24-character ID to one visible resource. Ambiguous or incomplete resolution fails safely and asks you to retry by ID.
+4. **Core requests.** Reads use Core's typed read API. Changes use typed write or execute requests, only after the local grant and any required preview or acknowledgement. Each request has a 5-second connection timeout and an independent 15-second deadline; redirects are not followed.
+5. **Projection.** Results are fixed, documented fields. Raw configuration, environment blocks, Compose content, upstream error bodies, and credential values never enter them. Large evidence such as logs and diagnosis is bounded and marked truncated.
+6. **Result.** Success is returned as structured content plus matching JSON text. Failures use MCP's `isError` result with a stable `kind` such as `permission_denied` or `timeout`.
+
+## Operations are receipts, not guarantees
+
+When an operation is enabled and approved, komodo-mcp submits it once and returns Core's update receipt. Submission, the final execution outcome, and workload health are separate facts. Use `wait_for_update` to observe a known update ID, and `reconcile_operation` to look for a possible match after a lost reply. Neither tool resubmits anything.
+
+<Aside type="caution" title="Do not retry uncertain mutations automatically">
+  If a reply was lost or timed out, the change may still have happened. Observe first by update ID or reconcile; a new call can create a new update or repeat its effects.
+</Aside>
+
+## What this site is built from
+
+This website is a static Astro Starlight site in the repository's `website/` directory. Operator guides and README sections are rendered from the versioned Markdown at build time, and versions shown here are read from `Cargo.toml` and `rust-toolchain.toml`. The site never connects to your Core; [Security & Data](/guides/security/#this-website) lists the requests it makes and what it keeps in your browser.

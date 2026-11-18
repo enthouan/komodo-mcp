@@ -1,0 +1,49 @@
+---
+title: Install and run
+description: Choose a supported installation path, prepare Komodo Core credentials, connect an MCP client over stdio, and verify the setup by listing your stacks.
+---
+
+import { Aside, CardGrid, Code, LinkCard, Steps } from '@astrojs/starlight/components';
+import InstallMethods from '../../../components/InstallMethods.astro';
+import { RELEASE_TAG, RELEASE_URL, RELEASE_SOURCE_ARCHIVE_URL, RUST_TOOLCHAIN } from '../../../data/project.js';
+import { LICENSE_URL } from '../../../data/repository.js';
+
+komodo-mcp is a single Rust executable that your MCP client starts as a child process. It talks MCP over stdin and stdout and calls your Komodo Core API with one API key and secret.
+
+## Choose an installation path
+
+Only the native stdio source build is available today. The other paths are listed so you know they are planned; nothing on this site describes them as usable until they are published and verified.
+
+<InstallMethods />
+
+## Set up in five steps
+
+<Steps>
+1. **Install the prerequisites.** Git and Rust **{RUST_TOOLCHAIN}** with Cargo. The repository's `rust-toolchain.toml` selects that toolchain for rustup; `.tool-versions` selects it for asdf. Node is not needed to build or run komodo-mcp.
+
+2. **Build the executable.** Clone the repository and run `cargo build --locked --release --bin komodo-mcp`. Note the absolute path of `target/release/komodo-mcp`. See [Native stdio](/getting-started/stdio/) for a synthetic demonstration that needs no real Core.
+
+3. **Prepare Core credentials.** Use an enabled Komodo identity with Read access to the resources you want to inspect, and its API key and secret. See [Komodo Core credentials](/getting-started/komodo-credentials/).
+
+4. **Configure your MCP client.** Point the client at the executable's absolute path and supply `KOMODO_ADDRESS`, `KOMODO_API_KEY`, and `KOMODO_API_SECRET` in its process environment. See [Set up your MCP client](/getting-started/clients/).
+
+5. **Verify with a read.** After the client initializes the server and discovers its tools, ask it to list your stacks and approve only `list_stacks`.
+</Steps>
+
+<Aside type="caution" title="The executable does not read .env files">
+  It reads its process environment once at startup. A `.env` file on disk has no effect unless your client or shell exports it. Restart the MCP server after changing any variable.
+</Aside>
+
+## Release and source
+
+The latest release is <a href={RELEASE_URL}>{RELEASE_TAG}</a>. Releases currently publish source only: the <a href={RELEASE_SOURCE_ARCHIVE_URL}>tagged source archive</a> or a `git clone` of the tag contains everything needed to build, including `Cargo.lock` and the GPL-3.0-or-later <a href={LICENSE_URL}>license</a>. To build exactly that release, check out the tag before building:
+
+<Code lang="sh" title="Build a tagged release" code={`git clone https://github.com/enthouan/komodo-mcp.git
+cd komodo-mcp
+git checkout ${RELEASE_TAG}
+cargo build --locked --release --bin komodo-mcp`} />
+
+<CardGrid>
+  <LinkCard title="Native stdio" description="Synthetic demo, real-Core launch, startup probe, and diagnostics." href="/getting-started/stdio/" />
+  <LinkCard title="Troubleshooting" description="Separate build, client, Core authentication, permission, reachability, and timeout problems." href="/guides/troubleshooting/" />
+</CardGrid>

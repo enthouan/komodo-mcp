@@ -5,6 +5,10 @@ notes: short, categorized bullets with links to the relevant pull requests.
 
 ## Unreleased
 
+### Added
+
+- Build the komodo-mcp.com documentation website from the versioned README and guides. ([#126](https://github.com/enthouan/komodo-mcp/pull/126))
+
 ## v0.7.0
 
 ### Added
