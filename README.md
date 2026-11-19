@@ -638,6 +638,14 @@ compatible with the SDK's `0.13.4` requirement; the lockfile resolves both to
 **reqwest 0.13.5**, with one shared client type. No additional upstream feature
 was needed.
 
+## Contributing and reporting
+
+The [contributing guide](https://komodo-mcp.com/reference/contributing/) covers
+pull requests and the Rust and website checks. For ordinary bugs, follow the
+[reporting guide](https://komodo-mcp.com/reference/reporting-issues/) to file a
+sanitized GitHub issue. For suspected vulnerabilities, use the
+[private reporting instructions](SECURITY.md).
+
 ## Development
 
 ```sh
@@ -689,3 +697,7 @@ Licensed under **GPL-3.0-or-later**. See [LICENSE](LICENSE) for the declaration 
 full license text. The source package includes this license. Include `LICENSE`
 alongside any redistributed executable; this project does not yet build binary
 distribution archives.
+
+The [Starlight patch notice](patches/starlight-LICENSE.txt) covers the upstream
+code included in the website's search component patch. The generated client
+icons carry their Font Awesome Free attribution in `client-icons.css`.
