@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - name: Check tracked benchmark reports
+        run: python3 benchmarks/check_reports.py
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: 1.99.1
@@ -31,18 +33,17 @@ jobs:
           --fixture-size 7 --page-size 3 --warmup 1 --samples 2
           --cold-samples 1 --repetitions 2
           --host-note "GitHub-hosted Ubuntu runner; VM/shared host; frequency and background load uncontrolled"
-      - name: Validate required evidence
-        run: python3 benchmarks/bench.py validate target/benchmark/result.json
       - name: Compare concurrent incident triage and growing fleets
         run: |
           python3 benchmarks/bench.py incident --fixture-size 7 --page-size 3 --concurrency 2 --warmup 1 --samples 2 --repetitions 2 --output target/benchmark/incident-smoke.json --host-note "GitHub-hosted Ubuntu runner; VM/shared host; background load uncontrolled"
           python3 benchmarks/bench.py incident --fixture-size 31 --page-size 7 --concurrency 2 --warmup 0 --samples 2 --repetitions 1 --output target/benchmark/incident-fleet.json --host-note "GitHub-hosted Ubuntu runner; VM/shared host; background load uncontrolled"
-          python3 benchmarks/bench.py validate target/benchmark/incident-smoke.json
-          python3 benchmarks/bench.py validate target/benchmark/incident-fleet.json
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: inventory-benchmark-${{ github.sha }}
-          path: target/benchmark/*.json
-          if-no-files-found: warn
-          retention-days: 30
+      - name: Validate reports and publish their summaries
+        run: |
+          {
+            echo '```text'
+            for report in target/benchmark/{result,incident-smoke,incident-fleet}.json; do
+              python3 benchmarks/bench.py summarize "$report"
+              echo
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,20 +1,30 @@
-import { DISCLOSED_THIRD_PARTY_ORIGINS } from "../support/site.js";
+import type { Request } from "@playwright/test";
+import { REPOSITORY_API_URL } from "../../src/data/repository.js";
 import { expect, gotoLoaded, test } from "./support.js";
 
-/**
- * Exercises the interactive features that can make requests and checks the
- * Security & Data statement: no cookies, no analytics, one GitHub request. Point
- * PLAYWRIGHT_BASE_URL at a Cloudflare preview or production to also catch
- * hosting-injected scripts such as analytics beacons.
- */
-test("the site sets no cookies and loads no tracking or undisclosed third-party requests", async ({ page, context, baseURL }) => {
-  const siteOrigin = new URL(baseURL ?? "http://127.0.0.1:4321").origin;
-  const requests: { origin: string; url: string; headers: Record<string, string> }[] = [];
-  page.on("request", (request) => {
-    const url = new URL(request.url());
-    if (url.protocol === "data:") return;
-    requests.push({ origin: url.origin, url: request.url(), headers: request.headers() });
-  });
+const analyticsCookies = new Set([
+  "cf_zaraz_client",
+  "cfz_google-analytics_v4",
+  "cfzs_google-analytics_v4",
+]);
+
+function isExpectedRequest(request: Request, siteOrigin: string) {
+  const url = new URL(request.url());
+  if (url.origin === siteOrigin || url.protocol === "data:" || url.href === REPOSITORY_API_URL) return true;
+  if (url.origin === "https://static.cloudflareinsights.com") {
+    return request.method() === "GET" && request.resourceType() === "script" &&
+      /^\/beacon\.min\.js(?:\/|$)/.test(url.pathname);
+  }
+  return url.origin === "https://cloudflareinsights.com" && url.pathname === "/cdn-cgi/rum" &&
+    request.method() === "POST";
+}
+
+test("the site fetches GitHub stars anonymously and uses only expected cookies and services", async ({ page, context, baseURL }) => {
+  const site = new URL(baseURL!);
+  // Local CI stubs GitHub. A deployment check exercises the real request.
+  if (process.env.PLAYWRIGHT_BASE_URL) await page.unroute(REPOSITORY_API_URL);
+  const requests: Request[] = [];
+  page.on("request", (request) => requests.push(request));
 
   await gotoLoaded(page, "/");
   await gotoLoaded(page, "/getting-started/clients/");
@@ -27,20 +37,20 @@ test("the site sets no cookies and loads no tracking or undisclosed third-party 
   await expect(page.locator(".pagefind-ui__result-link:visible").first()).toBeVisible();
   await gotoLoaded(page, "/guides/security/");
 
-  expect(await context.cookies()).toEqual([]);
-
-  const allowed = new Set<string>([siteOrigin, ...DISCLOSED_THIRD_PARTY_ORIGINS]);
-  expect(requests.filter(({ origin }) => !allowed.has(origin)).map(({ url }) => url)).toEqual([]);
-
-  const github = requests.filter(({ origin }) => origin === "https://api.github.com");
-  expect(github).toHaveLength(1);
-  expect(github[0]?.headers.cookie).toBeUndefined();
-  expect(github[0]?.headers.authorization).toBeUndefined();
-  expect(github[0]?.headers.referer).toBeUndefined();
-
-  const scripts = await page.locator("script[src]").evaluateAll((elements) =>
-    elements.map((element) => (element as HTMLScriptElement).src),
+  const unexpectedCookies = (await context.cookies()).filter(({ name, domain }) =>
+    domain.replace(/^\./, "") !== site.hostname ||
+    !(analyticsCookies.has(name) || /^_ga(?:_[A-Z0-9]+)?$/.test(name)),
   );
-  expect(scripts.filter((src) => new URL(src).origin !== siteOrigin)).toEqual([]);
-  expect((await page.content()).toLowerCase()).not.toMatch(/cloudflareinsights|beacon\.min\.js|zaraz/);
+  expect(unexpectedCookies.map(({ name }) => name)).toEqual([]);
+
+  const unexpected = requests.filter((request) => !isExpectedRequest(request, site.origin));
+  expect(unexpected.map((request) => new URL(request.url()).origin)).toEqual([]);
+
+  const github = requests.filter((request) => request.url() === REPOSITORY_API_URL);
+  expect(github).toHaveLength(1);
+  expect(github[0]!.method()).toBe("GET");
+  const headers = await github[0]!.allHeaders();
+  for (const name of ["cookie", "authorization", "referer"]) {
+    expect(Object.hasOwn(headers, name), name).toBe(false);
+  }
 });

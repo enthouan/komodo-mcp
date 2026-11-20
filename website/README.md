@@ -115,7 +115,6 @@ to the Cloudflare Pages Git integration.
 | Build output directory | `dist` (that is, `website/dist`) |
 | Environment variables | `NODE_VERSION=24.17.0`, `SKIP_DEPENDENCY_INSTALL=1`, `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` |
 | Preview deployments | Pull-request branches (Cloudflare default) |
-| Web Analytics | Off: do not enable it for the project or the zone, and leave automatic setup and Zaraz disabled |
 
 The root directory is `website`, not the repository root, because Cloudflare's build image runs asdf
 on a `.tool-versions` file in the root directory and has no plugin for the Rust toolchain pinned there.
@@ -157,16 +156,13 @@ to `https://komodo-mcp.com/` from `www` and from HTTP (path and query preserved)
 noindex` on preview URLs, and a canonical link on the apex origin. A green local build does not prove
 publication.
 
-Then confirm the deployed site sets no cookies and loads no analytics or tracking script. The privacy
-browser test fails on any cookie, any request to a service other than GitHub's star-count API, or an
-injected script such as Cloudflare's analytics beacon:
+Run the browser check against preview and production to verify the anonymous GitHub star-count
+request and catch unexpected cookies or external requests.
 
 ```sh
 PLAYWRIGHT_BASE_URL=https://komodo-mcp.com corepack pnpm --dir website exec \
   playwright test --config playwright.config.ts tests/browser/privacy.spec.ts
 ```
-
-Run it against the preview URL first, then production.
 
 ### Launch prerequisites
 

@@ -216,13 +216,6 @@ describe("visitor-facing output", () => {
     expect(text).toContain("stack_diagnose");
   });
 
-  it("states the website's hosting, tracking, and third-party request briefly", async () => {
-    const text = normalizedVisibleText((await readRoute("/guides/security/")).document);
-    expect(text).toContain("hosted on Cloudflare Pages");
-    expect(text).toMatch(/no forms, accounts, cookies, analytics, or tracking/);
-    expect(text).toContain("one anonymous request per browser session to GitHub");
-  });
-
   it("keeps planned paths visibly unavailable", async () => {
     const text = normalizedVisibleText((await readRoute("/getting-started/")).document);
     expect(text).toContain("Planned — not available yet");

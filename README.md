@@ -5,7 +5,7 @@ required checks, main protection, and release compatibility.
 
 The [inventory benchmark](benchmarks/README.md) compares the release executable
 with a pinned TypeScript stdio reference using synthetic Core fixtures. See the
-[archived measurements and interpretation](benchmarks/results/README.md) for
+[benchmark findings](benchmarks/results/README.md) for
 provisional results and repeatable commands.
 
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for

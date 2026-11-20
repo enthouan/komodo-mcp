@@ -266,10 +266,14 @@ describe("production asset safety", () => {
     }
   });
 
-  it("contains no analytics, remote runtime assets, or credential-like values", async () => {
+  it("leaves analytics injection to the host and keeps credentials out of the generated pages", async () => {
     const sources = await Promise.all(PUBLIC_ROUTES.map((route) => readRoute(route)));
     const combined = sources.map(({ source }) => source).join("\n");
-    expect(combined).not.toMatch(
+    const bundledScripts = sources.flatMap(({ document }) =>
+      elements(document, (element) => element.tagName === "script")
+        .map((script) => [attribute(script, "src"), normalizedText(script)].join(" ")),
+    );
+    expect(bundledScripts.join("\n")).not.toMatch(
       /googletagmanager|google-analytics|plausible\.io|posthog|segment\.com|mixpanel|hotjar|cloudflareinsights/i,
     );
     expect(combined).not.toMatch(/KOMODO_API_(?:KEY|SECRET)[^<\n]{0,8}=\s*[A-Za-z0-9]{24,}/);

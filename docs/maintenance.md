@@ -32,7 +32,8 @@ The benchmark reference is an external checkout pinned in
 [`benchmarks/bench.py`](../benchmarks/bench.py), not a local npm dependency.
 Changing its release/commit requires explicit comparator review, corresponding
 oracle updates, and fresh measurements with exact source/executable identities.
-Preserve previous archives and follow [benchmark reproduction](../benchmarks/README.md).
+Keep raw reports in the ignored `target/benchmark/` directory and publish a
+short summary of the findings. [Benchmark reproduction](../benchmarks/README.md#reproduce)
 
 The separate `Website` workflow builds the site and runs its contracts and
 browser checks; it is reported on every pull request but is not one of the

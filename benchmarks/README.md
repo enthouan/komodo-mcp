@@ -100,7 +100,8 @@ incorrect aggregate byte/call counts, unexpected fixture failures, mutations,
 invalid RSS and inconsistent summaries. The seeded server's 503 reads are expected
 and retained. Real prepared-artifact tests run both stdio adapters with two
 concurrent callers and 7/31-stack fleets. CI retains the inventory smoke and adds
-7/31-stack incident comparisons, report validation and JSON artifact upload.
+7/31-stack incident comparisons. CI validates each report and publishes the
+aggregate measurements in the workflow run summary.
 
 These are synthetic loopback wire fixtures with simulated Read permissions;
 they do not run Core's database, authorization engine, Docker or an actual
@@ -111,7 +112,7 @@ ranking or production scaling limits.
 ## Reproduce
 
 Prerequisites: Linux or macOS, Python 3.11+ (standard library only), Git, the
-repository's pinned Rust 1.99.1 toolchain, Node.js >=22 and npm. The archived
+repository's pinned Rust 1.99.1 toolchain, Node.js >=22 and npm. The published
 baseline uses Node **24.18.0**, npm **11.16.0**, and Python **3.13.14**. Linux CI
 also selects Node 24.18.0. macOS uses `/bin/ps`; Linux needs readable `/proc`.
 The runner rejects unsupported platforms or unavailable RSS rather than writing
@@ -274,7 +275,7 @@ Both log at `warn`; stderr is drained concurrently, counted, bounded and redacte
 The reference has its full tool registry, dynamic-resource infrastructure,
 scrubbing and 30-second health monitor enabled. Rust makes an authenticated
 startup version request. The reference pings public `/version`
-and then authenticated `GetVersion` at startup. The original archived Rust
+and then authenticated `GetVersion` at startup. The original Rust
 baseline had six inventory tools; current runs initialize the current registry.
 Rust probes full Core pages to
 find continuation; the reference fetches **all stacks again for every MCP page**
@@ -284,12 +285,14 @@ inventory does not imply identical functionality, Core work or wire payloads.
 Direct timings explain fixture cost alongside end-to-end times; subtracting
 them does not precisely isolate internal server overhead.
 
-## Evidence format and archived baseline
+## Local reports and published findings
 
-[`results/macos-x86_64.json.gz`](results/macos-x86_64.json.gz) retains the complete
-baseline; [`results/README.md`](results/README.md) interprets it. The final report
-also retains an [earlier complete capture](results/macos-x86_64-initial.json.gz)
-to make observed host/run variance visible. These captures are not pooled.
+Keep raw reports and preparation manifests in the ignored `target/benchmark/`
+directory. They include local executable paths, command lines and host details.
+Commit only a short [findings summary](results/README.md) with the workload,
+measured revision, aggregate results and limitations. Run
+`python3 benchmarks/check_reports.py` after staging a benchmark change to check
+what will enter Git.
 A reporting commit can be later than the measured implementation commit: `repository`
 records the runner checkout; `artifacts.rust.repository` records the source
 at build time; dirty flags/status and source/file hashes identify uncommitted
@@ -312,8 +315,8 @@ observed accounting, finite metrics, RSS observations and recomputed summaries.
 `summarize` regenerates the text table from raw samples after validation. CI
 builds/prepares first, tests both adapters, runs 7 stacks/page size 3, 1 warmup,
 2 warm samples, 1 startup sample and 2 alternating batches, validates required
-evidence and uploads `target/benchmark/*.json` even on failure. Its gate is
-correctness/successful execution, not performance thresholds.
+evidence and writes the validated summaries to the GitHub Actions run.
+The smoke check requires both implementations to complete the workload correctly.
 
 Archive files may use `.json.gz`: `run --output <file>.json.gz`, `validate` and
 `summarize` handle gzip transparently using the same JSON format. `gzip -dc`
@@ -331,10 +334,3 @@ Sources for the boundaries and adapters:
   [pagination](https://github.com/MP-Tool/komodo-mcp-server/blob/489f7e04b16019480f84e1d2fff8b872b880e335/src/utils/pagination.ts),
   [startup client](https://github.com/MP-Tool/komodo-mcp-server/blob/489f7e04b16019480f84e1d2fff8b872b880e335/src/client.ts)
   and [dependency lock](https://github.com/MP-Tool/komodo-mcp-server/blob/489f7e04b16019480f84e1d2fff8b872b880e335/package-lock.json).
-
-The [finalized incident/fleet-growth matrix](results/incident-final-README.md)
-records fresh 7/31/125-stack fleets with one and four concurrent callers, complete
-raw reports, and a correctness capture of the retained inventory workload.
-The [historical matrix](results/incident-README.md) preserves its original measured
-source and archives. Both sets record exact source/executable identities and the
-reference's narrower functionality; timings are provisional.
