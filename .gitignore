@@ -14,6 +14,12 @@ target/
 # Benchmark Python bytecode
 __pycache__/
 
+# Keep raw benchmark runs local. Only the findings summary belongs in Git.
+/benchmarks/**/*.json
+/benchmarks/**/*.json.gz
+/benchmarks/results/*
+!/benchmarks/results/README.md
+
 # Website (Node is a website build dependency only)
 node_modules/
 website/dist/

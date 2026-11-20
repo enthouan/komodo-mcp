@@ -56,9 +56,6 @@ export const PRIMARY_NAVIGATION = [
   ["Repository maintenance", "/docs/maintenance/"],
 ] as const;
 
-/** The only third-party origin a visitor's browser may contact. */
-export const DISCLOSED_THIRD_PARTY_ORIGINS = ["https://api.github.com"] as const;
-
 export const RESPONSIVE_VIEWPORTS = [
   { name: "desktop-1440", width: 1440, height: 900 },
   { name: "tablet-820", width: 820, height: 1180 },
