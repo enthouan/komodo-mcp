@@ -112,9 +112,10 @@ ranking or production scaling limits.
 ## Reproduce
 
 Prerequisites: Linux or macOS, Python 3.11+ (standard library only), Git, the
-repository's pinned Rust 1.99.1 toolchain, Node.js >=22 and npm. The published
-baseline uses Node **24.18.0**, npm **11.16.0**, and Python **3.13.14**. Linux CI
-also selects Node 24.18.0. macOS uses `/bin/ps`; Linux needs readable `/proc`.
+repository's pinned Rust 1.99.1 toolchain, Node.js >=22 and npm. Use Node
+**24.18.0**, npm **11.16.0**, and Python **3.13.14** to reproduce the published
+baseline. The CI smoke runs use the Node version in `.nvmrc`. macOS uses
+`/bin/ps`. Linux needs readable `/proc`.
 The runner rejects unsupported platforms or unavailable RSS rather than writing
 zeroes. Preparation needs network access; measurement needs only loopback.
 

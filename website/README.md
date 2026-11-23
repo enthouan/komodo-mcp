@@ -47,13 +47,15 @@ no hand-maintained tool list; it renders the README's tool contracts instead.
 
 ## Develop and check
 
-Run from the repository root with Node 24 (`.nvmrc`) and the pinned pnpm (`packageManager`):
+Install the Node 26 version in `.nvmrc` and the pnpm version in the root
+`packageManager` field. Run these commands from the repository root.
 
 ```sh
-corepack pnpm install --frozen-lockfile
-corepack pnpm --dir website exec playwright install --with-deps chromium webkit
-corepack pnpm website:dev
-corepack pnpm website:check
+npm install --global pnpm@10.34.1
+pnpm install --frozen-lockfile
+pnpm --dir website exec playwright install --with-deps chromium webkit
+pnpm website:dev
+pnpm website:check
 ```
 
 `website:check` verifies that the social image matches its template, runs Astro diagnostics, builds
@@ -61,25 +63,24 @@ one production artifact, then runs the Vitest output/content contracts and the P
 checks against that same artifact. Individual stages:
 
 ```sh
-corepack pnpm website:og:check
-corepack pnpm website:typecheck
-corepack pnpm website:build
-corepack pnpm website:contracts   # builds first
-corepack pnpm website:test        # builds first
-corepack pnpm website:preview
+pnpm website:og:check
+pnpm website:typecheck
+pnpm website:build
+pnpm website:contracts   # builds first
+pnpm website:test        # builds first
+pnpm website:preview
 ```
 
 `website:contracts:run` and `website:test:run` reuse an existing `website/dist`. For design review,
-`corepack pnpm website:visual` writes light/dark desktop, tablet, and mobile screenshots to
+`pnpm website:visual` writes light/dark desktop, tablet, and mobile screenshots to
 `website/artifacts/visual/`.
 
-If a version manager shim intercepts the nested `pnpm` calls, run `corepack enable pnpm` (or put
-corepack's pnpm first on `PATH`).
+If you use asdf, run `asdf reshim nodejs` after installing pnpm to update the shim.
 
 ## Social image
 
 `public/social-card.png` is rendered from `og-image.html` with Chromium. After changing the template
-or renderer, run `corepack pnpm website:og`. `website:og:check` fails when the committed image or its
+or renderer, run `pnpm website:og`. `website:og:check` fails when the committed image or its
 `og-image.manifest.json` no longer matches the sources.
 
 ## Theme
@@ -111,17 +112,24 @@ to the Cloudflare Pages Git integration.
 | Project | `komodo-mcp` (Pages, connected to `enthouan/komodo-mcp`) |
 | Production branch | `main` |
 | Root directory | `website` |
-| Build command | `cd .. && (git fetch --unshallow \|\| true) && corepack pnpm install --frozen-lockfile && corepack pnpm --dir website build` |
 | Build output directory | `dist` (that is, `website/dist`) |
-| Environment variables | `NODE_VERSION=24.17.0`, `SKIP_DEPENDENCY_INSTALL=1`, `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` |
+| Environment variables | `NODE_VERSION=26.13.1`, `SKIP_DEPENDENCY_INSTALL=1` |
 | Preview deployments | Pull-request branches (Cloudflare default) |
+
+Set the Pages build command to the following.
+
+```sh
+cd .. &&
+  (git fetch --unshallow || true) &&
+  npm exec --yes --package="$(node -p 'require("./package.json").packageManager')" \
+    --call='pnpm install --frozen-lockfile && pnpm --dir website build'
+```
 
 The root directory is `website`, not the repository root, because Cloudflare's build image runs asdf
 on a `.tool-versions` file in the root directory and has no plugin for the Rust toolchain pinned there.
 Cloudflare's automatic dependency installation is skipped because the lockfile lives at the repository
-root; the build command installs the pnpm workspace from that frozen lockfile instead, using the pnpm
-version from the root `packageManager` field through corepack, which ships with Node 24. It does not
-rely on a `pnpm` binary on `PATH`. `public/_headers`
+root. The build command uses npm to run the pnpm version in the root `packageManager` field and
+installs the workspace from its frozen lockfile. `public/_headers`
 adds conservative security headers. Cloudflare Pages [sends `X-Robots-Tag: noindex` on preview
 deployments](https://developers.cloudflare.com/pages/configuration/preview-deployments/), so previews
 can use the same canonical artifact without becoming duplicate search results; the production
@@ -160,7 +168,7 @@ Run the browser check against preview and production to verify the anonymous Git
 request and catch unexpected cookies or external requests.
 
 ```sh
-PLAYWRIGHT_BASE_URL=https://komodo-mcp.com corepack pnpm --dir website exec \
+PLAYWRIGHT_BASE_URL=https://komodo-mcp.com pnpm --dir website exec \
   playwright test --config playwright.config.ts tests/browser/privacy.spec.ts
 ```
 
