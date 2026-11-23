@@ -21,7 +21,7 @@ jobs:
           toolchain: 1.99.1
       - uses: actions/setup-node@v7
         with:
-          node-version: 24.18.0
+          node-version-file: .nvmrc
           package-manager-cache: false
       - name: Prepare release executable and locked reference outside timers
         run: python3 benchmarks/bench.py prepare --reference-dir "$RUNNER_TEMP/komodo reference"

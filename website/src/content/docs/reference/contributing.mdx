@@ -18,13 +18,15 @@ The README and the files in `docs/` are the canonical documentation. This websit
 
 ## Website
 
-The website lives in `website/` and uses Astro Starlight with pnpm. Node is a website build dependency only. From the repository root:
+The website lives in `website/` and uses Astro Starlight with pnpm. Install the Node version in `.nvmrc`,
+then run these commands from the repository root.
 
 ```sh
-corepack pnpm install --frozen-lockfile
-corepack pnpm --dir website exec playwright install chromium webkit
-corepack pnpm website:dev
-corepack pnpm website:check
+npm install --global pnpm@10.34.1
+pnpm install --frozen-lockfile
+pnpm --dir website exec playwright install chromium webkit
+pnpm website:dev
+pnpm website:check
 ```
 
 `website:check` verifies the social image, runs Astro diagnostics, builds the production artifact once, then runs output contracts and Playwright browser checks against it. See `website/README.md` for each stage.
