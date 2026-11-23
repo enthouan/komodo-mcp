@@ -12,7 +12,7 @@ aho-corasick = "1"
 anyhow = "1"
 komodo_client = { version = "=2.3.2", default-features = false }
 reqwest = { version = "0.13.4", default-features = false }
-rmcp = { version = "=3.10.0", default-features = false, features = ["server", "transport-io", "macros"] }
+rmcp = { version = "=3.11.0", default-features = false, features = ["server", "transport-io", "macros"] }
 semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -27,7 +27,7 @@ chrono = "=0.4.45"
 chrono-tz = "=0.10.4"
 croner = "=3.0.1"
 english-to-cron = "=0.1.7"
-rmcp = { version = "=3.10.0", default-features = false, features = ["client", "transport-async-rw"] }
+rmcp = { version = "=3.11.0", default-features = false, features = ["client", "transport-async-rw"] }
 tokio = { version = "1", features = ["io-util", "net", "process", "signal", "sync", "time"] }
 
 # Strict stdio tests keep a five-second handshake deadline even for the bounded
