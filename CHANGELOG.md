@@ -8,6 +8,7 @@ notes: short, categorized bullets with links to the relevant pull requests.
 ### Added
 
 - Build the komodo-mcp.com documentation website from the versioned README and guides. ([#126](https://github.com/enthouan/komodo-mcp/pull/126))
+- Run a persistent MCP server over authenticated Streamable HTTP with the same Core permissions as stdio. ([#135](https://github.com/enthouan/komodo-mcp/pull/135))
 
 ## v0.7.0
 
