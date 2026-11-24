@@ -36,7 +36,7 @@ export const INSTALL_METHODS = [
     guideLabel: "Install and connect over HTTP",
     links: [
       { label: "Versioned Compose file", href: `https://raw.githubusercontent.com/enthouan/komodo-mcp/${INSTALLATION_RELEASE_TAG}/compose.yaml` },
-      { label: "Container image on GHCR", href: `${REPOSITORY_URL}/pkgs/container/komodo-mcp` },
+      { label: "Container image on GHCR", href: "https://github.com/users/enthouan/packages/container/package/komodo-mcp" },
       checksums, source, license, notices,
     ],
   },

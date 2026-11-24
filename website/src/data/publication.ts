@@ -1,7 +1,7 @@
 export const CANONICAL_WEBSITE_URL = "https://komodo-mcp.com/";
 
 /** Advance once the release and its advertised downloads are publicly verified. */
-export const PUBLISHED_RELEASE_TAG = "v0.7.0";
+export const PUBLISHED_RELEASE_TAG = "v0.8.0";
 /** Version targeted by the installation guide, including the preview before publication. */
 export const INSTALLATION_RELEASE_TAG: string = "v0.8.0";
 

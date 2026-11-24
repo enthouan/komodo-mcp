@@ -87,6 +87,14 @@ describe("installation and client accuracy", () => {
     expect(RELEASE_IMAGE).toBe(`ghcr.io/enthouan/komodo-mcp:${INSTALLATION_RELEASE_TAG}`);
   });
 
+  it("links the Compose installer and canonical guide to the public GitHub package", async () => {
+    const packageUrl = "https://github.com/users/enthouan/packages/container/package/komodo-mcp";
+    for (const route of ["/", "/getting-started/", "/docs/self-hosted-beta/"]) {
+      const { document } = await readRoute(route);
+      expect(anchorHrefs(document), route).toContain(packageUrl);
+    }
+  });
+
   it("allows installation previews and requires verified publication on the production branch", () => {
     const production = { CF_PAGES: "1", CF_PAGES_BRANCH: "main" };
     const preview = { CF_PAGES: "1", CF_PAGES_BRANCH: "antoine/beta-site" };

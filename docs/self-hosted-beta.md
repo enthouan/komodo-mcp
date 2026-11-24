@@ -64,7 +64,7 @@ back. Reload the server in the client whenever you change the path or settings.
 
 ## Docker Compose
 
-Download the [versioned Compose file](https://raw.githubusercontent.com/enthouan/komodo-mcp/v0.8.0/compose.yaml) into a new, operator-owned directory. It uses the [published container image](https://github.com/enthouan/komodo-mcp/pkgs/container/komodo-mcp).
+Download the [versioned Compose file](https://raw.githubusercontent.com/enthouan/komodo-mcp/v0.8.0/compose.yaml) into a new, operator-owned directory. It uses the [published container image](https://github.com/users/enthouan/packages/container/package/komodo-mcp).
 
 ```sh
 curl --fail --show-error --location --output compose.yaml https://raw.githubusercontent.com/enthouan/komodo-mcp/v0.8.0/compose.yaml
