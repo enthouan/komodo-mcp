@@ -11,6 +11,7 @@ notes: short, categorized bullets with links to the relevant pull requests.
 - Run a persistent MCP server over authenticated Streamable HTTP with the same Core permissions as stdio. ([#135](https://github.com/enthouan/komodo-mcp/pull/135))
 - Choose which tools a server exposes over stdio or HTTP with startup allowlists and denylists. ([#136](https://github.com/enthouan/komodo-mcp/pull/136))
 - Install native Linux and macOS binaries with checksums, notices, and matching source for offline rebuilds. ([#137](https://github.com/enthouan/komodo-mcp/pull/137))
+- Run authenticated MCP over Docker Compose with multi-architecture Linux images and a loopback host port. ([#138](https://github.com/enthouan/komodo-mcp/pull/138))
 
 ## v0.7.0
 
