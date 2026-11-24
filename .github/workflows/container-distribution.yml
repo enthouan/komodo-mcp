@@ -1,0 +1,107 @@
+name: Container distribution
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      native_run:
+        description: Successful Native distribution run on this exact main revision
+        type: string
+        required: true
+      native_attempt:
+        description: Exact attempt of the selected Native distribution run
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  assemble:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 170
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.REVISION }}
+          persist-credentials: false
+      - name: Acquire the exact successful Native distribution
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_RUN: ${{ inputs.native_run }}
+          NATIVE_ATTEMPT: ${{ inputs.native_attempt }}
+        run: |
+          selection=()
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            selection+=(--native-run "$NATIVE_RUN" --native-attempt "$NATIVE_ATTEMPT")
+          fi
+          python3 scripts/container_native.py --output-dir "$RUNNER_TEMP/native" \
+            --identity "$RUNNER_TEMP/native-run.json" "${selection[@]}"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Validate native inputs and assemble the scratch OCI archive
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_container*.py'
+          python3 scripts/container_release.py \
+            --distribution-dir "$RUNNER_TEMP/native" --output-dir "$RUNNER_TEMP/oci" \
+            --native-identity "$RUNNER_TEMP/native-run.json" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: container-runtime-input-${{ env.REVISION }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/oci
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  exercise:
+    needs: assemble
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, platform: linux/amd64 }
+          - { runner: ubuntu-24.04-arm, platform: linux/arm64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.REVISION }}
+          persist-credentials: false
+      - uses: docker/setup-docker-action@e43656e248c0bd0647d3f5c195d116aacf6fcaf4 # v4
+        with:
+          daemon-config: '{"features":{"containerd-snapshotter":true}}'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: container-runtime-input-${{ env.REVISION }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/oci
+      - name: Verify the native executable through authenticated MCP over Compose
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: python3 scripts/container_smoke.py --candidate "$RUNNER_TEMP/oci" --platform "$PLATFORM"
+
+  candidate:
+    needs: exercise
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: container-runtime-input-${{ env.REVISION }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/oci
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: komodo-mcp-oci-${{ env.REVISION }}
+          path: ${{ runner.temp }}/oci
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          overwrite: true

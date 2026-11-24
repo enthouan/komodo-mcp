@@ -1,0 +1,29 @@
+services:
+  komodo-mcp:
+    image: ${KOMODO_MCP_IMAGE:-ghcr.io/enthouan/komodo-mcp:v0.8.0}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      KOMODO_TRANSPORT: http
+      KOMODO_HTTP_BIND: 0.0.0.0:3000
+      KOMODO_ADDRESS: ${KOMODO_ADDRESS:?Set the Core address}
+      KOMODO_API_KEY: ${KOMODO_API_KEY:?Set the Core API key}
+      KOMODO_API_SECRET: ${KOMODO_API_SECRET:?Set the Core API secret}
+      KOMODO_HTTP_TOKENS: ${KOMODO_HTTP_TOKENS:?Set an independent inbound MCP bearer}
+      KOMODO_HTTP_ALLOWED_ORIGINS:
+      KOMODO_ENABLED_TOOLS:
+      KOMODO_DISABLED_TOOLS:
+      KOMODO_ALLOW_OPERATE:
+      KOMODO_ALLOW_CONFIGURATION_EDIT:
+      KOMODO_ALLOW_PRUNE:
+      KOMODO_ALLOW_TERMINAL:
+    ports:
+      - "127.0.0.1:${KOMODO_HTTP_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/komodo-mcp", "--healthcheck"]
+      interval: 15s
+      timeout: 4s
+      retries: 3
+      start_period: 10s
