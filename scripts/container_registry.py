@@ -169,10 +169,15 @@ def upload_blob(auth, identifier, payload):
     status, headers, _ = exchange("POST", start, authorization=auth, body=b"")
     check(status == 202 and headers.get("Location"), "GHCR did not open a blob upload")
     location = parse.urlsplit(parse.urljoin(start, headers["Location"]))
+    # GHCR opens a session at "uploads/" and can return its continuation under "upload/".
+    blob_path = parse.urlsplit(BASE).path + "/blobs/"
+    directory, _, session = parse.unquote(location.path).rpartition("/")
     check(
         location.scheme == "https"
         and location.netloc == "ghcr.io"
-        and location.path.startswith(parse.urlsplit(start).path)
+        and directory in (blob_path + "upload", blob_path + "uploads")
+        and (session or location.query)
+        and session not in (".", "..") and "\\" not in session
         and not location.fragment,
         "unexpected GHCR upload location",
     )

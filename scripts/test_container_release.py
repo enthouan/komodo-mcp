@@ -260,18 +260,44 @@ class CandidateChecks(unittest.TestCase):
                 oci.publish_candidate(self.root, receipt=self.receipt)
             put.assert_not_called()
 
-    def test_redirected_blob_upload_is_rejected_before_credentials_leave_ghcr(self):
-        with patch.object(
-            registry,
-            "exchange",
-            side_effect=[
-                (404, {}, b""),
-                (202, {"Location": "https://unrelated.invalid/upload"}, b""),
-            ],
-        ) as network:
-            with self.assertRaisesRegex(ValueError, "location"):
-                registry.upload_blob("fixture", oci.describe(b"fixture"), b"fixture")
-            self.assertEqual(network.call_count, 2)
+    def test_ghcr_blob_upload_continuation(self):
+        payload = b"fixture"
+        identifier = oci.describe(payload)
+        path = "/v2/" + oci.REPOSITORY + "/blobs/upload/session"
+        digest_query = "digest=sha256%3A" + hashlib.sha256(payload).hexdigest()
+        for location, suffix in (
+            (path, "?"),
+            (registry.HOST + path + "?state=a%2Fb&state=c", "&"),
+            (registry.BASE + "/blobs/uploads/?state=opaque", "&"),
+        ):
+            replies = [(404, {}, b""), (202, {"Location": location}, b""), (201, {}, b"")]
+            with self.subTest(location=location), patch.object(registry, "exchange", side_effect=replies) as network:
+                registry.upload_blob("fixture", identifier, payload)
+                self.assertEqual(network.call_args_list[1].args, ("POST", registry.BASE + "/blobs/uploads/"))
+                expected = registry.parse.urljoin(registry.HOST, location) + suffix + digest_query
+                network.assert_called_with(
+                    "PUT", expected, authorization="fixture", body=payload,
+                    headers={"Content-Type": "application/octet-stream"},
+                )
+
+    def test_unexpected_blob_upload_location_is_rejected_before_put(self):
+        for location in (
+            "https://unrelated.invalid/upload",
+            registry.HOST + "/v2/other/package/blobs/upload/session",
+            registry.BASE + "/blobs/upload-other/session",
+            registry.BASE + "/blobs/upload/",
+            registry.BASE + "/blobs/upload/nested/session",
+            registry.BASE + "/blobs/upload/session%2Fother",
+            registry.BASE + "/blobs/upload/%2e%2e",
+            registry.BASE + "/blobs/upload/session#fragment",
+            registry.BASE + "/blobs/upload/session?digest=existing",
+        ):
+            with self.subTest(location=location), patch.object(
+                registry, "exchange", side_effect=[(404, {}, b""), (202, {"Location": location}, b"")]
+            ) as network:
+                with self.assertRaisesRegex(ValueError, "location|digest"):
+                    registry.upload_blob("fixture", oci.describe(b"fixture"), b"fixture")
+                self.assertEqual(network.call_count, 2)
 
     def test_independent_wire_readback_after_digest_staging(self):
         blobs, manifests, writes = {}, {}, []
