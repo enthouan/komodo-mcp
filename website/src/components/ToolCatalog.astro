@@ -1,0 +1,49 @@
+---
+import { getCollection } from "astro:content";
+
+const tools = (await getCollection("docs", (entry) => entry.id.startsWith("reference/tools/")))
+  .sort((left, right) => left.id.localeCompare(right.id, "en"));
+---
+
+<div data-tool-catalog>
+  <label hidden>
+    Filter by tool name
+    <input type="search" autocomplete="off" spellcheck="false" />
+  </label>
+  <output aria-live="polite">{tools.length} tools</output>
+  <ul role="list">
+    {tools.map((tool) => <li><a href={`/${tool.id}/`}><code>{tool.data.title}</code></a></li>)}
+  </ul>
+</div>
+
+<script>
+  function initializeCatalog() {
+    const catalog = document.querySelector<HTMLElement>("[data-tool-catalog]");
+    const label = catalog?.querySelector("label");
+    const input = label?.querySelector("input");
+    const status = catalog?.querySelector("output");
+    if (!catalog || !input || !label || !status || !label.hidden) return;
+    const items = Array.from(catalog.querySelectorAll("li"));
+    label.hidden = false;
+    input.addEventListener("input", () => {
+      const query = input.value.trim().toLowerCase().replaceAll(/\s+/g, "_");
+      let matches = 0;
+      for (const item of items) {
+        item.hidden = !item.textContent.includes(query);
+        if (!item.hidden) matches++;
+      }
+      status.textContent = `${matches} ${matches === 1 ? "tool" : "tools"}`;
+    });
+  }
+  initializeCatalog();
+  document.addEventListener("astro:page-load", initializeCatalog);
+</script>
+
+<style>
+  label:not([hidden]) { display: block; }
+  input { display: block; width: min(100%, 28rem); font: inherit; padding: 0.4rem 0.65rem; }
+  output { color: var(--sl-color-gray-2); font-size: var(--sl-text-sm); }
+  ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 0.4rem 1rem; list-style: none; padding: 0; }
+  li { margin: 0; min-width: 0; }
+  code { overflow-wrap: anywhere; }
+</style>

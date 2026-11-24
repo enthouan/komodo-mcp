@@ -3,6 +3,13 @@
 [Repository maintenance](docs/maintenance.md) documents dependency updates,
 required checks, main protection, and release compatibility.
 
+The [tool catalog](https://komodo-mcp.com/reference/tools/) documents every built-in
+tool’s local grants, input bounds, output shape and effects. Use `tools/list` to inspect your instance.
+The [operator walkthrough](docs/operator-quickstart.md) covers transport credentials,
+resource permissions, a three-tool diagnosis and recovery after a lost reply.
+The [self-hosted beta guide](docs/self-hosted-beta.md) covers a verified native
+archive and authenticated HTTP with a version-matched Compose checkout.
+
 The [inventory benchmark](benchmarks/README.md) compares the release executable
 with a pinned TypeScript stdio reference using synthetic Core fixtures. See the
 [benchmark findings](benchmarks/results/README.md) for
@@ -718,6 +725,9 @@ compatible with the SDK's `0.13.4` requirement; the lockfile resolves both to
 was needed.
 
 ## Contributing and reporting
+
+Read how the server handles Core credentials, tool results and logs in the
+[security and data flow guide](https://komodo-mcp.com/guides/security/).
 
 The [contributing guide](https://komodo-mcp.com/reference/contributing/) covers
 pull requests and the Rust and website checks. For ordinary bugs, follow the

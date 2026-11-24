@@ -150,11 +150,7 @@ Ask in natural language; the client chains the tools the server exposes for the 
 
 ## Tool reference
 
-Your MCP client discovers the exact tools, input schemas, output schemas, and effect annotations through `tools/list`; disabled tools are absent from discovery and rejected if called directly. The [tool reference](/reference/tools/) renders the inventory, operation, fleet-health, and error contracts straight from the repository README, and each [operator guide](/guides/workflows/#operator-guides) is rendered from the versioned `docs/` directory.
-
-<Aside type="note" title="Generated catalog in progress">
-  A searchable catalog generated from the runtime tool registry, with CI drift detection, is tracked in [#43](https://github.com/enthouan/komodo-mcp/issues/43). Until it lands, this site does not publish tool counts or a hand-maintained tool list.
-</Aside>
+Search the [built-in tool catalog](/reference/tools/#built-in-tools) for input bounds, output shapes, local grants and mutation behavior. Use `tools/list` in your MCP client to inspect your instance. The [operator guides](/guides/workflows/#operator-guides) explain how to use the tools against Core.
 
 <LinkButton href="/reference/tools/" variant="primary" icon="right-arrow">
   Open the tool reference

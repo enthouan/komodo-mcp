@@ -1,6 +1,7 @@
 import { parse } from "smol-toml";
 import cargoManifest from "../../../Cargo.toml?raw";
 import rustToolchain from "../../../rust-toolchain.toml?raw";
+import { PUBLISHED_RELEASE_TAG } from "./publication.js";
 import { RELEASES_URL, REPOSITORY_URL } from "./repository.js";
 
 type CargoManifest = {
@@ -28,6 +29,6 @@ export const KOMODO_CLIENT_VERSION = exactDependency("komodo_client");
 export const RMCP_VERSION = exactDependency("rmcp");
 /** The MCP protocol revision exercised by the repository's compiled-stdio tests. */
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
-export const RELEASE_TAG = `v${PROJECT_VERSION}`;
+export const RELEASE_TAG = PUBLISHED_RELEASE_TAG;
 export const RELEASE_URL = `${RELEASES_URL}/tag/${RELEASE_TAG}`;
 export const RELEASE_SOURCE_ARCHIVE_URL = `${REPOSITORY_URL}/archive/refs/tags/${RELEASE_TAG}.tar.gz`;

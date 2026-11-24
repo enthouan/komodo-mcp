@@ -10,7 +10,7 @@ These workflows describe what the current `main` branch supports. Start every se
 
 ## Inventory and fleet health
 
-Read-only in every profile. Lists page through visible resources in ascending name order with `page_size` 1–100 (default 30).
+Lists page through resources visible to the configured Core account in ascending name order with `page_size` 1–100 (default 30).
 
 ```text title="Example prompt"
 Show my Komodo servers and their state, then summarize fleet health
@@ -23,7 +23,7 @@ and list the workloads that need attention. Do not change anything.
 
 ## Diagnose a failed stack
 
-Read-only. Resolve the Stack, diagnose it, then follow the evidence it cites.
+Use the [three-tool walkthrough](/docs/operator-quickstart/#discover-and-diagnose-with-three-tools) to list visible Stacks, copy the returned ID and diagnose one Stack. If your instance exposes additional evidence tools, you can follow the update, alert and log references it returns.
 
 `list_stacks → get_stack → stack_diagnose → get_update → list_alerts → get_stack_logs`
 
@@ -35,7 +35,7 @@ Requires `KOMODO_ALLOW_OPERATE=true` and Core `Execute` on the target.
 
 `get_stack → deploy_stack → wait_for_update → stack_diagnose`
 
-Each operation is submitted once and returns Core's update receipt. `wait_for_update` observes that ID for up to 30 seconds and can resume from a new session. If the reply was lost, `reconcile_operation` lists possible matches with unconfirmed attribution and never resubmits. See [Workload operations](/docs/operations/) and the [operation walkthrough](/docs/operations-walkthrough/).
+Save the Core update ID when a receipt arrives. `wait_for_update` observes that ID for up to 30 seconds and can resume from a new session. If the reply was lost, `reconcile_operation` lists possible matches with unconfirmed attribution. See the [recovery examples](/docs/operator-quickstart/#recover-an-interrupted-operation) and [workload operation semantics](/docs/operations/).
 
 ## Review and apply a configuration change
 

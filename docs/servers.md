@@ -16,6 +16,8 @@ or dispatch these tools.
 
 ## Create, inspect and patch
 
+Use `list_servers` to find a visible Server’s stable ID and `get_server` to inspect it.
+
 Stage a disabled record with explicit connection and TLS choices:
 
 ```json

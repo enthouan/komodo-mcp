@@ -38,12 +38,13 @@ build time instead of keeping copies:
 - Relative links are rewritten: published guides become site routes, README anchors embedded on the
   site become page anchors, and any other repository path becomes a GitHub URL on `main`. A link to a
   missing repository path fails the build.
-- Versions, the toolchain, and the license come from `Cargo.toml` and `rust-toolchain.toml`.
+- Package and dependency versions, the toolchain, and the license come from `Cargo.toml` and `rust-toolchain.toml`. The public release links use `PUBLISHED_RELEASE_TAG` in `src/data/publication.ts`. Update it after the release and its downloads pass signed-out verification.
   Environment variable names are checked against `.env.example` and `src/config.rs`, and tool names
-  used in website pages are checked against the production router in `src/server.rs`.
-
-The generated tool catalog belongs to issue #43. Until it lands, the site publishes no tool counts and
-no hand-maintained tool list; it renders the README's tool contracts instead.
+  used in website pages are checked against the generated tool catalog.
+- The tool reference loads `docs/tool-catalog.json` and publishes one searchable page per registered
+  tool. After changing registered metadata, regenerate the file from the repository root with
+  `cargo run --locked --example tool_catalog -- --write`. The generator reads the complete Rust
+  registry offline. The Rust CI suite checks the committed catalog for drift.
 
 ## Develop and check
 
@@ -176,7 +177,7 @@ PLAYWRIGHT_BASE_URL=https://komodo-mcp.com pnpm --dir website exec \
 
 Issue #44 tracks the public launch. Preparing the project and previews can happen early, but the
 production launch also needs the repository to be public (so GitHub, release, source, and license links
-work without authentication), the generated catalog, guides, and privacy disclosures from #43, and the
+work without authentication), the operator guides and privacy disclosures from #43, and the
 published install paths from #40–#42. Issue #45 then verifies the production site and published beta.
 
 ### Deployment troubleshooting
