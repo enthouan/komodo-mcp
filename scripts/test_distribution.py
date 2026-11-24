@@ -1,15 +1,17 @@
 """Offline checks for candidate archive identities, trust boundaries, and portable extraction."""
 import hashlib
+import errno
 import io
 import json
 from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from distribution import DistributionError, MANIFEST, TARGETS, load_manifest, sha256, stem
 from distribution_archive import archive, extract
-from distribution_build import musl_inputs
+from distribution_build import musl_inputs, native_platform
 from distribution_prepare import assemble
 
 
@@ -133,6 +135,27 @@ class DistributionTests(unittest.TestCase):
             link_map.write_text(foreign)
             with self.assertRaises(DistributionError):
                 musl_inputs(link_map,libdir)
+
+    def test_darwin_native_requires_matching_cpu_and_handles_missing_translation_key(self):
+        with patch("distribution_build.platform.system",return_value="Darwin"), \
+             patch("distribution_build.platform.machine",return_value="x86_64"), \
+             patch("distribution_build.sysctl_int") as read:
+            read.side_effect = FileNotFoundError(errno.ENOENT,"missing on native Intel")
+            native_platform("x86_64-apple-darwin")
+            with self.assertRaisesRegex(DistributionError,"native target"):
+                native_platform("aarch64-apple-darwin")
+            read.side_effect = None
+            for state in (1, 2):
+                read.return_value = state
+                with self.assertRaisesRegex(DistributionError,"Rosetta"):
+                    native_platform("x86_64-apple-darwin")
+            read.side_effect = PermissionError(errno.EPERM,"unexpected denial")
+            with self.assertRaises(PermissionError):
+                native_platform("x86_64-apple-darwin")
+        with patch("distribution_build.platform.system",return_value="Darwin"), \
+             patch("distribution_build.platform.machine",return_value="arm64"), \
+             patch("distribution_build.sysctl_int",return_value=0):
+            native_platform("aarch64-apple-darwin")
 
 
 if __name__ == "__main__":

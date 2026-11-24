@@ -1,5 +1,7 @@
 """Build and exercise a native distribution from the extracted, vendored source. Python 3.11+."""
 import argparse
+import ctypes
+import errno
 import json
 import os
 from pathlib import Path
@@ -16,14 +18,34 @@ from distribution import REPOSITORY, TARGETS, require, sha256, stem
 from distribution_archive import archive, extract
 
 
+def sysctl_int(name):
+    """Read a Darwin integer sysctl while preserving ENOENT distinctly from probe failures."""
+    sysctl = ctypes.CDLL(None, use_errno=True).sysctlbyname
+    sysctl.argtypes = [ctypes.c_char_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t),
+                       ctypes.c_void_p, ctypes.c_size_t]
+    sysctl.restype = ctypes.c_int
+    value = ctypes.c_int()
+    size = ctypes.c_size_t(ctypes.sizeof(value))
+    if sysctl(name.encode("ascii"), ctypes.byref(value), ctypes.byref(size), None, 0) != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code))
+    require(size.value == ctypes.sizeof(value), "unexpected sysctl value size")
+    return value.value
+
+
 def native_platform(target):
     require(target in TARGETS, "unsupported distribution target")
     arch = {"arm64":"aarch64", "aarch64":"aarch64", "x86_64":"x86_64"}.get(platform.machine())
     system = "Darwin" if target.endswith("-darwin") else "Linux"
     require(platform.system() == system and arch == target.split("-")[0], "a native target host is required")
     if system == "Darwin":
-        rosetta = subprocess.run(["sysctl","-in","sysctl.proc_translated"], capture_output=True, text=True, check=True)
-        require(rosetta.stdout.strip() != "1", "Rosetta cannot provide native execution evidence")
+        try:
+            translated = sysctl_int("sysctl.proc_translated")
+        except OSError as error:
+            if error.errno != errno.ENOENT:
+                raise
+            translated = 0
+        require(translated == 0, "Rosetta cannot provide native execution evidence")
 
 
 def image_linkage(binary, target):
@@ -51,18 +73,29 @@ def image_linkage(binary, target):
 def musl_inputs(link_map, target_libdir):
     """The private linker map identifies the contributing libc and startup objects."""
     bundled = (Path(target_libdir)/"self-contained").resolve()
-    text = Path(link_map).read_text(errors="replace")
-    require(str(bundled/"libc.a")+"(" in text, "musl libc did not come from the pinned Rust target")
-    startup = [name for name in ("crt1.o","Scrt1.o","rcrt1.o")
-               if str(bundled/name) in text]
+    startup = set()
+    archives = set()
+    checked_paths = set()
+    builtins = unwind = False
+    names = {"libc.a", "libunwind.a", "libgcc.a", "libgcc_eh.a"}
+    with Path(link_map).open(errors="replace") as stream:
+        for line in stream:
+            builtins |= "libcompiler_builtins-" in line
+            unwind |= "libunwind-" in line
+            if "crt1.o" in line:
+                startup.update(name for name in ("crt1.o","Scrt1.o","rcrt1.o") if str(bundled/name) in line)
+            if any(name+"(" in line for name in names):
+                for token in line.split():
+                    lib, separator, _ = token.partition("(")
+                    if separator and lib not in checked_paths and lib.rsplit("/",1)[-1] in names:
+                        path = Path(lib)
+                        require(path.parent.resolve() == bundled, "unaccounted C or unwind runtime in native binary")
+                        checked_paths.add(lib)
+                        archives.add(path.name)
+    require("libc.a" in archives, "musl libc did not come from the pinned Rust target")
     require(len(startup) == 1, "missing or ambiguous Rust target startup object")
-    # Unused archive search directives do not contribute code. A contributing object is
-    # printed as archive(member) by the GNU linker used by musl-gcc.
-    for lib in re.findall(r"(\S+/(?:libc|libunwind|libgcc(?:_eh)?)\.a)\(", text):
-        require(Path(lib).resolve().parent == bundled, "unaccounted C or unwind runtime in native binary")
-    return {"libc":"rust-target/self-contained/libc.a","startup":"rust-target/self-contained/"+startup[0],
-            "compiler_builtins":"libcompiler_builtins-" in text,
-            "libunwind":str(bundled/"libunwind.a")+"(" in text or "libunwind-" in text}
+    return {"libc":"rust-target/self-contained/libc.a","startup":"rust-target/self-contained/"+startup.pop(),
+            "compiler_builtins":builtins,"libunwind":"libunwind.a" in archives or unwind}
 
 
 def build(source, output, target, *, revision=None, source_archive=None):
