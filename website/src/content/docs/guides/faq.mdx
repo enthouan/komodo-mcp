@@ -13,7 +13,7 @@ For stdio, your MCP client launches komodo-mcp as a child process. For HTTP, run
 
 ## Is there a Docker image, binary download, or HTTP endpoint?
 
-A source build from `main` supports stdio and authenticated Streamable HTTP. The published v0.7.0 source supports stdio. Prebuilt binaries and the Compose image are tracked in #42 and #41. [HTTP configuration](/reference/configuration/#authenticated-streamable-http)
+Download a [native stdio binary](/docs/self-hosted-beta/#native-stdio) or run the [versioned Docker Compose service](/docs/self-hosted-beta/#docker-compose). Each connects to the Core instance and identity you configure. The Compose service listens on a loopback host port by default and takes a separate bearer token for incoming MCP requests.
 
 ## Do I need Node.js?
 
@@ -33,7 +33,7 @@ komodo-mcp sees exactly what its identity may read. If you use a dedicated ident
 
 ## Where do my Komodo data and credentials go?
 
-Credentials stay in the server process environment and go only to your Core. Tool results, which contain bounded Core data, go to your MCP client and the model it uses. See [Security & Data](/guides/security/).
+The server sends its API key and secret to the configured Komodo Core. An HTTP client sends its separate bearer token to the MCP server. Tool results, which contain bounded Core data, go to your MCP client and the model it uses. See [Security & Data](/guides/security/).
 
 ## Which Komodo versions are supported?
 

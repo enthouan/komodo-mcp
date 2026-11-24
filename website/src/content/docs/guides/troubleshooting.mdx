@@ -5,14 +5,15 @@ description: Tell apart build and startup failures, client connection problems, 
 
 import { Aside } from '@astrojs/starlight/components';
 import { KOMODO_CLIENT_VERSION } from '../../../data/project.js';
+import { INSTALLATION_RELEASE_TAG } from '../../../data/publication.js';
 
 Start with the server's stderr. The executable writes only safe diagnostics there, and every failure carries a stable category such as `authentication` or `unreachable` plus the operation that failed. Credential values never appear.
 
 <Aside type="tip" title="Isolate startup in a shell">
-  Run the executable with the same environment, stdin closed, and stderr redirected to a file. A healthy configuration gets past the `GetVersion` probe and then reports that no MCP initialization arrived; any earlier failure names its cause.
+  Set the command below to the absolute executable path from your native installation or source build. Run it with the same environment, stdin closed, and stderr redirected to a file. A healthy configuration gets past the `GetVersion` probe and then reports that no MCP initialization arrived; any earlier failure names its cause.
 
   ```sh
-  ./target/release/komodo-mcp < /dev/null 2> komodo-mcp-startup.log
+  /absolute/path/to/komodo-mcp < /dev/null 2> komodo-mcp-startup.log
   ```
 </Aside>
 
@@ -22,7 +23,7 @@ Start with the server's stderr. The executable writes only safe diagnostics ther
 | --- | --- |
 | `cargo build` reports an unsupported or missing toolchain | Install the pinned Rust toolchain from `rust-toolchain.toml` (rustup selects it automatically) or run `asdf install`. |
 | `--locked` fails because `Cargo.lock` needs updating | Do not drop `--locked`. Check out a clean release tag or `main`; local edits to `Cargo.toml` require a reviewed lockfile change. |
-| Client reports `ENOENT`, “command not found”, or exits immediately | The configured path is wrong or relative. Use the absolute path to `target/release/komodo-mcp`, and rebuild it if `cargo clean` removed it. |
+| Client reports `ENOENT`, “command not found”, or exits immediately | The configured path is wrong or relative. Use the executable path printed by the [native archive installation](/docs/self-hosted-beta/#native-stdio). For a source build, use the absolute path to `target/release/komodo-mcp` and rebuild it if `cargo clean` removed it. |
 
 ## Client connection and discovery
 
@@ -54,6 +55,8 @@ Stdio uses the child process launched by the client. For HTTP, a `401` from `/mc
 | `configuration` error about `KOMODO_ADDRESS` | Use an absolute `http://` or `https://` URL without user information, query, or fragment. |
 
 ## Version compatibility
+
+After MCP initialization, compare `result.serverInfo.version` with the release you installed. For {INSTALLATION_RELEASE_TAG}, expect <code>{INSTALLATION_RELEASE_TAG.slice(1)}</code>. If the versions differ, check the executable path your stdio client launches or the image reference used by your Compose service, then restart and reconnect.
 
 komodo-mcp is built against `komodo_client` {KOMODO_CLIENT_VERSION}, and its fixtures represent Komodo Core {KOMODO_CLIENT_VERSION}. Startup records the version Core reports but does not refuse other versions, and compatibility with them is not claimed. If Core is a different version and tools fail with `invalid_response` (malformed or incompatible data) or unexpected `upstream` errors, check the version first. `invalid_response (GetVersion)` means the version reply itself was not valid. See [Compatibility](/getting-started/compatibility/).
 

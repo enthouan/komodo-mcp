@@ -1,55 +1,45 @@
-export type InstallMethodKey = "stdio" | "binary" | "docker";
+import { INSTALLATION_RELEASE_TAG } from "./publication.js";
+import { REPOSITORY_URL } from "./repository.js";
 
-export type InstallMethod = {
-  key: InstallMethodKey;
-  label: string;
-  status: "available" | "planned";
-  summary: string;
-  href?: string;
-  title?: string;
-  code?: string;
-  tracking?: { label: string; href: string }[];
-};
+export const RELEASE_IMAGE = `ghcr.io/enthouan/komodo-mcp:${INSTALLATION_RELEASE_TAG}`;
+const asset = (name: string) => `${REPOSITORY_URL}/releases/download/${INSTALLATION_RELEASE_TAG}/${name}`;
+export const INSTALLATION_SOURCE_URL = asset(`komodo-mcp-${INSTALLATION_RELEASE_TAG}-source.tar.gz`);
+const source = { label: "Matching Corresponding Source", href: INSTALLATION_SOURCE_URL };
+const checksums = { label: "SHA-256 checksums", href: asset("SHA256SUMS") };
+const license = { label: "License", href: asset("LICENSE") };
+const notices = { label: "Third-party notices", href: asset("THIRD-PARTY-NOTICES") };
 
-const ISSUES = "https://github.com/enthouan/komodo-mcp/issues";
+const platforms = [
+  ["Linux · x86-64", "x86_64-unknown-linux-musl"],
+  ["Linux · ARM64", "aarch64-unknown-linux-musl"],
+  ["macOS · Intel", "x86_64-apple-darwin"],
+  ["macOS · Apple silicon", "aarch64-apple-darwin"],
+] as const;
 
-/** Installation paths shown on the website, with their actual availability. */
-export const INSTALL_METHODS: readonly InstallMethod[] = [
-  {
-    key: "stdio",
-    label: "Native stdio · source build",
-    status: "available",
-    summary:
-      "Build the locked release executable with the pinned Rust toolchain. Your MCP client launches it as a child process over stdio; it opens no network listener.",
-    href: "/getting-started/stdio/",
-    title: "Build from source",
-    code: `git clone https://github.com/enthouan/komodo-mcp.git
-cd komodo-mcp
-cargo build --locked --release --bin komodo-mcp
-# Executable: ./target/release/komodo-mcp`,
-  },
+export const INSTALL_METHODS = [
   {
     key: "binary",
-    label: "Native binary download",
-    status: "planned",
-    summary:
-      "Prebuilt executables with checksums, license text, notices, and matching Corresponding Source are not published yet. Releases currently provide source only.",
-    tracking: [{ label: "#42 Distribute native binaries", href: `${ISSUES}/42` }],
+    label: "Native stdio",
+    summary: "Choose the archive for the machine that runs your MCP client. Verify its checksum, extract the executable, and configure your client to launch it.",
+    guide: "/docs/self-hosted-beta/#native-stdio",
+    guideLabel: "Install and connect over stdio",
+    links: [
+      ...platforms.map(([label, target]) => ({ label, href: asset(`komodo-mcp-${INSTALLATION_RELEASE_TAG}-${target}.tar.gz`) })),
+      checksums, source, license, notices,
+    ],
   },
   {
     key: "docker",
-    label: "Docker Compose · authenticated HTTP",
-    status: "planned",
-    summary:
-      "The source build on main supports authenticated Streamable HTTP. The published container image and versioned Compose configuration are planned.",
-    tracking: [
-      { label: "#41 GHCR images and Docker Compose", href: `${ISSUES}/41` },
+    label: "Docker Compose",
+    summary: "Run a persistent authenticated HTTP service. Compose publishes the host port on loopback. Configure a separate inbound bearer token and a Core identity before starting the service.",
+    guide: "/docs/self-hosted-beta/#docker-compose",
+    guideLabel: "Install and connect over HTTP",
+    links: [
+      { label: "Versioned Compose file", href: `https://raw.githubusercontent.com/enthouan/komodo-mcp/${INSTALLATION_RELEASE_TAG}/compose.yaml` },
+      { label: "Container image on GHCR", href: "https://github.com/users/enthouan/packages/container/package/komodo-mcp" },
+      checksums, source, license, notices,
     ],
   },
-];
+] as const;
 
-export function getInstallMethod(key: InstallMethodKey): InstallMethod {
-  const method = INSTALL_METHODS.find((candidate) => candidate.key === key);
-  if (!method) throw new Error(`Unknown install method: ${key}`);
-  return method;
-}
+export type InstallMethod = (typeof INSTALL_METHODS)[number];

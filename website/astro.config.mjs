@@ -3,8 +3,10 @@ import { unified } from "@astrojs/markdown-remark";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import { OPERATOR_GUIDE_GROUPS } from "./src/data/operator-guides.js";
-import { CANONICAL_WEBSITE_URL } from "./src/data/publication.js";
+import { CANONICAL_WEBSITE_URL, checkPagesPublication } from "./src/data/publication.js";
 import { REPOSITORY_URL } from "./src/data/repository.js";
+
+checkPagesPublication(process.env);
 
 const THEME_COLOR = "#047857";
 const SOCIAL_IMAGE_ALT = "komodo-mcp — independent, self-hosted Rust MCP server for Komodo";

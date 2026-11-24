@@ -278,16 +278,6 @@ html[data-has-hero] .card-grid:first-of-type > .card:first-child {
   }
 }
 
-.install-method[data-install-status="planned"] {
-  padding: 1rem 1.25rem;
-  border: 1px dashed var(--sl-color-gray-4);
-  border-radius: 0.5rem;
-}
-
-.install-method__status {
-  margin-block-end: 0.5rem;
-}
-
 .repository-section-source {
   color: var(--sl-color-gray-3);
   font-size: var(--sl-text-sm);

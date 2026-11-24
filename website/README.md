@@ -38,7 +38,13 @@ build time instead of keeping copies:
 - Relative links are rewritten: published guides become site routes, README anchors embedded on the
   site become page anchors, and any other repository path becomes a GitHub URL on `main`. A link to a
   missing repository path fails the build.
-- Package and dependency versions, the toolchain, and the license come from `Cargo.toml` and `rust-toolchain.toml`. The public release links use `PUBLISHED_RELEASE_TAG` in `src/data/publication.ts`. Update it after the release and its downloads pass signed-out verification.
+- Package and dependency versions, the toolchain, and the license come from `Cargo.toml` and `rust-toolchain.toml`.
+  Release metadata links to `PUBLISHED_RELEASE_TAG` in `src/data/publication.ts`. The installation guide
+  and its downloads target `INSTALLATION_RELEASE_TAG`. A Pages preview can exercise a forthcoming
+  release while the site identifies the latest published tag. Pages rejects a production `main` build
+  when the two tags differ. After the release, downloads, matching source, tagged Compose file and
+  GHCR image pass signed-out verification, set `PUBLISHED_RELEASE_TAG` to that installation tag in
+  the launch PR, rerun the website checks and verify its preview before merging.
   Environment variable names are checked against `.env.example` and `src/config.rs`, and tool names
   used in website pages are checked against the generated tool catalog.
 - The tool reference loads `docs/tool-catalog.json` and publishes one searchable page per registered

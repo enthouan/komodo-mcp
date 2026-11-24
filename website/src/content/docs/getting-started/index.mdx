@@ -1,44 +1,34 @@
 ---
 title: Install and run
-description: Choose a supported installation path, prepare Komodo Core credentials, connect an MCP client over stdio, and verify the setup by listing your stacks.
+description: Connect an MCP client through native stdio or authenticated Docker Compose HTTP, then verify the installation by listing your stacks.
 ---
 
-import { Aside, CardGrid, Code, LinkCard, Steps } from '@astrojs/starlight/components';
+import { CardGrid, Code, LinkCard } from '@astrojs/starlight/components';
 import InstallMethods from '../../../components/InstallMethods.astro';
-import { RELEASE_TAG, RELEASE_URL, RELEASE_SOURCE_ARCHIVE_URL, RUST_TOOLCHAIN } from '../../../data/project.js';
-import { LICENSE_URL } from '../../../data/repository.js';
+import { INSTALLATION_SOURCE_URL } from '../../../data/install.js';
+import { RELEASE_TAG, RELEASE_URL } from '../../../data/project.js';
 
 komodo-mcp is a single Rust executable. Your MCP client can launch it over stdio or connect to a persistent HTTP service. Each instance calls your Komodo Core API with one API key and secret.
 
 ## Choose an installation path
 
-Build from source to use native stdio. For a persistent service, build `main` and follow the [authenticated HTTP configuration](/reference/configuration/#authenticated-streamable-http). The binary and container downloads are planned.
+Use native stdio when your MCP client launches a process. Choose Docker Compose for a persistent endpoint that authenticates each MCP request with a bearer token.
 
 <InstallMethods />
 
-## Set up in five steps
+## Connect and read your stacks
 
-<Steps>
-1. **Install the prerequisites.** Git and Rust **{RUST_TOOLCHAIN}** with Cargo. The repository's `rust-toolchain.toml` selects that toolchain for rustup; `.tool-versions` selects it for asdf. Node is not needed to build or run komodo-mcp.
+Choose a [Core identity](/getting-started/komodo-credentials/) with Read access to the Stacks you want to inspect. Set its address, API key, and secret in the server environment. For HTTP, configure a separate inbound bearer token and put it in your MCP client. The [installation guide](/docs/self-hosted-beta/) has commands for each path.
 
-2. **Build the executable.** Clone the repository and run `cargo build --locked --release --bin komodo-mcp`. Note the absolute path of `target/release/komodo-mcp`. See [Native stdio](/getting-started/stdio/) for a synthetic demonstration that needs no real Core.
+After initialization, run `tools/list`. Call `list_stacks` with `{}`. To investigate a Stack, copy its returned ID into `get_stack` and `stack_diagnose`. The [three-tool triage walkthrough](/docs/operator-quickstart/#discover-and-diagnose-with-three-tools) includes the expected discovery results and the arguments for each read.
 
-3. **Prepare Core credentials.** Use an enabled Komodo identity with Read access to the resources you want to inspect, and its API key and secret. See [Komodo Core credentials](/getting-started/komodo-credentials/).
+To verify the three-tool restriction in a client that supports direct calls, request the read-only `list_deployments` tool with `{}`. This instance should reject the call as an unknown tool.
 
-4. **Configure your MCP client.** Point the client at the executable's absolute path and supply `KOMODO_ADDRESS`, `KOMODO_API_KEY`, and `KOMODO_API_SECRET` in its process environment. See [Set up your MCP client](/getting-started/clients/).
-
-   For a three-tool triage deployment, add `KOMODO_ENABLED_TOOLS=list_stacks,get_stack,stack_diagnose` alongside the Core variables before starting the stdio or HTTP server. To keep your usual tools and omit image history, set only `KOMODO_DISABLED_TOOLS=get_image_history`. [Check the selection after restart](/reference/configuration/#select-individual-tools).
-
-5. **Verify with a read.** After the client initializes the server and discovers its tools, ask it to list your stacks and approve only `list_stacks`.
-</Steps>
-
-<Aside type="caution" title="The executable does not read .env files">
-  It reads its process environment once at startup. A `.env` file on disk has no effect unless your client or shell exports it. Restart the MCP server after changing any variable.
-</Aside>
+Set `KOMODO_ENABLED_TOOLS=list_stacks,get_stack,stack_diagnose` before starting either transport to use the three-tool triage configuration. To keep your usual tool set except image history, leave `KOMODO_ENABLED_TOOLS` unset, set `KOMODO_DISABLED_TOOLS=get_image_history` in the server environment, and restart. [Configuration reference](/reference/configuration/#select-individual-tools)
 
 ## Release and source
 
-The latest release is <a href={RELEASE_URL}>{RELEASE_TAG}</a>. Releases currently publish source only: the <a href={RELEASE_SOURCE_ARCHIVE_URL}>tagged source archive</a> or a `git clone` of the tag contains everything needed to build, including `Cargo.lock` and the GPL-3.0-or-later <a href={LICENSE_URL}>license</a>. To build exactly that release, check out the tag before building:
+The beta downloads include checksums and <a href={INSTALLATION_SOURCE_URL}>matching Corresponding Source</a>. To build the current published <a href={RELEASE_URL}>{RELEASE_TAG} release</a> from its Git tag, use the pinned Rust toolchain. See the [native stdio source-build guide](/getting-started/stdio/).
 
 <Code lang="sh" title="Build a tagged release" code={`git clone https://github.com/enthouan/komodo-mcp.git
 cd komodo-mcp

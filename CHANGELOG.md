@@ -5,6 +5,10 @@ notes: short, categorized bullets with links to the relevant pull requests.
 
 ## Unreleased
 
+### Added
+
+- Install the self-hosted beta from the website with verified native downloads and a versioned Compose configuration. ([#140](https://github.com/enthouan/komodo-mcp/pull/140))
+
 ## v0.8.0
 
 ### Added

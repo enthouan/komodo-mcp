@@ -20,7 +20,7 @@ export interface ClientSetup {
 }
 
 /** Placeholder for the compiled executable; clients need its absolute path. */
-export const EXECUTABLE_PLACEHOLDER = "/absolute/path/to/komodo-mcp/target/release/komodo-mcp";
+export const EXECUTABLE_PLACEHOLDER = "/absolute/path/to/komodo-mcp";
 
 export const VERIFY_PROMPT =
   "List the stacks I can access in Komodo and show their current status. Use list_stacks and do not change anything.";

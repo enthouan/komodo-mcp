@@ -32,7 +32,11 @@ test("keyboard users can skip to content and see focus", async ({ page }) => {
   await expect(focused).toHaveCSS("outline-width", "3px");
 });
 
-test("planned paths are not conveyed by color alone", async ({ page }) => {
+test("installation choices are named and keyboard navigable", async ({ page }) => {
   await gotoLoaded(page, "/getting-started/");
-  await expect(page.locator('[data-install-methods] [role="tab"]').nth(1)).toContainText("(planned)");
+  const tabs = page.locator("[data-install-methods]").getByRole("tab");
+  await tabs.first().focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(tabs.nth(1)).toHaveText("Docker Compose");
+  await expect(tabs.nth(1)).toBeFocused();
 });
