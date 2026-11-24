@@ -23,10 +23,11 @@ use komodo_client::{
 use rmcp::schemars::{self, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tokio::sync::OwnedSemaphorePermit;
 
 use crate::{
     capabilities::Capability,
-    client::CoreClient,
+    client::{CoreClient, PrincipalSlots},
     error::{AppError, ErrorKind},
     inventory::{self, DetailInput},
 };
@@ -284,6 +285,8 @@ type StoredResult = Box<dyn Any + Send>;
 struct OwnedPreview {
     owner: Arc<AtomicBool>,
     preview: Preview<StoredResult>,
+    // Removing a preview (consumption, expiry or session teardown) frees its quota.
+    _principal_slot: Option<OwnedSemaphorePermit>,
 }
 struct Entries {
     nonce: String,
@@ -309,6 +312,7 @@ impl Default for Entries {
 #[derive(Default)]
 pub(crate) struct PreviewStore {
     entries: Arc<Mutex<Entries>>,
+    principal: PrincipalSlots,
     // Pointer identity binds entries to this session. The flag rejects late
     // inserts from work that started before the session closed.
     closed: Arc<AtomicBool>,
@@ -322,8 +326,17 @@ impl Drop for PreviewStore {
 
 impl PreviewStore {
     pub(crate) fn isolated(&self) -> Self {
+        self.with_principal(self.principal.clone())
+    }
+
+    pub(crate) fn for_http_principal(&self, count: usize, index: usize) -> Self {
+        self.with_principal(PrincipalSlots::for_http(MAX_PREVIEWS, count, index))
+    }
+
+    fn with_principal(&self, principal: PrincipalSlots) -> Self {
         Self {
             entries: Arc::clone(&self.entries),
+            principal,
             closed: Arc::default(),
         }
     }
@@ -392,6 +405,12 @@ impl PreviewStore {
                 "At most 16 previews may be retained per process; apply an existing preview or wait ten minutes for expiry",
             ));
         }
+        let principal_slot = self.principal.acquire().map_err(|_| {
+            AppError::arguments(
+                OP,
+                "Preview capacity for this client is full. Apply an existing preview or wait for expiry.",
+            )
+        })?;
         entries.next = entries.next.checked_add(1).ok_or_else(invalid_preview)?;
         let token = format!("configuration-{}-{}", entries.nonce, entries.next);
         entries.values.insert(
@@ -399,6 +418,7 @@ impl PreviewStore {
             OwnedPreview {
                 owner: Arc::clone(&self.closed),
                 preview: entry,
+                _principal_slot: principal_slot,
             },
         );
         Ok(token)
@@ -1054,6 +1074,75 @@ mod tests {
         }
         drop(bob);
         assert!(root.previews().insert(entry()).is_ok());
+    }
+
+    #[test]
+    fn http_principal_previews_share_quota_across_sessions_and_reclaim_slots() {
+        let root = PreviewStore::default();
+        let alice = root.for_http_principal(3, 0);
+        let bob = root.for_http_principal(3, 1);
+        let cara = root.for_http_principal(3, 2);
+        let session = alice.isolated();
+        let expiring = alice.insert_entry(entry()).unwrap();
+        // The three shares are 6, 5 and 5. Each concurrent caller has its own
+        // session but competes for the same credential's remaining five slots.
+        let callers: Vec<_> = (0..8).map(|_| alice.isolated()).collect();
+        let admitted = std::thread::scope(|scope| {
+            let attempts: Vec<_> = callers
+                .iter()
+                .map(|store| scope.spawn(move || store.insert_entry(entry()).is_ok()))
+                .collect();
+            attempts
+                .into_iter()
+                .map(|attempt| attempt.join().unwrap())
+                .filter(|&ok| ok)
+                .count()
+        });
+        assert_eq!(admitted, 5);
+        assert!(session.insert_entry(entry()).is_err());
+        for store in [&bob, &cara] {
+            for _ in 0..5 {
+                store.insert_entry(entry()).unwrap();
+            }
+            assert!(store.isolated().insert_entry(entry()).is_err());
+        }
+        alice
+            .entries
+            .lock()
+            .unwrap()
+            .values
+            .get_mut(&expiring)
+            .unwrap()
+            .preview
+            .created = Instant::now() - TTL;
+        let id = session.insert_entry(entry()).unwrap();
+        assert!(alice.take(&id, &json!({})).is_err());
+        assert!(alice.insert_entry(entry()).is_err());
+        session.take(&id, &json!({})).unwrap();
+        session.insert_entry(entry()).unwrap();
+        session.close();
+        assert!(alice.insert_entry(entry()).is_ok());
+        drop(callers);
+        for _ in 0..5 {
+            alice.insert_entry(entry()).unwrap();
+        }
+        assert!(alice.insert_entry(entry()).is_err());
+    }
+
+    #[test]
+    fn http_principals_outnumbering_preview_slots_contend_for_one_each() {
+        let root = PreviewStore::default();
+        let count = MAX_PREVIEWS + 1;
+        let owners: Vec<_> = (0..count)
+            .map(|index| root.for_http_principal(count, index))
+            .collect();
+        for owner in &owners[..MAX_PREVIEWS] {
+            owner.insert_entry(entry()).unwrap();
+            assert!(owner.isolated().insert_entry(entry()).is_err());
+        }
+        assert!(owners[MAX_PREVIEWS].insert_entry(entry()).is_err());
+        owners[0].close();
+        assert!(owners[MAX_PREVIEWS].insert_entry(entry()).is_ok());
     }
 
     #[test]

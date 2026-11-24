@@ -167,6 +167,9 @@ invalidates its previews and signals its active terminal workers. The process
 divides 32 initialized sessions, 32 GET streams, and 32 other in-flight requests
 among the configured tokens. A client can close a session while its GET stream
 is open. The process also limits previews to 16 and active terminal calls to four.
+It divides each budget across tokens. All sessions for one token use that
+token’s share. When more tokens are configured than there are slots, each
+token can use one slot while capacity is available.
 
 The default bind address is loopback. Set `KOMODO_HTTP_BIND` to an IP and port
 when a different listener is required. Terminate HTTPS at a trusted reverse

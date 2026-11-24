@@ -4,7 +4,7 @@ mod target;
 
 use crate::{
     capabilities::Capability,
-    client::CoreClient,
+    client::{CoreClient, PrincipalSlots},
     error::{AppError, ErrorKind},
     export,
     inventory::DetailInput,
@@ -146,15 +146,20 @@ struct ActiveCall {
     cancel: watch::Sender<bool>,
     // Held until the worker finishes cleanup, even after the RPC is dropped.
     _slot: OwnedSemaphorePermit,
+    _principal_slot: Option<OwnedSemaphorePermit>,
 }
 pub(crate) struct Runtime {
     state: Mutex<State>,
     finished: Notify,
     slots: Arc<Semaphore>,
+    principal: PrincipalSlots,
 }
 impl Default for Runtime {
     fn default() -> Self {
-        Self::with_slots(Arc::new(Semaphore::new(MAX_ACTIVE)))
+        Self::with_slots(
+            Arc::new(Semaphore::new(MAX_ACTIVE)),
+            PrincipalSlots::default(),
+        )
     }
 }
 struct Registration {
@@ -176,15 +181,22 @@ impl Drop for CancelOnDrop {
     }
 }
 impl Runtime {
-    fn with_slots(slots: Arc<Semaphore>) -> Self {
+    fn with_slots(slots: Arc<Semaphore>, principal: PrincipalSlots) -> Self {
         Self {
             state: Mutex::default(),
             finished: Notify::new(),
             slots,
+            principal,
         }
     }
     pub(crate) fn isolated(&self) -> Self {
-        Self::with_slots(Arc::clone(&self.slots))
+        Self::with_slots(Arc::clone(&self.slots), self.principal.clone())
+    }
+    pub(crate) fn for_http_principal(&self, count: usize, index: usize) -> Self {
+        Self::with_slots(
+            Arc::clone(&self.slots),
+            PrincipalSlots::for_http(MAX_ACTIVE, count, index),
+        )
     }
     fn register(
         self: &Arc<Self>,
@@ -206,6 +218,12 @@ impl Runtime {
         if state.closing || state.active.contains_key(&name) {
             return Err(unavailable());
         }
+        let principal_slot = self.principal.acquire().map_err(|_| {
+            AppError::arguments(
+                OP,
+                "Terminal capacity for this client is full. Wait for active calls to finish.",
+            )
+        })?;
         let slot = Arc::clone(&self.slots)
             .try_acquire_owned()
             .map_err(|_| unavailable())?;
@@ -215,6 +233,7 @@ impl Runtime {
             ActiveCall {
                 cancel: tx.clone(),
                 _slot: slot,
+                _principal_slot: principal_slot,
             },
         );
         Ok((
@@ -607,6 +626,68 @@ mod tests {
         assert!(alice.clone().terminal_runtime().register().is_err());
         assert!(bob.terminal_runtime().register().is_ok());
         assert!(other.iter().all(|call| !*call.2.borrow()));
+    }
+
+    #[tokio::test]
+    async fn http_principal_terminal_quota_survives_disconnect_until_worker_cleanup() {
+        let root = CoreClient::new(
+            Config::parse("http://127.0.0.1:9", "fixture-key", "fixture-secret").unwrap(),
+            RequestPolicy::default(),
+        )
+        .unwrap();
+        let alice = root.for_http_principal(3, 0);
+        let bob = root.for_http_principal(3, 1);
+        let cara = root.for_http_principal(3, 2);
+        let session = alice.isolated_session();
+        // Register workers locally; nothing is sent to Core.
+        let modern = alice.terminal_runtime().register().unwrap();
+        let legacy = session.terminal_runtime().register().unwrap();
+        assert!(
+            alice
+                .isolated_session()
+                .terminal_runtime()
+                .register()
+                .is_err()
+        );
+        let bob_call = bob.terminal_runtime().register().unwrap();
+        assert!(
+            bob.isolated_session()
+                .terminal_runtime()
+                .register()
+                .is_err()
+        );
+        let cara_call = cara.terminal_runtime().register().unwrap();
+        session.invalidate_session();
+        assert!(*legacy.2.borrow());
+        assert!(!*modern.2.borrow() && !*bob_call.2.borrow() && !*cara_call.2.borrow());
+        assert!(alice.terminal_runtime().register().is_err());
+        drop(legacy);
+        session.close_session().await;
+        assert!(
+            alice
+                .isolated_session()
+                .terminal_runtime()
+                .register()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn http_principals_outnumbering_terminal_slots_can_each_compete_for_one() {
+        let root = Runtime::default();
+        let count = MAX_ACTIVE + 1;
+        let principals: Vec<_> = (0..count)
+            .map(|index| Arc::new(root.for_http_principal(count, index)))
+            .collect();
+        let sessions: Vec<_> = principals.iter().map(|p| Arc::new(p.isolated())).collect();
+        let mut workers: Vec<_> = sessions[..MAX_ACTIVE]
+            .iter()
+            .map(|session| session.register().unwrap())
+            .collect();
+        assert!(principals[0].register().is_err());
+        assert!(sessions[MAX_ACTIVE].register().is_err());
+        drop(workers.pop().unwrap());
+        assert!(principals[MAX_ACTIVE].register().is_ok());
     }
 
     #[tokio::test]

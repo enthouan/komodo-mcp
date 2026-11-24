@@ -38,7 +38,7 @@ use tokio::{
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
-    client::{CoreClient, CoreVersion},
+    client::{CoreClient, CoreVersion, principal_share},
     config::HttpConfig,
     server::KomodoServer,
 };
@@ -199,9 +199,7 @@ impl RequestCapacity {
 
 // Assign the remainder once so every credential has a reservation and the total stays bounded.
 fn reserved_slots(total: usize, count: usize, index: usize) -> Arc<Semaphore> {
-    Arc::new(Semaphore::new(
-        total / count + usize::from(index < total % count),
-    ))
+    Arc::new(Semaphore::new(principal_share(total, count, index)))
 }
 
 struct HttpState {
@@ -343,7 +341,7 @@ pub async fn serve(
     let mut principals = Vec::with_capacity(count);
     for index in 0..count {
         let server = Arc::new(KomodoServer {
-            client: client.isolated_session(),
+            client: client.for_http_principal(count, index),
             core_version: version.clone(),
         });
         let sessions = Arc::new(LocalSessionManager::default());

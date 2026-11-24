@@ -10,6 +10,7 @@ use komodo_client::{
 };
 use reqwest::{Client, redirect::Policy};
 use serde::{Serialize, de::DeserializeOwned};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, TryAcquireError};
 
 use crate::{
     capabilities::{Capability, CapabilityPolicy},
@@ -22,6 +23,32 @@ use crate::{
 pub const MAX_EVIDENCE_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 /// Compatibility name for the unchanged workload-log body budget.
 pub const MAX_LOG_RESPONSE_BYTES: usize = MAX_EVIDENCE_RESPONSE_BYTES;
+
+/// Divide capacity among configured credentials. When there are fewer slots
+/// than credentials, each can compete for one under the separate global cap.
+pub(crate) fn principal_share(total: usize, count: usize, index: usize) -> usize {
+    debug_assert!(total > 0 && index < count);
+    (total / count + usize::from(index < total % count)).max(1)
+}
+
+/// Clones share admission across a credential's stateless and sessionful calls.
+/// Stdio needs only the process limit.
+#[derive(Default, Clone)]
+pub(crate) struct PrincipalSlots(Option<Arc<Semaphore>>);
+
+impl PrincipalSlots {
+    pub(crate) fn for_http(total: usize, count: usize, index: usize) -> Self {
+        let share = principal_share(total, count, index);
+        Self((share < total).then(|| Arc::new(Semaphore::new(share))))
+    }
+
+    pub(crate) fn acquire(&self) -> Result<Option<OwnedSemaphorePermit>, TryAcquireError> {
+        self.0
+            .as_ref()
+            .map(|pool| pool.clone().try_acquire_owned())
+            .transpose()
+    }
+}
 
 /// Production deadlines; injectable without changing the process environment.
 #[derive(Debug, Clone, Copy)]
@@ -149,6 +176,17 @@ impl CoreClient {
             upstream: Arc::clone(&self.upstream),
             previews: Arc::new(self.previews.isolated()),
             terminals: Arc::new(self.terminals.isolated()),
+            bound_reads: self.bound_reads,
+        }
+    }
+
+    /// Called once per configured token. Subsequent isolated sessions inherit
+    /// this token's shares while keeping their own private preview/terminal state.
+    pub(crate) fn for_http_principal(&self, count: usize, index: usize) -> Self {
+        Self {
+            upstream: Arc::clone(&self.upstream),
+            previews: Arc::new(self.previews.for_http_principal(count, index)),
+            terminals: Arc::new(self.terminals.for_http_principal(count, index)),
             bound_reads: self.bound_reads,
         }
     }
