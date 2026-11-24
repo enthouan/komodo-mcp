@@ -76,6 +76,12 @@ def candidate_run(github, run_id, revision, workflow):
 
 def acquire(github, root, revision, run_id, workflow, name, filenames):
     run = candidate_run(github, run_id, revision, workflow)
+    return acquire_run_artifact(github, root, run, name, filenames)
+
+
+def acquire_run_artifact(github, root, run, name, filenames):
+    """Acquire the exact artifact after the caller validates the run for its event."""
+    run_id = run["id"]
     items = github.api(f"actions/runs/{run_id}/artifacts?per_page=100", pages=True, key="artifacts")
     matches = [a for a in items if a["name"] == name]
     require(len(matches) == 1 and matches[0]["expired"] is False, f"missing, expired or duplicate {name}")
@@ -158,6 +164,9 @@ class Packages:
                     and all(type(run[k]) is int and run[k] > 0 for k in ("run_id", "run_attempt", "artifact_id"))
                     and re.fullmatch("sha256:[a-f0-9]{64}", run["artifact_digest"]),
                     "candidate receipt belongs to a different repository, revision, version or run attempt")
+        native_keys = ("run_id", "run_attempt", "workflow", "artifact_id", "artifact_digest")
+        require(receipt.get("native_run") == {key: identity["native_run"][key] for key in native_keys},
+                "OCI candidate was built from a different native workflow artifact")
         files = manifest["files"]
         require(len(files) == len(asset_names(version))
                 and {f["name"]: f["kind"] for f in files} == asset_names(version)

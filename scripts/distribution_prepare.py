@@ -133,17 +133,18 @@ def prepare(root, output, revision):
         archive(source,output/(base+".tar.gz"))
 
 
-def assemble(source, native, output, revision, version, run_id, run_attempt, targets):
+def assemble(source, native, output, revision, version, run_id, run_attempt):
     output.mkdir(parents=True, exist_ok=False)
     files = []
     for kind,name in (("source",stem(version,"source")+".tar.gz"),("license","LICENSE"),("notices","THIRD-PARTY-NOTICES")):
         file = output/name
         shutil.copyfile(source/name,file)
         files.append({"kind":kind,"name":name,"bytes":file.stat().st_size,"sha256":sha256(file)})
-    for target in targets:
+    for target in TARGETS:
         receipt = json.loads((native/(target+".json")).read_text())
         require(receipt["version"] == version and receipt["revision"] == revision and receipt["native"] is True
-                and receipt["mcp_version"] == version, "invalid native execution receipt")
+                and receipt["mcp_version"] == version and receipt.get("source_sha256") == files[0]["sha256"],
+                "native receipt does not match this source archive, revision and MCP version")
         file = receipt["file"]
         name = stem(version,target)+".tar.gz"
         require(file["name"] == name and file["target"] == target, "native archive identity mismatch")
@@ -154,7 +155,7 @@ def assemble(source, native, output, revision, version, run_id, run_attempt, tar
     files.append({"kind":"checksums","name":sums.name,"bytes":sums.stat().st_size,"sha256":sha256(sums)})
     (output/MANIFEST).write_text(json.dumps({"schema_version":1,"repository":REPOSITORY,"revision":revision,
         "version":version,"run_id":run_id,"run_attempt":run_attempt,"files":files},indent=2)+"\n")
-    load_manifest(output, revision=revision,version=version,targets=targets,run_id=run_id,run_attempt=run_attempt)
+    load_manifest(output, revision=revision,version=version,targets=TARGETS,run_id=run_id,run_attempt=run_attempt)
 
 
 def main():
@@ -174,15 +175,13 @@ def main():
         collect.add_argument("--"+name,required=True)
     for name in ("run-id","run-attempt"):
         collect.add_argument("--"+name,required=True,type=int)
-    collect.add_argument("--linux-only",action="store_true")
     args = parser.parse_args()
     if args.action == "source":
         prepare(Path.cwd(),args.output,args.revision)
     elif args.action == "extract-source":
         extract(args.archive,args.destination,stem(args.version,"source"))
     else:
-        targets = [target for target in TARGETS if not args.linux_only or target.endswith("-musl")]
-        assemble(args.source,args.native,args.output,args.revision,args.version,args.run_id,args.run_attempt,targets)
+        assemble(args.source,args.native,args.output,args.revision,args.version,args.run_id,args.run_attempt)
 
 
 if __name__ == "__main__":

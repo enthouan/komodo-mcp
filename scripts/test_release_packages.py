@@ -120,6 +120,7 @@ class PackageTests(unittest.TestCase):
                            "workflow": ".github/workflows/native-distribution.yml"},
             "oci_run": {"run_id": 71, "run_attempt": 1, "artifact_id": 12, "artifact_digest": "sha256:"+"b"*64,
                         "workflow": ".github/workflows/container-distribution.yml"}}
+        self.identity["container"]["native_run"] = dict(self.identity["native_run"])
         self.identity["container"]["platforms"] = {
             platform: {"target": target, "executable_sha256": files[artifacts.stem(version, target)+".tar.gz"]["sha256"]}
             for platform, target in [("linux/amd64", "x86_64-unknown-linux-musl"),
@@ -299,6 +300,7 @@ class PackageTests(unittest.TestCase):
         artifacts.Packages.check_identity(self.identity, REVISION, "0.8.0")
         for key, field, value in [("native_run", "run_attempt", 2), ("container", "revision", "c"*40),
                                   ("oci_run", "run_id", 99), ("container", "image", "other"),
+                                  ("native_run", "artifact_id", 13), ("native_run", "artifact_digest", "sha256:"+"e"*64),
                                   ("container", "source_url", "https://example.invalid/source"),
                                   ("distribution", "files", [])]:
             changed = copy.deepcopy(self.identity)
@@ -433,6 +435,9 @@ class AcquisitionTests(unittest.TestCase):
             return {"run_id": run_id, "run_attempt": 2, "artifact_id": 10, "workflow": f".github/workflows/{workflow}.yml",
                     "artifact_digest": "sha256:"+"d"*64}
 
+        oci_doc["native_run"] = {"run_id": 25, "run_attempt": 2, "artifact_id": 10,
+                                 "workflow": ".github/workflows/native-distribution.yml",
+                                 "artifact_digest": "sha256:"+"d"*64}
         adapter = Mock()
         adapter.load_candidate.return_value = oci_doc
         with patch.object(artifacts, "container_api", return_value=adapter), patch.object(artifacts, "acquire", stage):

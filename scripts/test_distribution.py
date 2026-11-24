@@ -9,6 +9,7 @@ import unittest
 
 from distribution import DistributionError, MANIFEST, TARGETS, load_manifest, sha256, stem
 from distribution_archive import archive, extract
+from distribution_build import musl_inputs
 from distribution_prepare import assemble
 
 
@@ -40,8 +41,9 @@ class DistributionTests(unittest.TestCase):
             if target.endswith("-darwin"):
                 file["minimum_macos"] = "15.0"
             (self.native/(target+".json")).write_text(json.dumps({"revision":self.revision,"version":self.version,
+                       "source_sha256":sha256(self.source/(stem(self.version,"source")+".tar.gz")),
                        "native":True,"mcp_version":self.version,"file":file}))
-        assemble(self.source,self.native,self.bundle,self.revision,self.version,800,2,TARGETS)
+        assemble(self.source,self.native,self.bundle,self.revision,self.version,800,2)
 
     def validate(self, **changes):
         args = dict(revision=self.revision, version=self.version, targets=TARGETS, run_id=800, run_attempt=2)
@@ -57,6 +59,24 @@ class DistributionTests(unittest.TestCase):
         for change in ({"revision":"b"*40},{"version":"0.8.0"},{"run_id":801},{"run_attempt":1}):
             with self.subTest(change=change), self.assertRaises(DistributionError):
                 self.validate(**change)
+
+    def test_native_receipt_from_different_source_archive_is_rejected(self):
+        record=self.native/(TARGETS[0]+".json")
+        data=json.loads(record.read_text())
+        data["source_sha256"]="f"*64
+        record.write_text(json.dumps(data))
+        with self.assertRaisesRegex(DistributionError,"source archive"):
+            assemble(self.source,self.native,self.root/"replaced",self.revision,self.version,800,2)
+
+    def test_partial_distribution_cannot_reach_a_consumer(self):
+        manifest = self.bundle/MANIFEST
+        data = json.loads(manifest.read_text())
+        omitted = next(e for e in data["files"] if e.get("target") == TARGETS[-1])
+        data["files"].remove(omitted)
+        (self.bundle/omitted["name"]).unlink()
+        manifest.write_text(json.dumps(data))
+        with self.assertRaisesRegex(DistributionError,"artifact count"):
+            self.validate(targets=TARGETS[:2])
 
     def test_rejects_substituted_assets_and_unsafe_names(self):
         manifest = self.bundle/MANIFEST
@@ -99,6 +119,20 @@ class DistributionTests(unittest.TestCase):
                 stream.addfile(info, io.BytesIO(b""))
             with self.assertRaises(DistributionError):
                 extract(output,self.root/f"test-{i}","source")
+
+    def test_linker_must_use_the_rust_targets_actual_musl_and_crt(self):
+        libdir=self.root/"rust-target-lib"
+        bundled=libdir.resolve()/"self-contained"
+        link_map=self.root/"native.map"
+        output=f"{bundled}/libc.a(start.lo)\nLOAD {bundled}/rcrt1.o\nlibcompiler_builtins-example.rlib\n"
+        link_map.write_text(output)
+        receipt=musl_inputs(link_map,libdir)
+        self.assertTrue(receipt["compiler_builtins"])
+        self.assertEqual(receipt["startup"],"rust-target/self-contained/rcrt1.o")
+        for foreign in (output.replace(str(bundled),"system"),output+"\n/usr/lib/libgcc_eh.a(unwind.o)"):
+            link_map.write_text(foreign)
+            with self.assertRaises(DistributionError):
+                musl_inputs(link_map,libdir)
 
 
 if __name__ == "__main__":

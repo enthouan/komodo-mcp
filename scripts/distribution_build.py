@@ -48,7 +48,24 @@ def image_linkage(binary, target):
     return {"minimum_macos":match.group(1)}
 
 
-def build(source, output, target, *, revision=None):
+def musl_inputs(link_map, target_libdir):
+    """The private linker map identifies the contributing libc and startup objects."""
+    bundled = (Path(target_libdir)/"self-contained").resolve()
+    text = Path(link_map).read_text(errors="replace")
+    require(str(bundled/"libc.a")+"(" in text, "musl libc did not come from the pinned Rust target")
+    startup = [name for name in ("crt1.o","Scrt1.o","rcrt1.o")
+               if str(bundled/name) in text]
+    require(len(startup) == 1, "missing or ambiguous Rust target startup object")
+    # Unused archive search directives do not contribute code. A contributing object is
+    # printed as archive(member) by the GNU linker used by musl-gcc.
+    for lib in re.findall(r"(\S+/(?:libc|libunwind|libgcc(?:_eh)?)\.a)\(", text):
+        require(Path(lib).resolve().parent == bundled, "unaccounted C or unwind runtime in native binary")
+    return {"libc":"rust-target/self-contained/libc.a","startup":"rust-target/self-contained/"+startup[0],
+            "compiler_builtins":"libcompiler_builtins-" in text,
+            "libunwind":str(bundled/"libunwind.a")+"(" in text or "libunwind-" in text}
+
+
+def build(source, output, target, *, revision=None, source_archive=None):
     source, output = source.resolve(), output.resolve()
     native_platform(target)
     info = json.loads((source / "DISTRIBUTION-INFO.json").read_bytes())
@@ -94,8 +111,18 @@ def build(source, output, target, *, revision=None):
             env["CARGO_TARGET_" + target.replace("-","_").upper() + "_LINKER"] = "musl-gcc"
         else:
             env["MACOSX_DEPLOYMENT_TARGET"] = "15.0"
-        subprocess.run(["cargo","build","--frozen","--release","--features","distribution",
-                        "--target",target,"--bin","komodo-mcp","--example","release_version"],cwd=source,env=env,check=True)
+        flags = ["--frozen","--release","--features","distribution","--target",target]
+        runtime = {}
+        if target.endswith("-musl"):
+            target_libdir = subprocess.check_output(["rustc","--print","target-libdir","--target",target],text=True).strip()
+            link_map = tmp/"komodo-mcp.map"
+            subprocess.run(["cargo","rustc",*flags,"--bin","komodo-mcp","--","-C","link-self-contained=yes",
+                            "-C",f"link-arg=-Wl,-Map={link_map}"],cwd=source,env=env,check=True)
+            runtime = musl_inputs(link_map,target_libdir)
+            subprocess.run(["cargo","build",*flags,"--example","release_version"],cwd=source,env=env,check=True)
+        else:
+            subprocess.run(["cargo","build",*flags,"--bin","komodo-mcp","--example","release_version"],
+                           cwd=source,env=env,check=True)
         require(not any((cargo_home/name).exists() for name in ("registry/index","registry/src","registry/cache","git/db")),
                 "offline rebuild populated a dependency cache")
         release = build_dir/target/"release"
@@ -131,7 +158,8 @@ def build(source, output, target, *, revision=None):
         entry = {"kind":"native","name":tar.name,"target":target,"bytes":tar.stat().st_size,
                  "sha256":sha256(tar),"executable_sha256":sha256(extracted),**linkage}
         (output/(target+".json")).write_text(json.dumps({"revision":info["revision"],"version":version,
-                    "native":True,"mcp_version":result["observed_version"],"file":entry},indent=2)+"\n")
+                    "source_sha256":sha256(source_archive) if source_archive else None,
+                    "native":True,"mcp_version":result["observed_version"],"runtime":runtime,"file":entry},indent=2)+"\n")
         print(f"Verified extracted {target} MCP {version} at {info['revision']} ({entry['sha256']})")
 
 
@@ -141,5 +169,6 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--target", choices=TARGETS, required=True)
     parser.add_argument("--revision")
+    parser.add_argument("--source-archive", type=Path, help="exact downloaded archive used for this candidate")
     args = parser.parse_args()
-    build(args.source, args.output, args.target, revision=args.revision)
+    build(args.source, args.output, args.target, revision=args.revision, source_archive=args.source_archive)

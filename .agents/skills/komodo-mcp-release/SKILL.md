@@ -264,7 +264,9 @@ python3 scripts/release.py verify --version X.Y.Z --commit CAPTURED_MERGED_SHA \
 The helper checks the workflow path, repository, main branch, revision and
 successful run, downloads each exact immutable Actions artifact by ID,
 compares the artifact archive digest, then binds the embedded run attempt
-and version to the verified files. An earlier rehearsal at the previous
+and version to the verified files. The OCI receipt must identify the same
+native workflow run, attempt, artifact ID and outer digest selected for
+publication, plus the tested Linux executable hashes. An earlier rehearsal at the previous
 application version cannot supply release artifacts. The archived receipt
 allows read-only verification after Actions retention ends.
 

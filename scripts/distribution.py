@@ -59,7 +59,7 @@ def load_manifest(root: Path, *, revision: str, version: str, targets, run_id=No
         require(type(value) is int and value > 0 and
                 (expected is None or type(expected) is int and value == expected), f"wrong workflow {key}")
     entries = data["files"]
-    require(isinstance(entries, list) and 4 < len(entries) <= 4 + len(TARGETS), "invalid artifact count")
+    require(isinstance(entries, list) and len(entries) == 4 + len(TARGETS), "invalid artifact count")
     singletons = {"source":stem(version, "source")+".tar.gz", "checksums":"SHA256SUMS",
                   "license":"LICENSE", "notices":"THIRD-PARTY-NOTICES"}
     registered, found_targets, sums = set(), set(), {}
@@ -93,7 +93,7 @@ def load_manifest(root: Path, *, revision: str, version: str, targets, run_id=No
                 and sha256(file) == entry["sha256"], f"SHA-256 mismatch for {expected}")
         if kind != "checksums":
             sums[expected] = entry["sha256"]
-    require(set(singletons.values()) <= registered and required <= found_targets, "missing distribution files")
+    require(set(singletons.values()) <= registered and found_targets == set(TARGETS) and required <= found_targets, "missing distribution files")
     require({p.name for p in root.iterdir()} == registered | {MANIFEST}, "unexpected files in distribution bundle")
     contents = "".join(f"{value}  {name}\n" for name, value in sorted(sums.items()))
     require((root / "SHA256SUMS").read_bytes() == contents.encode("ascii"), "incorrect manifest checksum coverage")

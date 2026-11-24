@@ -13,20 +13,25 @@ On Linux, HTTPS connections to Core use the machine's trust configuration. Suppl
 
 ## Verify and install
 
-Obtain the executable archive and `SHA256SUMS` from the same published GitHub Release. Use a separate, empty directory for these downloads. Replace the example version and target with the release version and the exact target for your machine.
+For a GitHub Release that lists binary assets, obtain the executable archive and `SHA256SUMS` from that release. For a candidate, take both files from the same Native distribution workflow artifact. Earlier source-only releases provide the tagged project source. Use a separate, empty directory for these downloads. Replace the example version and target with the release version and the exact target for your machine.
 
 ```sh
 version=0.8.0
 target=x86_64-unknown-linux-musl
 archive="komodo-mcp-v$version-$target.tar.gz"
-awk -v f="$archive" '$2 == f {print; n++} END {if (n != 1) exit 1}' SHA256SUMS > "$archive.sha256"
-# Linux
-sha256sum -c "$archive.sha256"
-# On macOS use: shasum -a 256 -c "$archive.sha256"
-tar -xzf "$archive"
+(
+  set -eu
+  awk -v f="$archive" '$2 == f {print; n++} END {if (n != 1) exit 1}' SHA256SUMS > "$archive.sha256"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum -c "$archive.sha256"
+  else
+    shasum -a 256 -c "$archive.sha256"
+  fi
+  tar -xzf "$archive"
+)
 ```
 
-Continue only after the checksum command succeeds. Configure the MCP client to launch the extracted `komodo-mcp` executable by absolute path. Its private environment needs `KOMODO_ADDRESS`, `KOMODO_API_KEY` and `KOMODO_API_SECRET`. Receiving an MCP `initialize` response reports the binary's version in `serverInfo.version`.
+Configure the MCP client to launch the extracted `komodo-mcp` executable by absolute path. Its private environment needs `KOMODO_ADDRESS`, `KOMODO_API_KEY` and `KOMODO_API_SECRET`. Receiving an MCP `initialize` response reports the binary's version in `serverInfo.version`.
 
 ## Rebuild from the source archive
 
@@ -46,6 +51,6 @@ The build script checks the native OS and CPU, compiles with Cargo's frozen offl
 
 ## Candidate and release identities
 
-The read-only **Native distribution** workflow builds the exact pull-request head or main commit. Its full run uses ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel and macos-15. The reusable Linux-only run supplies the verified native executables to the container build. Each run first creates a single matching source archive. Its native jobs independently rebuild directly from that archive on their respective processors. Only successful extracted-binary checks feed the assembled candidate.
+The read-only **Native distribution** workflow builds the exact pull-request head or main commit. Its full run uses ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel and macos-15. The container build consumes the verified Linux executables from the complete, same-commit native distribution. Each run first creates a single matching source archive. Its native jobs independently rebuild directly from that archive on their respective processors. Only successful extracted-binary checks feed the assembled candidate.
 
 The Actions artifact name is `komodo-mcp-distribution-<full-commit>`. Its internal `distribution-manifest.json` records repository, source commit, Cargo version, Actions run ID and attempt, filename, byte count, SHA-256 and native executable SHA-256. Darwin entries also record the minimum OS version actually embedded in the executable. Obtain the artifact from the expected workflow, commit and run. A pre-release candidate carries the Cargo version that was built and is distinguished by that commit and run. Candidates are available to authorized workflow readers during retention. Published binaries, notices, checksums and Corresponding Source are release assets retained with the applicable version. Manual publication and recovery use the repository's release helper.

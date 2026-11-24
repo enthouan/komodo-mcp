@@ -5,11 +5,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  workflow_call:
-    inputs:
-      linux_only:
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -25,7 +20,6 @@ jobs:
     timeout-minutes: 45
     outputs:
       version: ${{ steps.identity.outputs.version }}
-      matrix: ${{ steps.identity.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -35,25 +29,14 @@ jobs:
         with:
           toolchain: 1.99.1
       - id: identity
-        env:
-          LINUX_ONLY: ${{ inputs.linux_only || false }}
         run: |
-          python3 - <<'PY'
-          import json, os, tomllib
-          with open("Cargo.toml","rb") as f:
+          python3 - <<'PYCODE'
+          import os, tomllib
+          with open("Cargo.toml", "rb") as f:
               version = tomllib.load(f)["package"]["version"]
-          targets = {
-              "x86_64-unknown-linux-musl": "ubuntu-24.04",
-              "aarch64-unknown-linux-musl": "ubuntu-24.04-arm",
-              "x86_64-apple-darwin": "macos-15-intel",
-              "aarch64-apple-darwin": "macos-15",
-          }
-          matrix = {"include":[{"target":t,"runner":r} for t,r in targets.items()
-                               if os.environ["LINUX_ONLY"] != "true" or t.endswith("-musl")]}
-          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
-              print("version="+version,file=f)
-              print("matrix="+json.dumps(matrix),file=f)
-          PY
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              print("version="+version, file=f)
+          PYCODE
       - name: Archive exact project, vendored dependencies, runtime sources and licenses
         run: python3 scripts/distribution_prepare.py source --revision "$REVISION" --output "$RUNNER_TEMP/distribution-source"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -68,7 +51,16 @@ jobs:
     needs: source
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.source.outputs.matrix) }}
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-apple-darwin
+            runner: macos-15
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
@@ -97,7 +89,7 @@ jobs:
         run: |
           name="komodo-mcp-v$VERSION-source"
           python3 scripts/distribution_prepare.py extract-source --version "$VERSION" --archive "$RUNNER_TEMP/download/$name.tar.gz" --destination "$RUNNER_TEMP/rebuild"
-          python3 "$RUNNER_TEMP/rebuild/$name/scripts/distribution_build.py" --source "$RUNNER_TEMP/rebuild/$name" --target "$TARGET" --revision "$REVISION" --output "$RUNNER_TEMP/native"
+          python3 "$RUNNER_TEMP/rebuild/$name/scripts/distribution_build.py" --source "$RUNNER_TEMP/rebuild/$name" --source-archive "$RUNNER_TEMP/download/$name.tar.gz" --target "$TARGET" --revision "$REVISION" --output "$RUNNER_TEMP/native"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: distribution-native-${{ matrix.target }}-${{ env.REVISION }}-${{ github.run_attempt }}
@@ -112,7 +104,6 @@ jobs:
     timeout-minutes: 30
     env:
       VERSION: ${{ needs.source.outputs.version }}
-      LINUX_ONLY: ${{ inputs.linux_only || false }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -129,9 +120,7 @@ jobs:
           merge-multiple: true
       - name: Verify complete native candidate and its checksum manifest
         run: |
-          mode=()
-          if [[ "$LINUX_ONLY" == "true" ]]; then mode+=(--linux-only); fi
-          python3 scripts/distribution_prepare.py assemble --source "$RUNNER_TEMP/source" --native "$RUNNER_TEMP/native" --output "$RUNNER_TEMP/bundle" --revision "$REVISION" --version "$VERSION" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" "${mode[@]}"
+          python3 scripts/distribution_prepare.py assemble --source "$RUNNER_TEMP/source" --native "$RUNNER_TEMP/native" --output "$RUNNER_TEMP/bundle" --revision "$REVISION" --version "$VERSION" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: komodo-mcp-distribution-${{ env.REVISION }}
