@@ -1,6 +1,6 @@
 # Scoped resource TOML export
 
-`export_resources_toml` is available in every local capability profile. It uses
+`export_resources_toml` needs no local capability grant. Operators can include or exclude it through tool selection. It uses
 the caller's existing credentials and only Core read requests. It performs no
 file write, cache refresh, RunSync or deployment. Core retains its authoritative
 Read/visibility decisions; an upstream denial remains a denial.

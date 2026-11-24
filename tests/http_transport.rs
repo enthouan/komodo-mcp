@@ -4,15 +4,11 @@ mod support;
 #[path = "support/variables.rs"]
 mod variables;
 
-use std::{
-    net::SocketAddr,
-    process::Stdio,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use http::{
-    DEADLINE, FIRST, Http, INVALID, ORIGIN, PRIVATE_ARGUMENT, SECOND, Server, assert_redacted,
-    initialize, post, rejected,
+    Binary, DEADLINE, FIRST, INVALID, ORIGIN, PRIVATE_ARGUMENT, SECOND, Server, initialize, post,
+    rejected,
 };
 use komodo_mcp::{
     capabilities::CapabilityPolicy,
@@ -26,11 +22,7 @@ use support::{
     operations::{Core, DEPLOYMENT, Options, Outcome, STACK},
     recovery::{FaultProxy, LostReply},
 };
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::Command,
-    time::timeout,
-};
+use tokio::time::timeout;
 
 fn client(address: &str, operate: bool, edit: bool) -> CoreClient {
     CoreClient::new(
@@ -473,44 +465,8 @@ async fn reconnect_after_disconnect_reconciles_the_accepted_operation_without_re
 #[tokio::test]
 async fn actual_http_binary_accepts_native_client_and_redacts_diagnostics() {
     let core = Core::start(Options::default()).await;
-    let mut child = Command::new(env!("CARGO_BIN_EXE_komodo-mcp"))
-        .env_clear()
-        .env("KOMODO_ADDRESS", &core.address)
-        .env("KOMODO_API_KEY", KEY)
-        .env("KOMODO_API_SECRET", SECRET)
-        .env("KOMODO_TRANSPORT", "http")
-        .env("KOMODO_HTTP_BIND", "127.0.0.1:0")
-        .env("KOMODO_HTTP_TOKENS", format!("{FIRST},{SECOND}"))
-        .env("KOMODO_HTTP_ALLOWED_ORIGINS", ORIGIN)
-        .env("RUST_LOG", "trace")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .unwrap();
-    let mut lines = BufReader::new(child.stderr.take().unwrap()).lines();
-    let address = timeout(DEADLINE, async {
-        while let Some(line) = lines.next_line().await.unwrap() {
-            assert_redacted(&line);
-            if line.contains("starting komodo-mcp over HTTP") {
-                return line
-                    .split_whitespace()
-                    .find_map(|part| part.strip_prefix("address="))
-                    .and_then(|addr| addr.parse::<SocketAddr>().ok())
-                    .expect("bound address in readiness log");
-            }
-        }
-        panic!("binary exited before listening");
-    })
-    .await
-    .unwrap();
-    let diagnostics = tokio::spawn(async move {
-        while let Some(line) = lines.next_line().await.unwrap() {
-            assert_redacted(&line);
-        }
-    });
-    let http = Http::new(address);
+    let binary = Binary::start(&core.address, &[]).await;
+    let http = &binary.http;
     rejected(
         post(
             http.request(Method::POST, Some(INVALID), None),
@@ -535,11 +491,5 @@ async fn actual_http_binary_accepts_native_client_and_redacts_diagnostics() {
     let read = http.call(FIRST, &session, "list_stacks", json!({})).await;
     assert_eq!(data(&read)["items"][0]["id"], STACK);
     core.assert_credentials();
-    child.start_kill().unwrap();
-    let output = timeout(DEADLINE, child.wait_with_output())
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(output.stdout.is_empty());
-    timeout(DEADLINE, diagnostics).await.unwrap().unwrap();
+    binary.finish().await;
 }

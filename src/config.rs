@@ -6,6 +6,8 @@ use crate::{capabilities::CapabilityPolicy, diagnostics::Redactor, error::AppErr
 
 mod http;
 pub use http::HttpConfig;
+mod selection;
+pub(crate) use selection::ToolSelection;
 
 #[derive(Clone, Debug, Default)]
 pub enum Transport {
@@ -22,6 +24,7 @@ pub struct Config {
     pub(crate) secret: String,
     redactor: Redactor,
     capabilities: CapabilityPolicy,
+    pub(crate) tools: ToolSelection,
     transport: Transport,
 }
 
@@ -62,7 +65,11 @@ impl Config {
             &read("KOMODO_API_KEY")?,
             &read("KOMODO_API_SECRET")?,
         )?
-        .with_capabilities(capabilities);
+        .with_capabilities(capabilities)
+        .with_tool_selection(
+            optional("KOMODO_ENABLED_TOOLS")?.as_deref(),
+            optional("KOMODO_DISABLED_TOOLS")?.as_deref(),
+        )?;
         match optional("KOMODO_TRANSPORT")?.as_deref() {
             None | Some("stdio") => {}
             Some("http") => {
@@ -154,6 +161,7 @@ impl Config {
             secret: secret.to_owned(),
             redactor,
             capabilities: CapabilityPolicy::default(),
+            tools: ToolSelection::default(),
             transport: Transport::Stdio,
         })
     }
@@ -165,6 +173,16 @@ impl Config {
 
     pub fn capabilities(&self) -> CapabilityPolicy {
         self.capabilities
+    }
+
+    /// Select from the full registered catalog. Capability and Core checks still apply.
+    pub fn with_tool_selection(
+        mut self,
+        enabled: Option<&str>,
+        disabled: Option<&str>,
+    ) -> Result<Self, AppError> {
+        self.tools = ToolSelection::parse(enabled, disabled)?;
+        Ok(self)
     }
 
     pub fn transport(&self) -> &Transport {

@@ -429,6 +429,30 @@ async fn local_grant_preserves_upstream_denial_and_failed_update_after_acknowled
 }
 
 #[tokio::test]
+async fn production_tool_lookup_applies_selection_and_local_grants() {
+    let core = Core::start().await;
+    let config = Config::parse(&core.address, KEY, SECRET)
+        .unwrap()
+        .with_tool_selection(
+            Some("get_stack,get_image_history,execute_terminal"),
+            Some("get_image_history"),
+        )
+        .unwrap();
+    let client = CoreClient::new(config, RequestPolicy::default()).unwrap();
+    let core_version = client.detect_version().await.unwrap();
+    let handler = KomodoServer {
+        client,
+        core_version,
+    };
+    let before = core.requests();
+    assert!(handler.get_tool("get_stack").is_some());
+    for excluded in ["get_image_history", "list_stacks", "execute_terminal"] {
+        assert!(handler.get_tool(excluded).is_none());
+    }
+    assert_eq!(core.requests(), before);
+}
+
+#[tokio::test]
 async fn production_keeps_all_reads_and_recovery_history_for_every_policy() {
     for operate in [false, true] {
         for edit in [false, true] {

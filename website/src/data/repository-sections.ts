@@ -16,6 +16,7 @@ export const REPOSITORY_SECTIONS = [
   { id: "readme-fresh-checkout-demo", file: "README.md", heading: "Fresh-checkout demo (synthetic Core)", route: "/getting-started/stdio/" },
   { id: "readme-build-and-launch", file: "README.md", heading: "Build and launch", route: "/getting-started/stdio/", stopAtSubheading: true },
   { id: "readme-streamable-http", file: "README.md", heading: "Authenticated Streamable HTTP", route: "/reference/configuration/" },
+  { id: "readme-tool-selection", file: "README.md", heading: "Select individual tools", route: "/reference/configuration/" },
   { id: "readme-local-capabilities", file: "README.md", heading: "Local capabilities and Core permissions", route: "/reference/configuration/" },
   { id: "readme-inventory-tools", file: "README.md", heading: "Inventory tools", route: "/reference/tools/" },
   { id: "readme-workload-operations", file: "README.md", heading: "Workload operations", route: "/reference/tools/" },

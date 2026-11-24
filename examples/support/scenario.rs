@@ -203,6 +203,12 @@ impl Process {
             "KOMODO_ALLOW_CONFIGURATION_EDIT",
             "KOMODO_ALLOW_PRUNE",
             "KOMODO_ALLOW_TERMINAL",
+            "KOMODO_ENABLED_TOOLS",
+            "KOMODO_DISABLED_TOOLS",
+            "KOMODO_TRANSPORT",
+            "KOMODO_HTTP_BIND",
+            "KOMODO_HTTP_TOKENS",
+            "KOMODO_HTTP_ALLOWED_ORIGINS",
         ] {
             command.env_remove(field);
         }

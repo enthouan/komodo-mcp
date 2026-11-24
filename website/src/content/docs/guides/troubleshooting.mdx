@@ -59,7 +59,7 @@ komodo-mcp is built against `komodo_client` {KOMODO_CLIENT_VERSION}, and its fix
 
 ## Disabled local capabilities
 
-A tool whose grant is off is not registered for this process: it is absent from `tools/list`, and calling it by name fails as an unknown tool before any Core request. A tool that is enabled but needs a second grant for a particular change (for example a Stack source update that also needs operate) fails with `capability_disabled`, again without a Core request. Enable the specific grant (`KOMODO_ALLOW_OPERATE`, `KOMODO_ALLOW_CONFIGURATION_EDIT`, `KOMODO_ALLOW_PRUNE`, or `KOMODO_ALLOW_TERMINAL`) with exactly `true`, restart, and make sure Core also grants the identity the matching permission. A grant value other than `true` or `false` fails startup.
+Check the instance’s [tool selection](/reference/configuration/#select-individual-tools) and grants. When either excludes a tool, it is absent from `tools/list`, and calling it by name fails as an unknown tool before any Core request. A tool that is enabled but needs a second grant for a particular change (for example a Stack source update that also needs operate) fails with `capability_disabled`, again without a Core request. Enable the specific grant (`KOMODO_ALLOW_OPERATE`, `KOMODO_ALLOW_CONFIGURATION_EDIT`, `KOMODO_ALLOW_PRUNE`, or `KOMODO_ALLOW_TERMINAL`) with exactly `true`, restart, and make sure Core also grants the identity the matching permission. A grant value other than `true` or `false` fails startup.
 
 ## Timeouts and uncertain outcomes
 

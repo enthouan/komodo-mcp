@@ -39,13 +39,7 @@ use rmcp::{
     service::{ClientLifecycleMode, RunningService},
 };
 use serde_json::{Value, json};
-use tokio::{
-    io::AsyncReadExt,
-    net::TcpListener,
-    process::{Child, Command},
-    task::JoinHandle,
-    time::timeout,
-};
+use tokio::{io::AsyncReadExt, net::TcpListener, process::Child, task::JoinHandle, time::timeout};
 
 use super::{
     KEY, SECRET,
@@ -739,29 +733,32 @@ impl Process {
         pruning: bool,
         terminal: bool,
     ) -> (Self, Session) {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_komodo-mcp"))
-            .env_clear()
-            .env("KOMODO_ADDRESS", address)
-            .env("KOMODO_API_KEY", KEY)
-            .env("KOMODO_API_SECRET", SECRET)
-            .env(
-                "KOMODO_ALLOW_OPERATE",
-                if operate { "true" } else { "false" },
-            )
-            .env("KOMODO_ALLOW_PRUNE", if pruning { "true" } else { "false" })
-            .env(
-                "KOMODO_ALLOW_TERMINAL",
-                if terminal { "true" } else { "false" },
-            )
-            .env("RUST_LOG", "trace")
-            .env(
-                "KOMODO_ALLOW_CONFIGURATION_EDIT",
-                if edit { "true" } else { "false" },
-            )
+        Self::start_with_settings(
+            address,
+            &[
+                (
+                    "KOMODO_ALLOW_OPERATE",
+                    if operate { "true" } else { "false" },
+                ),
+                ("KOMODO_ALLOW_PRUNE", if pruning { "true" } else { "false" }),
+                (
+                    "KOMODO_ALLOW_TERMINAL",
+                    if terminal { "true" } else { "false" },
+                ),
+                (
+                    "KOMODO_ALLOW_CONFIGURATION_EDIT",
+                    if edit { "true" } else { "false" },
+                ),
+            ],
+        )
+        .await
+    }
+
+    pub async fn start_with_settings(address: &str, settings: &[(&str, &str)]) -> (Self, Session) {
+        let mut child = super::binary(address, settings)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true)
             .spawn()
             .unwrap();
         let mut pipe = child.stderr.take().unwrap();

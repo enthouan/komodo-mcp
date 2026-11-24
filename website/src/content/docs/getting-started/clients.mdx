@@ -28,5 +28,5 @@ Any MCP client that can launch a local stdio process works the same way: run the
 
 - **The client cannot start it:** check that the path is absolute, exists, and is executable. Build it first.
 - **It starts, then closes during initialization:** the startup `GetVersion` probe failed. Read the server's stderr for `configuration`, `authentication`, `unreachable`, or `timeout` and follow [Troubleshooting](/guides/troubleshooting/).
-- **It connects but tools are missing:** only tools enabled by the local grants are discovered. Read tools are always present.
+- **It connects but tools are missing:** inspect the server’s [tool selection](/reference/configuration/#select-individual-tools) and local grants, restart it after changes, and run `tools/list` again.
 - **`list_stacks` returns an empty list:** the identity can read no Stacks. Check Core Read permissions; an empty list is not an error.

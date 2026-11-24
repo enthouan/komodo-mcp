@@ -7,7 +7,7 @@ import { Aside } from '@astrojs/starlight/components';
 import OperatorGuideIndex from '../../../components/OperatorGuideIndex.astro';
 import RepositorySection from '../../../components/RepositorySection.astro';
 
-The authoritative tool list is what your MCP client receives from `tools/list`: names, descriptions, input and output JSON schemas, and effect annotations for the tools this process enables. Read tools are always present; operation, configuration, prune, and terminal tools appear only when their local grants are `true`.
+The authoritative tool list is what your MCP client receives from `tools/list`: names, descriptions, input and output JSON schemas, and effect annotations for the tools this process enables. The full reference covers the built-in tools. Each instance publishes only those allowed by its local grants and [tool selection](/reference/configuration/#select-individual-tools).
 
 <Aside type="note" title="Generated catalog pending">
   A searchable catalog generated from the runtime tool registry, with profile availability, input bounds, output shapes, mutation behavior, and CI drift detection, is tracked in [#43](https://github.com/enthouan/komodo-mcp/issues/43). This page does not hand-maintain a tool list or tool counts in the meantime. The sections below are rendered directly from the repository README.

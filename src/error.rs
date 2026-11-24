@@ -108,6 +108,9 @@ pub struct AppError {
     pub status: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub field: Option<&'static str>,
+    /// One-based startup configuration position. Never echo an unrecognized setting value.
+    #[serde(skip)]
+    pub configuration_entry: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correction: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -229,6 +232,7 @@ impl AppError {
             operation,
             status: status.map(|status| status.as_u16()),
             field: None,
+            configuration_entry: None,
             correction: None,
             candidates: None,
         }
@@ -528,7 +532,11 @@ impl fmt::Display for AppError {
             write!(f, " HTTP {status}.")?;
         }
         if let (Some(field), Some(correction)) = (self.field, self.correction) {
-            write!(f, " {field} {correction}.")?;
+            write!(f, " {field}")?;
+            if let Some(index) = self.configuration_entry {
+                write!(f, " entry {index}")?;
+            }
+            write!(f, " {correction}.")?;
         } else if let Some(correction) = self.correction {
             write!(f, " {correction}.")?;
         }
