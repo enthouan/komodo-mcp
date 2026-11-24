@@ -25,6 +25,7 @@ lastUpdated: false
 ---
 
 import { Aside, Card, CardGrid, LinkButton, LinkCard, Steps } from '@astrojs/starlight/components';
+import InstallMethods from '../../components/InstallMethods.astro';
 import { PROJECT_LICENSE, RELEASE_TAG, RELEASE_URL } from '../../data/project.js';
 
 <Aside type="note" title="Independent project for Komodo">
@@ -40,13 +41,17 @@ import { PROJECT_LICENSE, RELEASE_TAG, RELEASE_URL } from '../../data/project.js
   <Card title="Your Core permissions decide" icon="padlock">
     The server calls Core with one API key and secret from its process environment. Core decides what that identity can read or change; local grants never add Core permissions.
   </Card>
-  <Card title="Native stdio, no listener" icon="laptop">
-    Your MCP client launches the compiled Rust executable. MCP messages use stdout only, diagnostics go to stderr, and no network port is opened.
+  <Card title="Two ways to connect" icon="laptop">
+    Your MCP client can launch the native executable over stdio or connect to a persistent Docker Compose service over authenticated HTTP.
   </Card>
   <Card title="Bounded, honest evidence" icon="magnifier">
     Pages, logs, history, and diagnosis are bounded. Cached, unavailable, permission-limited, and incomplete evidence is reported as such instead of guessed.
   </Card>
 </CardGrid>
+
+## Install the self-hosted beta
+
+<InstallMethods />
 
 ## Start by listing your stacks
 
@@ -58,7 +63,7 @@ Use list_stacks and do not change anything.
 ```
 
 <Steps>
-1. **Build and connect.** [Build the executable](/getting-started/stdio/) with the pinned Rust toolchain, then [add it to your MCP client](/getting-started/clients/) with your Core address, API key, and secret.
+1. **Connect.** Follow the [native stdio](/docs/self-hosted-beta/#native-stdio) or [Docker Compose](/docs/self-hosted-beta/#docker-compose) instructions. Run `tools/list` after initialization to see the tools available to this instance.
 
 2. **Approve one read.** Your client should propose `list_stacks`. It is read-only and returns at most 30 Stacks per page by default.
 
@@ -77,13 +82,13 @@ Do not deploy, restart, or change anything.
 ```
 
 <Steps>
-1. **Discover the visible Stack.** `list_stacks` (or `fleet_health` across the fleet) shows only resources your identity can read.
+1. **Discover the visible Stack.** Use `list_stacks` to find the Stack you want to diagnose. Copy its returned ID.
 
 2. **Resolve its exact identity.** `get_stack` accepts an exact, case-sensitive name or a 24-character ID. Ambiguous or incomplete name resolution fails safely and asks you to retry by ID.
 
 3. **Inspect the evidence.** `stack_diagnose` combines inventory, service state, recent updates and alerts, and one bounded log tail in at most seven Core reads. It returns `healthy`, `unhealthy`, or `inconclusive` with supporting IDs.
 
-4. **Read the gaps honestly.** A denied, timed-out, oversized, or unavailable source becomes an explicit gap while other evidence remains. Summaries can lag Docker, and correlated history is evidence, not proof of cause. Follow up with `get_update` or `get_stack_logs` if you need more.
+4. **Report gaps.** Keep the supporting IDs and any unavailable evidence. If you use an instance that exposes `get_update` or `get_stack_logs`, those tools can inspect the cited update or logs.
 </Steps>
 
 [Read the diagnosis bounds and evidence model](/docs/diagnostics/#stack-diagnosis).
@@ -158,7 +163,7 @@ Search the [built-in tool catalog](/reference/tools/#built-in-tools) for input b
 
 ## Know when to use it
 
-Choose komodo-mcp when you run your own Komodo Core and want an MCP client to inspect it or make approved changes under that identity's permissions. A source build from `main` runs as a local stdio process or a persistent service with [authenticated Streamable HTTP](/reference/configuration/#authenticated-streamable-http).
+Choose komodo-mcp when you run your own Komodo Core and want an MCP client to inspect it or make approved changes under that identity's permissions. The [beta installation guide](/docs/self-hosted-beta/) covers both the native executable and the persistent HTTP service.
 
 The current release is <a href={RELEASE_URL}>{RELEASE_TAG}</a>, licensed {PROJECT_LICENSE}. This site documents the repository's `main` branch.
 

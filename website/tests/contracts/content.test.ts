@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { CLIENT_SETUPS, EXECUTABLE_PLACEHOLDER, VERIFY_PROMPT } from "../../src/data/clients.js";
 import { CAPABILITY_VARIABLES, CONFIGURATION_VARIABLES } from "../../src/data/configuration.js";
-import { INSTALL_METHODS } from "../../src/data/install.js";
+import { INSTALL_METHODS, RELEASE_IMAGE } from "../../src/data/install.js";
 import { OPERATOR_GUIDES } from "../../src/data/operator-guides.js";
 import {
   KOMODO_CLIENT_VERSION,
@@ -14,8 +14,8 @@ import {
 } from "../../src/data/project.js";
 import { REPOSITORY_SECTIONS } from "../../src/data/repository-sections.js";
 import { extractSection, rewriteRepositoryLinks } from "../../src/loaders/repository-markdown.js";
-import { DOCUMENT_ROUTES, PUBLIC_ROUTES, TOOL_CATALOG } from "../support/site.js";
-import { normalizedVisibleText, readRoute, repositoryRoot } from "./html.js";
+import { PUBLIC_ROUTES, TOOL_CATALOG } from "../support/site.js";
+import { anchorHrefs, findByAttribute, normalizedVisibleText, readRoute, repositoryRoot } from "./html.js";
 
 const repo = (path: string) => readFile(new URL(path, `file://${repositoryRoot}`), "utf8");
 
@@ -66,19 +66,30 @@ describe("configuration accuracy", () => {
 });
 
 describe("installation and client accuracy", () => {
-  it("advertises only the source-built stdio path as available", () => {
-    expect(INSTALL_METHODS.filter(({ status }) => status === "available").map(({ key }) => key)).toEqual(["stdio"]);
-    for (const method of INSTALL_METHODS.filter(({ status }) => status === "planned")) {
-      expect(method).not.toHaveProperty("code");
-      expect(method.tracking?.length).toBeGreaterThan(0);
+  it("offers both paths, equivalent matching source, and release metadata", () => {
+    expect(INSTALL_METHODS.map(({ key }) => key)).toEqual(["binary", "docker"]);
+    const [native, compose] = INSTALL_METHODS;
+    for (const method of INSTALL_METHODS) {
+      const links = new Map(method.links.map(({ label, href }) => [label, href]));
+      const release = `https://github.com/enthouan/komodo-mcp/releases/download/${RELEASE_TAG}`;
+      expect(links.get("Matching Corresponding Source")).toBe(`${release}/komodo-mcp-${RELEASE_TAG}-source.tar.gz`);
+      expect(links.get("License")).toBe(`${release}/LICENSE`);
+      expect(links.get("Third-party notices")).toBe(`${release}/THIRD-PARTY-NOTICES`);
+      expect(links.get("SHA-256 checksums")).toBe(`${release}/SHA256SUMS`);
     }
+    const download = `https://github.com/enthouan/komodo-mcp/releases/download/${RELEASE_TAG}/`;
+    const targets = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "x86_64-apple-darwin", "aarch64-apple-darwin"];
+    for (const target of targets) {
+      expect(native.links.map(({ href }) => href)).toContain(`${download}komodo-mcp-${RELEASE_TAG}-${target}.tar.gz`);
+    }
+    expect(compose.links.some(({ href }) => href.endsWith(`/${RELEASE_TAG}/compose.yaml`))).toBe(true);
+    expect(RELEASE_IMAGE).toBe(`ghcr.io/enthouan/komodo-mcp:${RELEASE_TAG}`);
   });
 
   it("uses the pinned toolchain and the locked release build", async () => {
     expect((await repo("rust-toolchain.toml")).includes(`channel = "${RUST_TOOLCHAIN}"`)).toBe(true);
     expect(await repo(".tool-versions")).toContain(`rust ${RUST_TOOLCHAIN}`);
-    const stdio = INSTALL_METHODS.find(({ key }) => key === "stdio");
-    expect(stdio?.code).toContain("cargo build --locked --release --bin komodo-mcp");
+    expect(normalizedVisibleText((await readRoute("/getting-started/")).document)).toContain("cargo build --locked --release --bin komodo-mcp");
     expect(await repo(".github/workflows/ci.yml")).toContain("cargo build --locked --release --bin komodo-mcp");
   });
 
@@ -121,11 +132,9 @@ describe("installation and client accuracy", () => {
     expect(tools.has("stack_diagnose")).toBe(true);
   });
 
-  it("does not invent unavailable distribution or HTTP details", async () => {
+  it("keeps release download URLs and image tags versioned", async () => {
     for (const { file, source } of await websiteSources()) {
-      const withoutUrls = source.replace(/https?:\/\/[^\s"'`)<]+/g, "");
-      expect(withoutUrls, file).not.toMatch(/ghcr\.io|docker compose up|docker run|MCP_AUTH_TOKEN|:\d+\/mcp\b/);
-      expect(source, file).not.toMatch(/releases\/download|ghcr\.io/);
+      expect(source, file).not.toMatch(/releases\/latest\/download|ghcr\.io\/enthouan\/komodo-mcp:latest\b|MCP_AUTH_TOKEN/);
     }
   });
 });
@@ -241,12 +250,21 @@ describe("visitor-facing output", () => {
     expect(text).toContain("stack_diagnose");
   });
 
-  it("keeps planned paths visibly unavailable", async () => {
-    const text = normalizedVisibleText((await readRoute("/getting-started/")).document);
-    expect(text).toContain("Planned — not available yet");
-    expect(text).toContain("Available now");
-    for (const route of ["/getting-started/docker/", "/getting-started/http/"]) {
-      expect(DOCUMENT_ROUTES).not.toContain(route);
+  it("links directly from the landing and installation pages to both guides", async () => {
+    for (const route of ["/", "/getting-started/"]) {
+      const { document } = await readRoute(route);
+      const [methods] = findByAttribute(document, "div", "data-install-methods");
+      expect(methods, route).toBeDefined();
+      const hrefs = anchorHrefs(methods!);
+      for (const method of INSTALL_METHODS) {
+        expect(hrefs, route).toContain(method.guide);
+        for (const { href } of method.links) expect(hrefs, route).toContain(href);
+      }
+    }
+    const guide = await readRoute("/docs/self-hosted-beta/");
+    const guideLinks = anchorHrefs(guide.document);
+    for (const method of INSTALL_METHODS) {
+      for (const { href } of method.links) expect(guideLinks).toContain(href);
     }
   });
 });

@@ -8,8 +8,8 @@ import InstallMethod from "./InstallMethod.astro";
   <Tabs syncKey="install-method">
     {
       INSTALL_METHODS.map((method) => (
-        <TabItem label={method.status === "available" ? method.label : `${method.label} (planned)`}>
-          <InstallMethod method={method.key} showGuideLink />
+        <TabItem label={method.label}>
+          <InstallMethod method={method} />
         </TabItem>
       ))
     }
@@ -20,6 +20,6 @@ import InstallMethod from "./InstallMethod.astro";
         display: none !important;
       }
     </style>
-    {INSTALL_METHODS.map((method) => <InstallMethod method={method.key} showGuideLink headingLevel={3} />)}
+    {INSTALL_METHODS.map((method) => <InstallMethod method={method} heading />)}
   </noscript>
 </div>

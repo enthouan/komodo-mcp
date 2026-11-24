@@ -1,43 +1,21 @@
 ---
-import { Badge, Code } from "@astrojs/starlight/components";
-import { getInstallMethod, type InstallMethodKey } from "../data/install.js";
+import { Code } from "@astrojs/starlight/components";
+import { RELEASE_IMAGE, type InstallMethod } from "../data/install.js";
 
 interface Props {
-  method: InstallMethodKey;
-  showGuideLink?: boolean;
-  /** Render a visible heading (used when tabs are unavailable). */
-  headingLevel?: 3;
+  method: InstallMethod;
+  heading?: boolean;
 }
 
-const { method: methodKey, showGuideLink = false, headingLevel } = Astro.props;
-const method = getInstallMethod(methodKey);
-const available = method.status === "available";
+const { method, heading = false } = Astro.props;
 ---
 
-<div class="install-method" data-install-method={method.key} data-install-status={method.status}>
-  {headingLevel && <h3>{method.label}</h3>}
-  <p class="install-method__status">
-    <Badge
-      text={available ? "Available now" : "Planned — not available yet"}
-      variant={available ? "success" : "caution"}
-      size="small"
-    />
-  </p>
+<section class="install-method" data-install-method={method.key} aria-label={method.label}>
+  {heading && <h3>{method.label}</h3>}
   <p>{method.summary}</p>
-  {method.code && <Code code={method.code} lang="sh" title={method.title} />}
-  {
-    method.tracking && (
-      <p>
-        Tracked in{" "}
-        {method.tracking.map((issue, index) => (
-          <>
-            {index > 0 && " and "}
-            <a href={issue.href} rel="external">{issue.label}</a>
-          </>
-        ))}
-        . This site will document it only after it is published and verified.
-      </p>
-    )
-  }
-  {showGuideLink && method.href && <a href={method.href}>Read the complete native stdio guide →</a>}
-</div>
+  {method.key === "docker" && <Code lang="sh" title="Pull the beta image" code={`docker pull ${RELEASE_IMAGE}`} />}
+  <ul>
+    {method.links.map(({ label, href }) => <li><a href={href} rel="external">{label}</a></li>)}
+  </ul>
+  <a href={method.guide}>{method.guideLabel} →</a>
+</section>

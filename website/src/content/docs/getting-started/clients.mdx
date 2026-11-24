@@ -6,7 +6,7 @@ description: Configure Codex, Claude Code, Claude Desktop, VS Code, or OpenCode 
 import { Aside } from '@astrojs/starlight/components';
 import ClientSetup from '../../../components/ClientSetup.astro';
 
-Every recipe launches the same compiled executable over stdio and supplies the Core connection through the server's environment. Replace the executable placeholder with the absolute path to your `target/release/komodo-mcp`.
+Each recipe launches the executable over stdio and supplies the Core connection through the server’s environment. Replace the executable placeholder with the absolute path printed by the [native archive installation](/docs/self-hosted-beta/#native-stdio). For a source build, use the absolute path to `target/release/komodo-mcp`.
 
 <Aside type="note" title="What “reviewed” means">
   Each recipe's syntax was compared with the client's own documentation on the date shown. That is configuration review, not evidence of a successful connection, tool discovery, or Core read in that client. Recorded connection evidence is listed under [Compatibility](/getting-started/compatibility/).
@@ -26,7 +26,7 @@ Any MCP client that can launch a local stdio process works the same way: run the
 
 ## If the server does not connect
 
-- **The client cannot start it:** check that the path is absolute, exists, and is executable. Build it first.
+- **The client cannot start it:** check that the configured path is absolute and points to the executable from the verified archive or your local build.
 - **It starts, then closes during initialization:** the startup `GetVersion` probe failed. Read the server's stderr for `configuration`, `authentication`, `unreachable`, or `timeout` and follow [Troubleshooting](/guides/troubleshooting/).
 - **It connects but tools are missing:** inspect the server’s [tool selection](/reference/configuration/#select-individual-tools) and local grants, restart it after changes, and run `tools/list` again.
 - **`list_stacks` returns an empty list:** the identity can read no Stacks. Check Core Read permissions; an empty list is not an error.

@@ -31,4 +31,4 @@ export const RMCP_VERSION = exactDependency("rmcp");
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
 export const RELEASE_TAG = PUBLISHED_RELEASE_TAG;
 export const RELEASE_URL = `${RELEASES_URL}/tag/${RELEASE_TAG}`;
-export const RELEASE_SOURCE_ARCHIVE_URL = `${REPOSITORY_URL}/archive/refs/tags/${RELEASE_TAG}.tar.gz`;
+export const RELEASE_SOURCE_ARCHIVE_URL = `${REPOSITORY_URL}/releases/download/${RELEASE_TAG}/komodo-mcp-${RELEASE_TAG}-source.tar.gz`;
