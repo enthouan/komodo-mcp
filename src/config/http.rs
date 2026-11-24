@@ -17,14 +17,18 @@ pub struct HttpConfig {
 }
 
 impl HttpConfig {
+    pub fn parse_bind(bind: Option<&str>) -> Result<SocketAddr, AppError> {
+        bind.unwrap_or("127.0.0.1:3000")
+            .parse()
+            .map_err(|_| AppError::configuration("KOMODO_HTTP_BIND", "use an IP address and port"))
+    }
+
     pub fn parse(
         bind: Option<&str>,
         tokens: &str,
         origins: Option<&str>,
     ) -> Result<Self, AppError> {
-        let bind = bind.unwrap_or("127.0.0.1:3000").parse().map_err(|_| {
-            AppError::configuration("KOMODO_HTTP_BIND", "use an IP address and port")
-        })?;
+        let bind = Self::parse_bind(bind)?;
         let mut token_digests = Vec::new();
         for token in tokens.split(',').map(str::trim) {
             if !valid_bearer(token) {

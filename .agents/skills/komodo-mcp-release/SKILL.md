@@ -252,6 +252,15 @@ or recovery of that candidate. Preserve the file and its SHA-256 in the
 release record. It records the original candidates before publication as
 well as each subsequently observed remote identity.
 
+For packaged releases, supply the GitHub login in `GHCR_USERNAME` and its
+token in `GHCR_TOKEN` together through the release process environment.
+When both variables are unset, the helper uses the login and token from
+`gh` for `github.com`. The account needs access to
+`ghcr.io/enthouan/komodo-mcp`. For a classic personal access token,
+`read:packages` permits authenticated inspection and `write:packages`
+permits publication and read-back. The final visibility check uses an
+anonymous registry token. [GitHub Container Registry authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-with-a-personal-access-token-classic).
+
 ```sh
 python3 scripts/release.py publish --version X.Y.Z --commit CAPTURED_MERGED_SHA \
   --evidence target/release-validation.json --authorized \

@@ -1,3 +1,5 @@
+mod listener_health;
+
 use std::{fmt, process::ExitCode};
 
 use komodo_mcp::{
@@ -34,6 +36,16 @@ impl fmt::Display for StartupError {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    if std::env::args_os()
+        .skip(1)
+        .eq([std::ffi::OsStr::new("--healthcheck")])
+    {
+        return if listener_health::check().await {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        };
+    }
     match run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

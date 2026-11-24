@@ -138,6 +138,9 @@ A permission-filtered empty inventory is a successful result.
 
 ### Authenticated Streamable HTTP
 
+For Docker installation, private CA configuration and container health checks,
+see [Run Komodo MCP with Docker Compose](docs/container.md).
+
 A source build can run as a persistent MCP server at `http://127.0.0.1:3000/mcp`.
 Set the three Core variables above in the server environment. Generate an inbound
 token in a private shell and keep it in the server and client secret stores.

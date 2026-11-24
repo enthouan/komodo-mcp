@@ -70,6 +70,7 @@ export const OPERATOR_GUIDE_GROUPS = [
   {
     label: "Project",
     guides: [
+      { slug: "container", label: "Docker Compose installation", description: "Run the multi-platform image with runtime credentials, verify the authenticated listener, and find matching source and notices." },
       { slug: "distribution", label: "Native binaries and matching source", description: "Verify a native archive, check its platform requirements, and rebuild from the bundled source and dependencies." },
       { slug: "maintenance", label: "Repository maintenance", description: "Dependency updates, required checks, main-branch protection, and release compatibility." },
     ],
