@@ -1,6 +1,31 @@
 use komodo_mcp::{config::Config, error::ErrorKind};
 
 #[test]
+fn http_startup_rejects_absent_or_reused_credentials_before_the_core_probe() {
+    const CORE_SECRET: &str = "synthetic-core-secret-000000000000001";
+    const CORE_KEY: &str = "synthetic-core-key-000000000000000001";
+    for tokens in [None, Some(CORE_KEY), Some(CORE_SECRET)] {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_komodo-mcp"));
+        command
+            .env_clear()
+            .env("KOMODO_TRANSPORT", "http")
+            .env("KOMODO_ADDRESS", "http://127.0.0.1:1")
+            .env("KOMODO_API_KEY", CORE_KEY)
+            .env("KOMODO_API_SECRET", CORE_SECRET);
+        if let Some(tokens) = tokens {
+            command.env("KOMODO_HTTP_TOKENS", tokens);
+        }
+        let output = command.output().unwrap();
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        let diagnostic = String::from_utf8(output.stderr).unwrap();
+        assert!(diagnostic.contains("KOMODO_HTTP_TOKENS"));
+        assert!(!diagnostic.contains(CORE_SECRET) && !diagnostic.contains(CORE_KEY));
+        assert!(!diagnostic.contains("GetVersion"));
+    }
+}
+
+#[test]
 fn capability_configuration_is_independent_strict_and_read_only_by_default() {
     use komodo_mcp::capabilities::{Capability, CapabilityPolicy};
 

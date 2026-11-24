@@ -4,7 +4,7 @@ mod target;
 
 use crate::{
     capabilities::Capability,
-    client::CoreClient,
+    client::{CoreClient, PrincipalSlots},
     error::{AppError, ErrorKind},
     export,
     inventory::DetailInput,
@@ -29,12 +29,13 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tokio::sync::{Notify, oneshot, watch};
+use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore, oneshot, watch};
 
 const OP: &str = "execute_terminal";
 const GUARD_TIME: Duration = Duration::from_secs(10);
 const LIFECYCLE_TIME: Duration = Duration::from_secs(10);
 const TTL: u64 = 90;
+const MAX_ACTIVE: usize = 4;
 // Pinned Periphery 2.3.2 writes this complete physical line into a default
 // canonical Linux PTY. Count UTF-8 bytes after POSIX quoting, including its
 // status envelope and newline, conservatively within the 4095-byte capacity.
@@ -139,12 +140,27 @@ impl Input {
 #[derive(Default)]
 struct State {
     closing: bool,
-    active: BTreeMap<String, watch::Sender<bool>>,
+    active: BTreeMap<String, ActiveCall>,
 }
-#[derive(Default)]
+struct ActiveCall {
+    cancel: watch::Sender<bool>,
+    // Held until the worker finishes cleanup, even after the RPC is dropped.
+    _slot: OwnedSemaphorePermit,
+    _principal_slot: Option<OwnedSemaphorePermit>,
+}
 pub(crate) struct Runtime {
     state: Mutex<State>,
     finished: Notify,
+    slots: Arc<Semaphore>,
+    principal: PrincipalSlots,
+}
+impl Default for Runtime {
+    fn default() -> Self {
+        Self::with_slots(
+            Arc::new(Semaphore::new(MAX_ACTIVE)),
+            PrincipalSlots::default(),
+        )
+    }
 }
 struct Registration {
     runtime: Arc<Runtime>,
@@ -165,6 +181,23 @@ impl Drop for CancelOnDrop {
     }
 }
 impl Runtime {
+    fn with_slots(slots: Arc<Semaphore>, principal: PrincipalSlots) -> Self {
+        Self {
+            state: Mutex::default(),
+            finished: Notify::new(),
+            slots,
+            principal,
+        }
+    }
+    pub(crate) fn isolated(&self) -> Self {
+        Self::with_slots(Arc::clone(&self.slots), self.principal.clone())
+    }
+    pub(crate) fn for_http_principal(&self, count: usize, index: usize) -> Self {
+        Self::with_slots(
+            Arc::clone(&self.slots),
+            PrincipalSlots::for_http(MAX_ACTIVE, count, index),
+        )
+    }
     fn register(
         self: &Arc<Self>,
     ) -> Result<(Registration, CancelOnDrop, watch::Receiver<bool>, String), AppError> {
@@ -176,14 +209,33 @@ impl Runtime {
         let name = format!("mcp-{}", hex(&bytes[..16]));
         let nonce = hex(&bytes[16..]);
         let mut state = self.state.lock().map_err(|_| invalid())?;
-        if state.closing || state.active.len() >= 4 || state.active.contains_key(&name) {
-            return Err(AppError::arguments(
+        let unavailable = || {
+            AppError::arguments(
                 OP,
                 "At most four terminal calls may be active; closing sessions cannot accept work",
-            ));
+            )
+        };
+        if state.closing || state.active.contains_key(&name) {
+            return Err(unavailable());
         }
+        let principal_slot = self.principal.acquire().map_err(|_| {
+            AppError::arguments(
+                OP,
+                "Terminal capacity for this client is full. Wait for active calls to finish.",
+            )
+        })?;
+        let slot = Arc::clone(&self.slots)
+            .try_acquire_owned()
+            .map_err(|_| unavailable())?;
         let (tx, rx) = watch::channel(false);
-        state.active.insert(name.clone(), tx.clone());
+        state.active.insert(
+            name.clone(),
+            ActiveCall {
+                cancel: tx.clone(),
+                _slot: slot,
+                _principal_slot: principal_slot,
+            },
+        );
         Ok((
             Registration {
                 runtime: Arc::clone(self),
@@ -194,13 +246,15 @@ impl Runtime {
             nonce,
         ))
     }
-    pub async fn shutdown(&self) {
+    pub(crate) fn begin_close(&self) {
         if let Ok(mut state) = self.state.lock() {
             state.closing = true;
-            for tx in state.active.values() {
-                let _ = tx.send(true);
+            for call in state.active.values() {
+                let _ = call.cancel.send(true);
             }
         }
+    }
+    pub(crate) async fn wait_for_cleanup(&self) {
         let drained = async {
             loop {
                 let notified = self.finished.notified();
@@ -538,6 +592,104 @@ async fn cleanup(client: &CoreClient, owned: &mut Owned, confirmed: bool) -> Val
 mod tests {
     use super::*;
     use crate::{capabilities::CapabilityPolicy, client::RequestPolicy, config::Config};
+
+    #[tokio::test]
+    async fn session_cleanup_cancels_only_its_workers_and_respects_the_process_budget() {
+        let root = CoreClient::new(
+            Config::parse("http://127.0.0.1:9", "fixture-key", "fixture-secret").unwrap(),
+            RequestPolicy::default(),
+        )
+        .unwrap();
+        let alice = root.isolated_session();
+        let bob = root.isolated_session();
+        // Registrations stand in for active workers. No terminal or upstream call runs.
+        let first = alice.terminal_runtime().register().unwrap();
+        let other: Vec<_> = (1..MAX_ACTIVE)
+            .map(|_| bob.terminal_runtime().register().unwrap())
+            .collect();
+        assert!(root.terminal_runtime().register().is_err());
+        alice.invalidate_session();
+        assert!(*first.2.borrow());
+        assert!(other.iter().all(|call| !*call.2.borrow()));
+        assert!(bob.terminal_runtime().register().is_err());
+        let drain = alice.close_session();
+        tokio::pin!(drain);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), &mut drain)
+                .await
+                .is_err()
+        );
+        drop(first);
+        tokio::time::timeout(Duration::from_secs(1), &mut drain)
+            .await
+            .unwrap();
+        assert!(alice.clone().terminal_runtime().register().is_err());
+        assert!(bob.terminal_runtime().register().is_ok());
+        assert!(other.iter().all(|call| !*call.2.borrow()));
+    }
+
+    #[tokio::test]
+    async fn http_principal_terminal_quota_survives_disconnect_until_worker_cleanup() {
+        let root = CoreClient::new(
+            Config::parse("http://127.0.0.1:9", "fixture-key", "fixture-secret").unwrap(),
+            RequestPolicy::default(),
+        )
+        .unwrap();
+        let alice = root.for_http_principal(3, 0);
+        let bob = root.for_http_principal(3, 1);
+        let cara = root.for_http_principal(3, 2);
+        let session = alice.isolated_session();
+        // Register workers locally; nothing is sent to Core.
+        let modern = alice.terminal_runtime().register().unwrap();
+        let legacy = session.terminal_runtime().register().unwrap();
+        assert!(
+            alice
+                .isolated_session()
+                .terminal_runtime()
+                .register()
+                .is_err()
+        );
+        let bob_call = bob.terminal_runtime().register().unwrap();
+        assert!(
+            bob.isolated_session()
+                .terminal_runtime()
+                .register()
+                .is_err()
+        );
+        let cara_call = cara.terminal_runtime().register().unwrap();
+        session.invalidate_session();
+        assert!(*legacy.2.borrow());
+        assert!(!*modern.2.borrow() && !*bob_call.2.borrow() && !*cara_call.2.borrow());
+        assert!(alice.terminal_runtime().register().is_err());
+        drop(legacy);
+        session.close_session().await;
+        assert!(
+            alice
+                .isolated_session()
+                .terminal_runtime()
+                .register()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn http_principals_outnumbering_terminal_slots_can_each_compete_for_one() {
+        let root = Runtime::default();
+        let count = MAX_ACTIVE + 1;
+        let principals: Vec<_> = (0..count)
+            .map(|index| Arc::new(root.for_http_principal(count, index)))
+            .collect();
+        let sessions: Vec<_> = principals.iter().map(|p| Arc::new(p.isolated())).collect();
+        let mut workers: Vec<_> = sessions[..MAX_ACTIVE]
+            .iter()
+            .map(|session| session.register().unwrap())
+            .collect();
+        assert!(principals[0].register().is_err());
+        assert!(sessions[MAX_ACTIVE].register().is_err());
+        drop(workers.pop().unwrap());
+        assert!(principals[MAX_ACTIVE].register().is_ok());
+    }
+
     #[tokio::test]
     async fn closed_transport_never_uses_configuration_edit_as_terminal_authority_or_accepts_generic_writes()
      {

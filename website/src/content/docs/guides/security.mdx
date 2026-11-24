@@ -44,7 +44,7 @@ Both must allow an action. Grants never add Core permissions, and Core permissio
 
 ## Transport
 
-The supported transport is local stdio. The process opens no network listener, so only the client that launched it can talk to it. Authenticated Streamable HTTP for persistent deployments is planned in [#40](https://github.com/enthouan/komodo-mcp/issues/40) and is not available.
+With stdio, the MCP client launches a private child process. In HTTP mode, each request requires a configured bearer token. A token identifies the client to MCP. Core authorizes calls using the server's configured service account. Give clients that need different Core permissions separate instances and Core credentials. [HTTP configuration](/reference/configuration/#authenticated-streamable-http)
 
 ## Operations and uncertainty
 

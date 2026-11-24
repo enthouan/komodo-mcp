@@ -8,7 +8,7 @@ import RepositorySection from '../../../components/RepositorySection.astro';
 import { MCP_PROTOCOL_VERSION, RUST_TOOLCHAIN } from '../../../data/project.js';
 import { EXECUTABLE_PLACEHOLDER } from '../../../data/clients.js';
 
-Native stdio is the supported way to run komodo-mcp today. The MCP client starts the compiled executable, writes newline-delimited JSON-RPC to its stdin, and reads MCP responses from its stdout. There is no network listener and no interactive prompt.
+With native stdio, the MCP client starts the compiled executable, writes newline-delimited JSON-RPC to its stdin, and reads MCP responses from its stdout. The process opens no network listener.
 
 <Aside type="note" title="Source build, not a binary download">
   Prebuilt executables are not published yet ([#42](https://github.com/enthouan/komodo-mcp/issues/42)). The steps below build the locked release executable with Rust {RUST_TOOLCHAIN}.

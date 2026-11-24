@@ -2,7 +2,7 @@ use std::{fmt, process::ExitCode};
 
 use komodo_mcp::{
     client::{CoreClient, RequestPolicy},
-    config::Config,
+    config::{Config, Transport},
     diagnostics::SafeDiagnostics,
     error::AppError,
     server::KomodoServer,
@@ -45,13 +45,17 @@ async fn main() -> ExitCode {
 
 async fn run() -> Result<(), StartupError> {
     let config = Config::from_env()?;
+    let transport = config.transport().clone();
+    let over_http = matches!(transport, Transport::Http(_));
     // Dependency Debug/Trace events include complete MCP requests and replies,
     // including newly supplied configuration secrets that are not API credentials.
     // Apply this hard filter after RUST_LOG, even for more specific directives.
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-        .with(tracing_subscriber::filter::filter_fn(|metadata| {
-            metadata.target().starts_with("komodo_mcp") || *metadata.level() <= tracing::Level::INFO
+        .with(tracing_subscriber::filter::filter_fn(move |metadata| {
+            // HTTP dependency events can include arbitrary incoming headers and session IDs.
+            metadata.target().starts_with("komodo_mcp")
+                || (!over_http && *metadata.level() <= tracing::Level::INFO)
         }))
         .with(
             tracing_subscriber::fmt::layer()
@@ -65,6 +69,19 @@ async fn run() -> Result<(), StartupError> {
     let client = CoreClient::new(config, RequestPolicy::default())?;
     let core_version = client.detect_version().await?;
     tracing::info!(version = %core_version, "connected to Komodo Core");
+
+    if let Transport::Http(http) = transport {
+        let listener = tokio::net::TcpListener::bind(http.bind())
+            .await
+            .map_err(|_| StartupError::Runtime("failed to bind the configured HTTP listener"))?;
+        let address = listener
+            .local_addr()
+            .map_err(|_| StartupError::Runtime("failed to inspect the HTTP listener"))?;
+        tracing::info!(%address, "starting komodo-mcp over HTTP");
+        return komodo_mcp::http::serve(listener, http, client, core_version, shutdown_signal())
+            .await
+            .map_err(|_| StartupError::Runtime("MCP service stopped on an HTTP transport error"));
+    }
 
     tracing::info!("starting komodo-mcp over stdio");
     let outcome = async {
@@ -93,4 +110,18 @@ async fn run() -> Result<(), StartupError> {
     .await;
     client.shutdown_terminals().await;
     outcome
+}
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    if let Ok(mut terminate) =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+    {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = terminate.recv() => {}
+        }
+        return;
+    }
+    let _ = tokio::signal::ctrl_c().await;
 }

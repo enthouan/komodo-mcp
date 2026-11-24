@@ -10,6 +10,7 @@ use komodo_client::{
 };
 use reqwest::{Client, redirect::Policy};
 use serde::{Serialize, de::DeserializeOwned};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, TryAcquireError};
 
 use crate::{
     capabilities::{Capability, CapabilityPolicy},
@@ -22,6 +23,32 @@ use crate::{
 pub const MAX_EVIDENCE_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 /// Compatibility name for the unchanged workload-log body budget.
 pub const MAX_LOG_RESPONSE_BYTES: usize = MAX_EVIDENCE_RESPONSE_BYTES;
+
+/// Divide capacity among configured credentials. When there are fewer slots
+/// than credentials, each can compete for one under the separate global cap.
+pub(crate) fn principal_share(total: usize, count: usize, index: usize) -> usize {
+    debug_assert!(total > 0 && index < count);
+    (total / count + usize::from(index < total % count)).max(1)
+}
+
+/// Clones share admission across a credential's stateless and sessionful calls.
+/// Stdio needs only the process limit.
+#[derive(Default, Clone)]
+pub(crate) struct PrincipalSlots(Option<Arc<Semaphore>>);
+
+impl PrincipalSlots {
+    pub(crate) fn for_http(total: usize, count: usize, index: usize) -> Self {
+        let share = principal_share(total, count, index);
+        Self((share < total).then(|| Arc::new(Semaphore::new(share))))
+    }
+
+    pub(crate) fn acquire(&self) -> Result<Option<OwnedSemaphorePermit>, TryAcquireError> {
+        self.0
+            .as_ref()
+            .map(|pool| pool.clone().try_acquire_owned())
+            .transpose()
+    }
+}
 
 /// Production deadlines; injectable without changing the process environment.
 #[derive(Debug, Clone, Copy)]
@@ -39,28 +66,32 @@ impl Default for RequestPolicy {
     }
 }
 
-struct Inner {
+struct Upstream {
     sdk: KomodoClient,
     bounded_request: reqwest::RequestBuilder,
     execute_request: reqwest::RequestBuilder,
     write_request: reqwest::RequestBuilder,
     current_caller_request: reqwest::RequestBuilder,
     terminal_request: reqwest::RequestBuilder,
-    terminals: Arc<crate::terminal::Runtime>,
-    previews: crate::configuration::PreviewStore,
     policy: RequestPolicy,
     redactor: Redactor,
     capabilities: CapabilityPolicy,
 }
 
-/// Clones share the same SDK and reqwest connection pool. No mutable request state.
+/// Clones keep the same session. A distinct MCP session shares the upstream
+/// Core identity and connection pool, with its own preview and terminal owner.
 #[derive(Clone)]
-pub struct CoreClient(Arc<Inner>, bool);
+pub struct CoreClient {
+    upstream: Arc<Upstream>,
+    previews: Arc<crate::configuration::PreviewStore>,
+    terminals: Arc<crate::terminal::Runtime>,
+    bound_reads: bool,
+}
 
 impl fmt::Debug for CoreClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CoreClient")
-            .field("policy", &self.0.policy)
+            .field("policy", &self.upstream.policy)
             .finish_non_exhaustive()
     }
 }
@@ -121,35 +152,70 @@ impl CoreClient {
             .header("x-api-key", &config.key)
             .header("x-api-secret", &config.secret);
         let sdk = KomodoClient::new(config.address, config.key, config.secret).set_reqwest(http);
-        Ok(Self(
-            Arc::new(Inner {
+        Ok(Self {
+            upstream: Arc::new(Upstream {
                 sdk,
                 bounded_request,
                 execute_request,
                 write_request,
                 current_caller_request,
                 terminal_request,
-                terminals: Default::default(),
-                previews: Default::default(),
                 policy,
                 redactor,
                 capabilities,
             }),
-            false,
-        ))
+            terminals: Arc::default(),
+            previews: Arc::default(),
+            bound_reads: false,
+        })
+    }
+
+    /// Create a fresh private owner within the same Core pool and process limits.
+    pub fn isolated_session(&self) -> Self {
+        Self {
+            upstream: Arc::clone(&self.upstream),
+            previews: Arc::new(self.previews.isolated()),
+            terminals: Arc::new(self.terminals.isolated()),
+            bound_reads: self.bound_reads,
+        }
+    }
+
+    /// Called once per configured token. Subsequent isolated sessions inherit
+    /// this token's shares while keeping their own private preview/terminal state.
+    pub(crate) fn for_http_principal(&self, count: usize, index: usize) -> Self {
+        Self {
+            upstream: Arc::clone(&self.upstream),
+            previews: Arc::new(self.previews.for_http_principal(count, index)),
+            terminals: Arc::new(self.terminals.for_http_principal(count, index)),
+            bound_reads: self.bound_reads,
+        }
+    }
+
+    /// Invalidate private state immediately, including registrations attempted
+    /// by in-flight requests. Owned terminal workers perform their usual cleanup.
+    pub fn invalidate_session(&self) {
+        self.previews.close();
+        self.terminals.begin_close();
+    }
+
+    /// Wait up to the terminal cleanup deadline for this owner's workers.
+    pub async fn close_session(&self) {
+        self.invalidate_session();
+        self.terminals.wait_for_cleanup().await;
     }
 
     pub fn capabilities(&self) -> CapabilityPolicy {
-        self.0.capabilities
+        self.upstream.capabilities
     }
 
     pub(crate) fn terminal_runtime(&self) -> &Arc<crate::terminal::Runtime> {
-        &self.0.terminals
+        &self.terminals
     }
 
     /// Cancel observations and allow bounded owned cleanup before runtime exit.
     pub async fn shutdown_terminals(&self) {
-        self.0.terminals.shutdown().await;
+        self.terminals.begin_close();
+        self.terminals.wait_for_cleanup().await;
     }
 
     /// Closed terminal lifecycle surface. Generic configuration writes still
@@ -177,7 +243,7 @@ impl CoreClient {
             .map_err(|_| AppError::new(ErrorKind::Timeout, operation, None))??;
         let body = serde_json::json!({"type":operation,"params":owned.body(phase)?});
         let request = self
-            .clone_request(&self.0.write_request, operation)?
+            .clone_request(&self.upstream.write_request, operation)?
             .json(&body);
         tokio::time::timeout(Duration::from_secs(10), async {
             owned.mark_attempt(phase);
@@ -204,7 +270,7 @@ impl CoreClient {
             .await
             .map_err(|_| AppError::new(ErrorKind::Timeout, OP, None))??;
         let request = self
-            .clone_request(&self.0.terminal_request, OP)?
+            .clone_request(&self.upstream.terminal_request, OP)?
             .json(&owned.body(Phase::Command)?);
         owned.mark_attempt(Phase::Command);
         let mut response = request
@@ -233,7 +299,7 @@ impl CoreClient {
     }
 
     pub(crate) fn previews(&self) -> &crate::configuration::PreviewStore {
-        &self.0.previews
+        &self.previews
     }
 
     /// Drop authentication configuration immediately, regardless of upstream
@@ -241,8 +307,8 @@ impl CoreClient {
     /// mutation handlers explicitly require enabled administrator authority.
     pub(crate) async fn current_caller(&self) -> Result<serde_json::Value, AppError> {
         const OP: &str = "CurrentCaller";
-        tokio::time::timeout(self.0.policy.operation_timeout, async {
-            let mut response = self.clone_request(&self.0.current_caller_request, OP)?
+        tokio::time::timeout(self.upstream.policy.operation_timeout, async {
+            let mut response = self.clone_request(&self.upstream.current_caller_request, OP)?
                 .send().await.map_err(|e| AppError::from_upstream(OP, e.into()))?;
             let raw: serde_json::Value = self.decode_bounded_body(&mut response, OP, None).await?;
             if !raw["_id"]["$oid"].as_str().is_some_and(crate::deletion::object_id)
@@ -282,8 +348,13 @@ impl CoreClient {
             .map_err(|_| AppError::new(ErrorKind::InvalidArguments, operation, None))?;
         crate::variables::guard_write(self, operation, &parameters, baseline).await?;
         Ok(tokio::time::timeout(
-            self.0.policy.operation_timeout,
-            self.request_bounded_body(&self.0.write_request, parameters, operation, operation),
+            self.upstream.policy.operation_timeout,
+            self.request_bounded_body(
+                &self.upstream.write_request,
+                parameters,
+                operation,
+                operation,
+            ),
         )
         .await
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None))))
@@ -326,8 +397,13 @@ impl CoreClient {
             .map_err(|_| AppError::new(ErrorKind::InvalidArguments, operation, None))?;
         crate::access::guard_write(self, operation, &parameters, proof).await?;
         Ok(tokio::time::timeout(
-            self.0.policy.operation_timeout,
-            self.request_bounded_body(&self.0.write_request, parameters, operation, operation),
+            self.upstream.policy.operation_timeout,
+            self.request_bounded_body(
+                &self.upstream.write_request,
+                parameters,
+                operation,
+                operation,
+            ),
         )
         .await
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None))))
@@ -428,10 +504,10 @@ impl CoreClient {
                 .to_owned()
         });
         Ok(
-            tokio::time::timeout(self.0.policy.operation_timeout, async {
+            tokio::time::timeout(self.upstream.policy.operation_timeout, async {
                 let response: serde_json::Value = self
                     .request_bounded_body(
-                        &self.0.write_request,
+                        &self.upstream.write_request,
                         parameters,
                         T::req_type(),
                         operation,
@@ -474,8 +550,8 @@ impl CoreClient {
         }
         let request = komodo_client::api::write::RefreshResourceSyncPending { sync: sync.into() };
         tokio::time::timeout(
-            self.0.policy.operation_timeout,
-            self.request_bounded_body(&self.0.write_request, request, OP, OP),
+            self.upstream.policy.operation_timeout,
+            self.request_bounded_body(&self.upstream.write_request, request, OP, OP),
         )
         .await
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, OP, None)))
@@ -496,8 +572,13 @@ impl CoreClient {
         };
         crate::deletion::require_apply(self)?;
         tokio::time::timeout(
-            self.0.policy.operation_timeout,
-            self.request_bounded_body(&self.0.write_request, request, T::req_type(), operation),
+            self.upstream.policy.operation_timeout,
+            self.request_bounded_body(
+                &self.upstream.write_request,
+                request,
+                T::req_type(),
+                operation,
+            ),
         )
         .await
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
@@ -557,8 +638,13 @@ impl CoreClient {
                 .remove("color");
         }
         tokio::time::timeout(
-            self.0.policy.operation_timeout,
-            self.request_bounded_body(&self.0.write_request, params, T::req_type(), operation),
+            self.upstream.policy.operation_timeout,
+            self.request_bounded_body(
+                &self.upstream.write_request,
+                params,
+                T::req_type(),
+                operation,
+            ),
         )
         .await
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
@@ -608,8 +694,13 @@ impl CoreClient {
         crate::action_operations::guard_execute(self, operation, &params).await?;
         crate::alerters::guard_execute(self, operation, &params).await?;
         Ok(tokio::time::timeout(
-            self.0.policy.operation_timeout,
-            self.request_bounded_body(&self.0.execute_request, request, T::req_type(), operation),
+            self.upstream.policy.operation_timeout,
+            self.request_bounded_body(
+                &self.upstream.execute_request,
+                request,
+                T::req_type(),
+                operation,
+            ),
         )
         .await
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None))))
@@ -640,8 +731,8 @@ impl CoreClient {
             .map_err(|_| AppError::new(ErrorKind::InvalidArguments, operation, None))?;
         crate::pruning::guard_execute(self, operation, &params, proof).await?;
         Ok(tokio::time::timeout(
-            self.0.policy.operation_timeout,
-            self.request_bounded_body(&self.0.execute_request, params, operation, operation),
+            self.upstream.policy.operation_timeout,
+            self.request_bounded_body(&self.upstream.execute_request, params, operation, operation),
         )
         .await
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None))))
@@ -660,8 +751,13 @@ impl CoreClient {
         let request = authorized.into_request();
         crate::sync_plans::validate_request(&request)?;
         Ok(tokio::time::timeout(
-            self.0.policy.operation_timeout,
-            self.request_bounded_body(&self.0.execute_request, request, "RunSync", "RunSync"),
+            self.upstream.policy.operation_timeout,
+            self.request_bounded_body(
+                &self.upstream.execute_request,
+                request,
+                "RunSync",
+                "RunSync",
+            ),
         )
         .await
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, "RunSync", None))))
@@ -669,7 +765,10 @@ impl CoreClient {
 
     /// Keep diagnosis inputs bounded without changing existing inventory calls.
     pub(crate) fn bounded_evidence(&self) -> Self {
-        Self(Arc::clone(&self.0), true)
+        Self {
+            bound_reads: true,
+            ..self.clone()
+        }
     }
 
     /// Full reference scans must distinguish missing reference fields from SDK
@@ -720,8 +819,13 @@ impl CoreClient {
             }
         };
         tokio::time::timeout(
-            self.0.policy.operation_timeout,
-            self.request_bounded_body(&self.0.bounded_request, request, T::req_type(), operation),
+            self.upstream.policy.operation_timeout,
+            self.request_bounded_body(
+                &self.upstream.bounded_request,
+                request,
+                T::req_type(),
+                operation,
+            ),
         )
         .await
         .unwrap_or_else(|_| Err(AppError::new(ErrorKind::Timeout, operation, None)))
@@ -800,7 +904,7 @@ impl CoreClient {
             _ => "read",
         };
         let read = async {
-            if self.1
+            if self.bound_reads
                 || matches!(
                     T::req_type(),
                     "GetContainerLog"
@@ -834,14 +938,14 @@ impl CoreClient {
             {
                 self.read_bounded_body(request, operation).await
             } else {
-                self.0
+                self.upstream
                     .sdk
                     .read(request)
                     .await
                     .map_err(|error| AppError::from_upstream(operation, error))
             }
         };
-        match tokio::time::timeout(self.0.policy.operation_timeout, read).await {
+        match tokio::time::timeout(self.upstream.policy.operation_timeout, read).await {
             Err(_) => Err(AppError::new(ErrorKind::Timeout, operation, None)),
             Ok(result) => result,
         }
@@ -856,8 +960,13 @@ impl CoreClient {
         T: Serialize + KomodoReadRequest,
         T::Response: DeserializeOwned,
     {
-        self.request_bounded_body(&self.0.bounded_request, request, T::req_type(), operation)
-            .await
+        self.request_bounded_body(
+            &self.upstream.bounded_request,
+            request,
+            T::req_type(),
+            operation,
+        )
+        .await
     }
 
     async fn request_bounded_body<T, R>(
@@ -977,15 +1086,17 @@ impl CoreClient {
         let response = self.read(GetVersion {}).await?;
         semver::Version::parse(&response.version)
             .map_err(|_| AppError::new(ErrorKind::InvalidResponse, "GetVersion", None))?;
-        Ok(CoreVersion(self.0.redactor.redact(&response.version)))
+        Ok(CoreVersion(
+            self.upstream.redactor.redact(&response.version),
+        ))
     }
 
     pub(crate) fn redact(&self, value: &str) -> String {
-        self.0.redactor.redact(value)
+        self.upstream.redactor.redact(value)
     }
 
     pub(crate) fn redaction_marker(&self) -> &str {
-        self.0.redactor.marker()
+        self.upstream.redactor.marker()
     }
 }
 

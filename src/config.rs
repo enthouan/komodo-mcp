@@ -4,6 +4,16 @@ use reqwest::{Url, header::HeaderValue};
 
 use crate::{capabilities::CapabilityPolicy, diagnostics::Redactor, error::AppError};
 
+mod http;
+pub use http::HttpConfig;
+
+#[derive(Clone, Debug, Default)]
+pub enum Transport {
+    #[default]
+    Stdio,
+    Http(HttpConfig),
+}
+
 /// Validated once at startup. Values are deliberately absent from Debug.
 #[derive(Clone)]
 pub struct Config {
@@ -12,6 +22,7 @@ pub struct Config {
     pub(crate) secret: String,
     redactor: Redactor,
     capabilities: CapabilityPolicy,
+    transport: Transport,
 }
 
 impl Config {
@@ -46,12 +57,45 @@ impl Config {
             "KOMODO_ALLOW_TERMINAL",
             optional("KOMODO_ALLOW_TERMINAL")?.as_deref(),
         )?);
-        Ok(Self::parse(
+        let mut config = Self::parse(
             &read("KOMODO_ADDRESS")?,
             &read("KOMODO_API_KEY")?,
             &read("KOMODO_API_SECRET")?,
         )?
-        .with_capabilities(capabilities))
+        .with_capabilities(capabilities);
+        match optional("KOMODO_TRANSPORT")?.as_deref() {
+            None | Some("stdio") => {}
+            Some("http") => {
+                let tokens = read("KOMODO_HTTP_TOKENS")?;
+                let http = HttpConfig::parse(
+                    optional("KOMODO_HTTP_BIND")?.as_deref(),
+                    &tokens,
+                    optional("KOMODO_HTTP_ALLOWED_ORIGINS")?.as_deref(),
+                )?;
+                if http.authenticate(&config.key).is_some()
+                    || http.authenticate(&config.secret).is_some()
+                {
+                    return Err(AppError::configuration(
+                        "KOMODO_HTTP_TOKENS",
+                        "use inbound tokens distinct from the Core credentials",
+                    ));
+                }
+                config.redactor = Redactor::new(
+                    [config.key.as_str(), config.secret.as_str()]
+                        .into_iter()
+                        .chain(tokens.split(',').map(str::trim))
+                        .map(str::to_owned),
+                );
+                config.transport = Transport::Http(http);
+            }
+            Some(_) => {
+                return Err(AppError::configuration(
+                    "KOMODO_TRANSPORT",
+                    "use stdio or http",
+                ));
+            }
+        }
+        Ok(config)
     }
 
     /// Takes values directly so tests never mutate the process environment.
@@ -102,7 +146,7 @@ impl Config {
                 AppError::configuration(field, "must contain only valid HTTP header characters")
             })?;
         }
-        let redactor = Redactor::new(key.to_owned(), secret.to_owned());
+        let redactor = Redactor::new([key.to_owned(), secret.to_owned()]);
         Ok(Self {
             // The SDK concatenates the address and `/read`; retain the path prefix.
             address: url.as_str().trim_end_matches('/').to_owned(),
@@ -110,6 +154,7 @@ impl Config {
             secret: secret.to_owned(),
             redactor,
             capabilities: CapabilityPolicy::default(),
+            transport: Transport::Stdio,
         })
     }
 
@@ -120,6 +165,10 @@ impl Config {
 
     pub fn capabilities(&self) -> CapabilityPolicy {
         self.capabilities
+    }
+
+    pub fn transport(&self) -> &Transport {
+        &self.transport
     }
 
     pub(crate) fn redactor(&self) -> Redactor {

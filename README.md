@@ -9,7 +9,7 @@ with a pinned TypeScript stdio reference using synthetic Core fixtures. See the
 provisional results and repeatable commands.
 
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
-Komodo, using the official [rmcp 3.9.0 SDK](https://docs.rs/rmcp/3.9.0/rmcp/).
+Komodo, using the official [rmcp 3.11.0 SDK](https://docs.rs/rmcp/3.11.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
 exactly with optional features disabled. Sixty-four read-only tools list and inspect
 Servers, Stacks, Deployments, Repos, Builders, Builds, Procedures and Actions, summarize fleet health, inspect alerts/update
@@ -135,6 +135,54 @@ The user must be enabled. Inventory reads need `Read` access to the relevant
 Servers, Stacks, and Deployments being inspected, via a resource grant, group,
 global permission, base permission, or transparent mode; admin, write, execute, and create privileges are unnecessary.
 A permission-filtered empty inventory is a successful result.
+
+### Authenticated Streamable HTTP
+
+A source build can run as a persistent MCP server at `http://127.0.0.1:3000/mcp`.
+Set the three Core variables above in the server environment. Generate an inbound
+token in a private shell and keep it in the server and client secret stores.
+
+```sh
+export KOMODO_TRANSPORT=http
+export KOMODO_HTTP_TOKENS="$(openssl rand -hex 32)"
+./target/release/komodo-mcp
+```
+
+In a Streamable HTTP client, set the URL to `http://127.0.0.1:3000/mcp` and
+send `Authorization: Bearer <your-inbound-token>` on every MCP request,
+including stream resumption and session deletion. Initialize, run `tools/list`,
+then call `list_stacks` with `{}`. A session ID identifies a session and every
+request still requires its own bearer credential. Stdio remains the default.
+
+`KOMODO_HTTP_TOKENS` accepts up to 32 distinct comma-separated tokens.
+Give each client its own randomly generated token. All clients of one server
+use that server's configured **Core service account** and local grants. Run
+separate instances with separate Core credentials for callers who need different
+resource permissions. Restart the instance after rotating a token.
+
+For clients that negotiate a session ID, previews and terminal cleanup belong
+to that session. For stateless MCP requests, they belong to the authenticated
+token. Sharing a token also shares its stateless previews. Closing a session
+invalidates its previews and signals its active terminal workers. The process
+divides 32 initialized sessions, 32 GET streams, and 32 other in-flight requests
+among the configured tokens. A client can close a session while its GET stream
+is open. The process also limits previews to 16 and active terminal calls to four.
+It divides each budget across tokens. All sessions for one token use that
+token’s share. When more tokens are configured than there are slots, each
+token can use one slot while capacity is available.
+
+The default bind address is loopback. Set `KOMODO_HTTP_BIND` to an IP and port
+when a different listener is required. Terminate HTTPS at a trusted reverse
+proxy before sending bearer credentials across a network. Have the proxy forward
+the request to the listener with its loopback Host (or its explicit bind IP)
+and preserve the client's Origin and Authorization headers. Native clients can
+omit `Origin`. To permit browser clients, set `KOMODO_HTTP_ALLOWED_ORIGINS`
+to their exact comma-separated HTTP or HTTPS origins, including any non-default
+port. With the setting unset, requests carrying an Origin are rejected.
+
+After a disconnected mutation, use `wait_for_update` with a known Core update
+ID or use `reconcile_operation` and check workload state before submitting
+another operation. An MCP session ID cannot establish a Core operation's outcome.
 
 ### Local capabilities and Core permissions
 

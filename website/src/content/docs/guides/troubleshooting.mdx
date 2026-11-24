@@ -33,7 +33,7 @@ Start with the server's stderr. The executable writes only safe diagnostics ther
 | Configuration changes have no effect | The environment is read once. Restart the server or client; a `.env` file alone is never loaded. |
 | Claude Code shows a literal `${KOMODO_API_KEY}` warning | The referenced variable was not exported in the environment that started Claude Code. |
 
-There are no transport credentials for stdio: the client that launches the process is the only peer. Inbound HTTP authentication will be documented here once authenticated Streamable HTTP ([#40](https://github.com/enthouan/komodo-mcp/issues/40)) ships; until then any “bearer token” or HTTP URL setup does not apply to komodo-mcp.
+Stdio uses the child process launched by the client. For HTTP, a `401` from `/mcp` means the client needs a valid inbound bearer token, including when reconnecting to a session. If a browser receives `403`, check that its scheme, host and port match a configured origin. A Core `permission_denied` tool result means the request reached Core and the service account lacks the required grant on that resource. [HTTP configuration](/reference/configuration/#authenticated-streamable-http)
 
 ## Core authentication and permissions
 

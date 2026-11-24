@@ -9,11 +9,11 @@ No. komodo-mcp is an independent, community-maintained project. It is not an off
 
 ## Do I need to run a server?
 
-Not a separate one. Your MCP client starts the komodo-mcp executable as a local child process and stops it when the session ends. It needs network access to your Komodo Core.
+For stdio, your MCP client launches komodo-mcp as a child process. For HTTP, run it as a persistent service. Both need network access to your Komodo Core.
 
 ## Is there a Docker image, binary download, or HTTP endpoint?
 
-Not yet. The supported path today is building the executable from source and running it over stdio. Prebuilt binaries with matching source ([#42](https://github.com/enthouan/komodo-mcp/issues/42)), container images with Docker Compose ([#41](https://github.com/enthouan/komodo-mcp/issues/41)), and authenticated Streamable HTTP ([#40](https://github.com/enthouan/komodo-mcp/issues/40)) are planned.
+A source build from `main` supports stdio and authenticated Streamable HTTP. The published v0.7.0 source supports stdio. Prebuilt binaries and the Compose image are tracked in #42 and #41. [HTTP configuration](/reference/configuration/#authenticated-streamable-http)
 
 ## Do I need Node.js?
 
