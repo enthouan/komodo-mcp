@@ -309,20 +309,19 @@ async fn all_session_routes_enforce_credentials_origins_and_session_ownership_be
 }
 
 #[tokio::test]
-async fn session_capacity_is_shared_and_released_on_owned_delete() {
+async fn session_capacity_is_reserved_per_credential_and_released_on_owned_delete() {
     let core = Core::start(Options::default()).await;
     let server = Server::start(core.client(false, DEADLINE)).await;
     let http = &server.http;
     let mut first = None;
     let baseline = core.requests().len();
-    for i in 0..32 {
-        let id = http
-            .session(if i % 2 == 0 { FIRST } else { SECOND }, None)
-            .await;
+    for _ in 0..16 {
+        let id = http.session(FIRST, None).await;
         first.get_or_insert(id);
     }
-    let initialize_next = || post(http.request(Method::POST, Some(SECOND), None), initialize());
+    let initialize_next = || post(http.request(Method::POST, Some(FIRST), None), initialize());
     rejected(initialize_next(), StatusCode::TOO_MANY_REQUESTS).await;
+    http.session(SECOND, None).await;
     let id = first.as_deref().unwrap();
     let removed = http
         .request(Method::DELETE, Some(FIRST), Some(id))

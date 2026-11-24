@@ -164,8 +164,9 @@ For clients that negotiate a session ID, previews and terminal cleanup belong
 to that session. For stateless MCP requests, they belong to the authenticated
 token. Sharing a token also shares its stateless previews. Closing a session
 invalidates its previews and signals its active terminal workers. The process
-admits up to 32 initialized sessions and retains the same aggregate limits of
-16 previews and four active terminal calls.
+divides 32 initialized sessions, 32 GET streams, and 32 other in-flight requests
+among the configured tokens. A client can close a session while its GET stream
+is open. The process also limits previews to 16 and active terminal calls to four.
 
 The default bind address is loopback. Set `KOMODO_HTTP_BIND` to an IP and port
 when a different listener is required. Terminate HTTPS at a trusted reverse
