@@ -15,9 +15,9 @@ pub(crate) struct Redactor {
 }
 
 impl Redactor {
-    pub(crate) fn new(key: String, secret: String) -> Self {
+    pub(crate) fn new(credentials: impl IntoIterator<Item = String>) -> Self {
         let mut values = Vec::new();
-        for credential in [key, secret] {
+        for credential in credentials {
             // Include every repeated JSON encoding that can fit in a bounded
             // log input, plus the Rust Debug form used by dependency traces.
             // Stop at the input budget instead of growing variants without a cap.

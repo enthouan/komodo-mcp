@@ -12,13 +12,13 @@ import { KOMODO_CLIENT_VERSION, RMCP_VERSION, MCP_PROTOCOL_VERSION } from '../..
 
 ## The three parts
 
-- **Your MCP client** starts komodo-mcp as a child process and exchanges MCP messages over stdin and stdout. The client and its model decide which tools to propose; you approve them.
+- **Your MCP client** starts a child process over stdio or sends authenticated requests to a persistent HTTP service. The client and its model propose tools for your approval.
 - **komodo-mcp** is a Rust executable built on the official rmcp **{RMCP_VERSION}** SDK. It holds one Core API key and secret, decides which tools this process exposes, validates arguments, and turns Core responses into bounded, redacted, typed results.
 - **Komodo Core** is called through the official `komodo_client` **{KOMODO_CLIENT_VERSION}** crate. Core authenticates the key, enforces that identity's permissions, and reaches Periphery agents on your Servers.
 
 ## Startup
 
-1. The process reads its environment once: the three Core variables and the four optional grants. Invalid values fail before any network request.
+1. The process reads its Core credentials, transport settings and local grants from the environment. Invalid configuration fails before the startup probe.
 2. It sends one authenticated `GetVersion` read and keeps the observed Core version. A failure exits nonzero with a safe stderr diagnostic and no stdout.
 3. Only then does it serve MCP. The repository's compiled-stdio tests use protocol <code>{MCP_PROTOCOL_VERSION}</code>.
 

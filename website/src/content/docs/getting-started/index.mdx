@@ -8,11 +8,11 @@ import InstallMethods from '../../../components/InstallMethods.astro';
 import { RELEASE_TAG, RELEASE_URL, RELEASE_SOURCE_ARCHIVE_URL, RUST_TOOLCHAIN } from '../../../data/project.js';
 import { LICENSE_URL } from '../../../data/repository.js';
 
-komodo-mcp is a single Rust executable that your MCP client starts as a child process. It talks MCP over stdin and stdout and calls your Komodo Core API with one API key and secret.
+komodo-mcp is a single Rust executable. Your MCP client can launch it over stdio or connect to a persistent HTTP service. Each instance calls your Komodo Core API with one API key and secret.
 
 ## Choose an installation path
 
-Only the native stdio source build is available today. The other paths are listed so you know they are planned; nothing on this site describes them as usable until they are published and verified.
+Build from source to use native stdio. For a persistent service, build `main` and follow the [authenticated HTTP configuration](/reference/configuration/#authenticated-streamable-http). The binary and container downloads are planned.
 
 <InstallMethods />
 

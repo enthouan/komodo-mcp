@@ -22,6 +22,7 @@ pub mod error;
 pub mod export;
 pub mod health;
 pub mod history;
+pub mod http;
 pub mod inventory;
 pub mod logs;
 pub mod operations;

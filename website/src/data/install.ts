@@ -41,9 +41,8 @@ cargo build --locked --release --bin komodo-mcp
     label: "Docker Compose · authenticated HTTP",
     status: "planned",
     summary:
-      "The executable currently serves stdio only. A container image, Compose configuration, and authenticated Streamable HTTP are planned, not available.",
+      "The source build on main supports authenticated Streamable HTTP. The published container image and versioned Compose configuration are planned.",
     tracking: [
-      { label: "#40 Authenticated Streamable HTTP", href: `${ISSUES}/40` },
       { label: "#41 GHCR images and Docker Compose", href: `${ISSUES}/41` },
     ],
   },

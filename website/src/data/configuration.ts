@@ -71,4 +71,8 @@ export const CAPABILITY_VARIABLES = [
 export const CONFIGURATION_VARIABLES = [
   ...CORE_CONNECTION_VARIABLES,
   ...CAPABILITY_VARIABLES,
+  { name: "KOMODO_TRANSPORT" },
+  { name: "KOMODO_HTTP_BIND" },
+  { name: "KOMODO_HTTP_TOKENS" },
+  { name: "KOMODO_HTTP_ALLOWED_ORIGINS" },
 ] as const;

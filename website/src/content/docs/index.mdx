@@ -162,7 +162,7 @@ Your MCP client discovers the exact tools, input schemas, output schemas, and ef
 
 ## Know when to use it
 
-Choose komodo-mcp when you run your own Komodo Core and want an MCP client to inspect and, only when you opt in, change it under that identity's Core permissions, from an auditable GPL-licensed executable you build yourself. Today it runs as a local stdio process; a container image and authenticated HTTP for persistent deployments are [planned, not available](/getting-started/#choose-an-installation-path).
+Choose komodo-mcp when you run your own Komodo Core and want an MCP client to inspect it or make approved changes under that identity's permissions. A source build from `main` runs as a local stdio process or a persistent service with [authenticated Streamable HTTP](/reference/configuration/#authenticated-streamable-http).
 
 The current release is <a href={RELEASE_URL}>{RELEASE_TAG}</a>, licensed {PROJECT_LICENSE}. This site documents the repository's `main` branch.
 

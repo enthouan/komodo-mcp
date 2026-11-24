@@ -5,7 +5,10 @@ use std::{
     any::Any,
     collections::BTreeMap,
     hash::BuildHasher,
-    sync::Mutex,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -278,10 +281,14 @@ impl<R> Preview<R> {
 // concrete result type is checked on consumption in addition to operation/input
 // binding. No stored value implements a display or serialization escape hatch.
 type StoredResult = Box<dyn Any + Send>;
+struct OwnedPreview {
+    owner: Arc<AtomicBool>,
+    preview: Preview<StoredResult>,
+}
 struct Entries {
     nonce: String,
     next: u64,
-    values: BTreeMap<String, Preview<StoredResult>>,
+    values: BTreeMap<String, OwnedPreview>,
 }
 impl Default for Entries {
     fn default() -> Self {
@@ -300,9 +307,36 @@ impl Default for Entries {
     }
 }
 #[derive(Default)]
-pub(crate) struct PreviewStore(Mutex<Entries>);
+pub(crate) struct PreviewStore {
+    entries: Arc<Mutex<Entries>>,
+    // Pointer identity binds entries to this session. The flag rejects late
+    // inserts from work that started before the session closed.
+    closed: Arc<AtomicBool>,
+}
+
+impl Drop for PreviewStore {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
 
 impl PreviewStore {
+    pub(crate) fn isolated(&self) -> Self {
+        Self {
+            entries: Arc::clone(&self.entries),
+            closed: Arc::default(),
+        }
+    }
+
+    pub(crate) fn close(&self) {
+        self.closed.store(true, Ordering::Relaxed);
+        if let Ok(mut entries) = self.entries.lock() {
+            entries
+                .values
+                .retain(|_, entry| !Arc::ptr_eq(&entry.owner, &self.closed));
+        }
+    }
+
     pub(crate) fn insert_entry<R: Send + 'static>(
         &self,
         entry: Preview<R>,
@@ -345,8 +379,13 @@ impl PreviewStore {
         self.take_for(token, input)
     }
     fn put(&self, entry: Preview<StoredResult>) -> Result<String, AppError> {
-        let mut entries = self.0.lock().map_err(|_| invalid_preview())?;
-        entries.values.retain(|_, p| p.created.elapsed() < TTL);
+        let mut entries = self.entries.lock().map_err(|_| invalid_preview())?;
+        if self.closed.load(Ordering::Relaxed) {
+            return Err(invalid_preview());
+        }
+        entries
+            .values
+            .retain(|_, p| p.preview.created.elapsed() < TTL);
         if entries.values.len() >= MAX_PREVIEWS {
             return Err(AppError::arguments(
                 OP,
@@ -355,7 +394,13 @@ impl PreviewStore {
         }
         entries.next = entries.next.checked_add(1).ok_or_else(invalid_preview)?;
         let token = format!("configuration-{}-{}", entries.nonce, entries.next);
-        entries.values.insert(token.clone(), entry);
+        entries.values.insert(
+            token.clone(),
+            OwnedPreview {
+                owner: Arc::clone(&self.closed),
+                preview: entry,
+            },
+        );
         Ok(token)
     }
 
@@ -381,13 +426,18 @@ impl PreviewStore {
     }
 
     fn take_entry(&self, token: &str, input: &Value) -> Result<Preview<StoredResult>, AppError> {
-        let entry = self
-            .0
-            .lock()
-            .map_err(|_| invalid_preview())?
-            .values
-            .remove(token)
-            .ok_or_else(invalid_preview)?;
+        let entry = {
+            let mut entries = self.entries.lock().map_err(|_| invalid_preview())?;
+            let stored = entries.values.get(token).ok_or_else(invalid_preview)?;
+            if self.closed.load(Ordering::Relaxed) || !Arc::ptr_eq(&stored.owner, &self.closed) {
+                return Err(invalid_preview());
+            }
+            entries
+                .values
+                .remove(token)
+                .ok_or_else(invalid_preview)?
+                .preview
+        };
         if entry.created.elapsed() >= TTL || &entry.input != input {
             return Err(invalid_preview());
         }
@@ -936,12 +986,13 @@ mod tests {
         let store = PreviewStore::default();
         let first = store.insert(entry()).unwrap().preview_id.unwrap();
         store
-            .0
+            .entries
             .lock()
             .unwrap()
             .values
             .get_mut(&first)
             .unwrap()
+            .preview
             .created = Instant::now() - TTL;
         assert!(
             matches!(store.take(&first,&json!({})),Err(e) if e.kind==ErrorKind::InvalidPreview)
@@ -950,11 +1001,59 @@ mod tests {
             assert!(store.insert(entry()).is_ok());
         }
         assert!(store.insert(entry()).is_err());
-        for p in store.0.lock().unwrap().values.values_mut() {
-            p.created = Instant::now() - TTL;
+        for p in store.entries.lock().unwrap().values.values_mut() {
+            p.preview.created = Instant::now() - TTL;
         }
         assert!(store.insert(entry()).is_ok());
-        assert_eq!(store.0.lock().unwrap().values.len(), 1);
+        assert_eq!(store.entries.lock().unwrap().values.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn session_previews_are_private_and_share_one_process_budget() {
+        let root = CoreClient::new(
+            crate::config::Config::parse("http://127.0.0.1:9", "fixture-key", "fixture-secret")
+                .unwrap(),
+            crate::client::RequestPolicy::default(),
+        )
+        .unwrap();
+        let alice = root.isolated_session();
+        let bob = root.isolated_session();
+        let alice_id = alice
+            .previews()
+            .insert(entry())
+            .unwrap()
+            .preview_id
+            .unwrap();
+        let bob_id = bob.previews().insert(entry()).unwrap().preview_id.unwrap();
+        assert!(bob.previews().take(&alice_id, &json!({})).is_err());
+        assert!(
+            alice
+                .bounded_evidence()
+                .previews()
+                .take(&alice_id, &json!({}))
+                .is_ok()
+        );
+
+        for _ in 1..MAX_PREVIEWS {
+            alice.previews().insert(entry()).unwrap();
+        }
+        assert!(bob.previews().insert(entry()).is_err());
+        let (resume, paused) = tokio::sync::oneshot::channel();
+        let inflight = alice.clone();
+        let late_insert = tokio::spawn(async move {
+            paused.await.unwrap();
+            inflight.previews().insert(entry()).is_ok()
+        });
+        alice.invalidate_session();
+        resume.send(()).unwrap();
+        assert!(!late_insert.await.unwrap());
+        alice.close_session().await;
+        assert!(bob.previews().take(&bob_id, &json!({})).is_ok());
+        for _ in 0..MAX_PREVIEWS {
+            bob.previews().insert(entry()).unwrap();
+        }
+        drop(bob);
+        assert!(root.previews().insert(entry()).is_ok());
     }
 
     #[test]

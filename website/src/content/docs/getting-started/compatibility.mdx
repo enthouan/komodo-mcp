@@ -46,7 +46,7 @@ This page separates three kinds of evidence: **configuration review** (the recip
 
 ## MCP protocol
 
-The repository's compiled-stdio tests initialize the actual release executable with protocol **{MCP_PROTOCOL_VERSION}** using the official rmcp **{RMCP_VERSION}** SDK, discover the read-only tools, call inventory tools, and verify shutdown on stdin EOF. Only the stdio transport exists today.
+The repository's compiled-stdio tests initialize the actual executable with protocol **{MCP_PROTOCOL_VERSION}** using the official rmcp **{RMCP_VERSION}** SDK, discover the read-only tools, call inventory tools, and verify shutdown on stdin EOF. HTTP tests exercise authenticated discovery and inventory against a controlled Core fixture.
 
 ## Komodo Core
 

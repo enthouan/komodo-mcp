@@ -41,7 +41,7 @@ describe("configuration accuracy", () => {
   it("documents exactly the variables in .env.example and src/config.rs", async () => {
     const example = await repo(".env.example");
     const config = await repo("src/config.rs");
-    const exampleNames = [...example.matchAll(/^([A-Z_]+)=/gm)].map((match) => match[1]);
+    const exampleNames = [...example.matchAll(/^(?:# )?([A-Z_]+)=/gm)].map((match) => match[1]);
     expect(CONFIGURATION_VARIABLES.map(({ name }) => name).sort()).toEqual([...exampleNames].sort());
     for (const { name } of CONFIGURATION_VARIABLES) expect(config).toContain(`"${name}"`);
   });
