@@ -27,6 +27,8 @@ Build from source to use native stdio. For a persistent service, build `main` an
 
 4. **Configure your MCP client.** Point the client at the executable's absolute path and supply `KOMODO_ADDRESS`, `KOMODO_API_KEY`, and `KOMODO_API_SECRET` in its process environment. See [Set up your MCP client](/getting-started/clients/).
 
+   For a three-tool triage deployment, add `KOMODO_ENABLED_TOOLS=list_stacks,get_stack,stack_diagnose` alongside the Core variables before starting the stdio or HTTP server. To keep your usual tools and omit image history, set only `KOMODO_DISABLED_TOOLS=get_image_history`. [Check the selection after restart](/reference/configuration/#select-individual-tools).
+
 5. **Verify with a read.** After the client initializes the server and discovers its tools, ask it to list your stacks and approve only `list_stacks`.
 </Steps>
 

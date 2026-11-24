@@ -1,5 +1,7 @@
+#![allow(dead_code)] // The transport and selection integration suites exercise different helpers.
 use std::{
     net::SocketAddr,
+    process::Stdio,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -10,7 +12,14 @@ use std::{
 use komodo_mcp::{client::CoreClient, config::HttpConfig};
 use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
 use serde_json::{Value, json};
-use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle, time::timeout};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    net::TcpListener,
+    process::Child,
+    sync::oneshot,
+    task::JoinHandle,
+    time::timeout,
+};
 
 pub const FIRST: &str = "fixture-first-inbound-bearer-token-0001";
 pub const SECOND: &str = "fixture-second-inbound-bearer-token-0002";
@@ -226,5 +235,61 @@ impl Server {
             .expect("HTTP shutdown exceeded its bound")
             .expect("HTTP service panicked")
             .expect("HTTP service failed");
+    }
+}
+
+pub struct Binary {
+    pub http: Http,
+    child: Child,
+    diagnostics: JoinHandle<()>,
+}
+impl Binary {
+    pub async fn start(address: &str, settings: &[(&str, &str)]) -> Self {
+        let mut child = super::support::binary(address, settings)
+            .env("KOMODO_TRANSPORT", "http")
+            .env("KOMODO_HTTP_BIND", "127.0.0.1:0")
+            .env("KOMODO_HTTP_TOKENS", format!("{FIRST},{SECOND}"))
+            .env("KOMODO_HTTP_ALLOWED_ORIGINS", ORIGIN)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut lines = BufReader::new(child.stderr.take().unwrap()).lines();
+        let address = timeout(DEADLINE, async {
+            while let Some(line) = lines.next_line().await.unwrap() {
+                assert_redacted(&line);
+                if line.contains("starting komodo-mcp over HTTP") {
+                    return line
+                        .split_whitespace()
+                        .find_map(|part| part.strip_prefix("address="))
+                        .and_then(|addr| addr.parse::<SocketAddr>().ok())
+                        .expect("bound address in readiness log");
+                }
+            }
+            panic!("binary exited before listening");
+        })
+        .await
+        .unwrap();
+        let diagnostics = tokio::spawn(async move {
+            while let Some(line) = lines.next_line().await.unwrap() {
+                assert_redacted(&line);
+            }
+        });
+        Self {
+            http: Http::new(address),
+            child,
+            diagnostics,
+        }
+    }
+
+    pub async fn finish(mut self) {
+        self.child.start_kill().unwrap();
+        let output = timeout(DEADLINE, self.child.wait_with_output())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(output.stdout.is_empty());
+        timeout(DEADLINE, self.diagnostics).await.unwrap().unwrap();
     }
 }

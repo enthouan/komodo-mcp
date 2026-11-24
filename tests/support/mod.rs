@@ -41,6 +41,19 @@ pub const PERMISSION: &str = include_str!("../fixtures/core-2.3.2/permission.jso
 pub const AUTHENTICATION: &str = include_str!("../fixtures/core-2.3.2/authentication.json");
 pub const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
+pub fn binary(address: &str, settings: &[(&str, &str)]) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_komodo-mcp"));
+    command
+        .env_clear()
+        .env("KOMODO_ADDRESS", address)
+        .env("KOMODO_API_KEY", KEY)
+        .env("KOMODO_API_SECRET", SECRET)
+        .env("RUST_LOG", "trace")
+        .envs(settings.iter().copied())
+        .kill_on_drop(true);
+    command
+}
+
 #[derive(Clone)]
 pub struct Reply {
     pub status: u16,

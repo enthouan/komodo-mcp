@@ -23,6 +23,7 @@ impl KomodoServer {
             Self::tool_router(),
             self.client.capabilities(),
             |name| match name {
+                _ if !self.client.selects_tool(name) => None,
                 "execute_terminal" => Some(Capability::Terminal),
                 "preview_docker_prune" | "apply_docker_prune" => Some(Capability::Prune),
                 "list_users"
@@ -174,7 +175,7 @@ impl KomodoServer {
     }
 }
 
-#[tool_router]
+#[tool_router(vis = "pub(crate)")]
 impl KomodoServer {
     #[tool(description="Send one bounded command through Core to one exact Server, container, named service of a Server-backed Stack, or Server-backed Deployment. Requires independent KOMODO_ALLOW_TERMINAL=true plus operate, and Core Read + Terminal; container identity additionally needs Inspect. Creates a fresh private 90-second shell, never attaches/recreates, streams once, and checks owned cleanup even after cancellation. No Swarm tasks, persistent state, replay or update ID. A spoofable upstream exit marker is reported separately from removal/termination uncertainty. Core/Periphery may record commands; arbitrary output cannot be guaranteed secret-free.",input_schema=schema_for_input::<crate::terminal::Input>().expect("terminal schema"),annotations(read_only_hint=false,idempotent_hint=false,destructive_hint=true))]
     async fn execute_terminal(

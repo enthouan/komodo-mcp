@@ -4,7 +4,7 @@ Tag creation, rename and assignment use the shared typed preview/apply contract
 with `KOMODO_ALLOW_CONFIGURATION_EDIT=true`. Tag deletion uses the completed
 [destructive policy](deletion.md): preview needs configuration access, and apply
 requires **both** independent local grants. Read-only `find_resources_by_tag`
-remains available in every profile. No tag tool executes a workload.
+needs no local capability grant and follows the instance’s tool selection. No tag tool executes a workload.
 
 Core is the permission authority. Creation follows its enabled-caller/non-admin
 creation policy. Rename and deletion require the tag's **owner or an admin**.

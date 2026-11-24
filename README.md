@@ -184,6 +184,34 @@ After a disconnected mutation, use `wait_for_update` with a known Core update
 ID or use `reconcile_operation` and check workload state before submitting
 another operation. An MCP session ID cannot establish a Core operation's outcome.
 
+### Select individual tools
+
+Both transports read the same tool selection when the server starts. For a
+stack triage instance, set the following variable and restart the server.
+
+```sh
+export KOMODO_ENABLED_TOOLS=list_stacks,get_stack,stack_diagnose
+```
+
+Initialize your MCP client and run `tools/list`. In this configuration the
+response's `tools[].name` contains exactly `list_stacks`, `get_stack`, and
+`stack_diagnose`. Call `list_stacks` with `{}` to choose a visible stack.
+Your Core identity still needs Read permission on the resources it inspects.
+
+To keep your usual tools and remove only image history, leave
+`KOMODO_ENABLED_TOOLS` unset and set the disabled list.
+
+```sh
+export KOMODO_DISABLED_TOOLS=get_image_history
+```
+
+Use comma-separated, exact built-in names. Spaces around a name are allowed.
+Unknown names and blank entries, including an explicitly empty variable, fail
+startup. Leaving both variables unset preserves the default selection. The
+enabled list narrows the tools allowed by local grants, then the disabled list
+removes matching entries. The result can be empty. These settings apply to
+every caller of the instance. Discovery and direct calls use the same selection.
+
 ### Local capabilities and Core permissions
 
 The process reads independent optional grants at startup:
@@ -212,8 +240,8 @@ and completion uncertainty reporting.
 Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
-All sixty-four read tools remain locally available in every grant
-combination, including `get_update` and `list_updates` for recovery. Core still
+With both selection settings unset, every grant combination includes the
+sixty-four read tools, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
 `preview_stack_update`/`apply_stack_update`. Core `Write` on an existing Stack,

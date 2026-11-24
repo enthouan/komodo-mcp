@@ -35,7 +35,7 @@ Desktop applications often do not inherit your shell's `PATH` or working directo
 <Steps>
 1. **Initialization.** The server answers MCP initialization only after its startup `GetVersion` probe to Core succeeds. A failed probe exits nonzero with a safe stderr diagnostic and no stdout. The repository's tests use MCP <code>{MCP_PROTOCOL_VERSION}</code>.
 
-2. **Discovery.** `tools/list` returns only the tools enabled for this process's grants, each with input and output schemas and effect annotations.
+2. **Discovery.** `tools/list` returns the tools allowed by this process's local grants and [tool selection](/reference/configuration/#select-individual-tools), with their schemas and effect annotations.
 
 3. **First read.** Call `list_stacks` with no arguments, or with `{"page_size": 30}`, and follow `next_page` with the same `page_size`.
 

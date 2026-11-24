@@ -35,7 +35,7 @@ import { PROJECT_LICENSE, RELEASE_TAG, RELEASE_URL } from '../../data/project.js
 
 <CardGrid>
   <Card title="Read-only by default" icon="approve-check-circle">
-    Every read tool is available in every profile. Operations, configuration edits, pruning, and terminal commands each need a separate local grant that defaults to `false`.
+    By default, every profile includes all read tools. You can [select individual tools](/reference/configuration/#select-individual-tools) for each server instance. Operations, configuration edits, pruning, and terminal commands each need a separate local grant that defaults to `false`.
   </Card>
   <Card title="Your Core permissions decide" icon="padlock">
     The server calls Core with one API key and secret from its process environment. Core decides what that identity can read or change; local grants never add Core permissions.

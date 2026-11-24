@@ -24,7 +24,7 @@ import { KOMODO_CLIENT_VERSION, RMCP_VERSION, MCP_PROTOCOL_VERSION } from '../..
 
 ## A tool call
 
-1. **Discovery.** `tools/list` returns the tools enabled for this process: every read tool, plus the operation, configuration, prune, or terminal tools whose grants are `true`. Discovery, lookup, and dispatch share one router, so a disabled or unknown tool is rejected before its arguments are even parsed.
+1. **Discovery.** `tools/list` returns the tools enabled for this process: tools eligible under the local grants and included by the instance’s [tool selection](/reference/configuration/#select-individual-tools). Discovery, lookup, and dispatch share one router, so a disabled or unknown tool is rejected before its arguments are even parsed.
 2. **Validation.** List and detail inputs are strict JSON objects. Unknown fields, out-of-range page sizes, conflicting selectors, and similar mistakes fail with `invalid_arguments` before Core is called.
 3. **Resolution.** Detail tools resolve an exact, case-sensitive name or a stable 24-character ID to one visible resource. Ambiguous or incomplete resolution fails safely and asks you to retry by ID.
 4. **Core requests.** Reads use Core's typed read API. Changes use typed write or execute requests, only after the local grant and any required preview or acknowledgement. Each request has a 5-second connection timeout and an independent 15-second deadline; redirects are not followed.

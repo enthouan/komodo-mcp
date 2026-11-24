@@ -18,7 +18,7 @@ pub enum Capability {
     Terminal,
 }
 
-/// Independent, immutable startup grants. Reads are always locally enabled.
+/// Independent startup grants. Read tools require no grant and remain subject to tool selection.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CapabilityPolicy {
     operate: bool,

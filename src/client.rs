@@ -14,7 +14,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, TryAcquireError};
 
 use crate::{
     capabilities::{Capability, CapabilityPolicy},
-    config::Config,
+    config::{Config, ToolSelection},
     diagnostics::Redactor,
     error::{AppError, ErrorKind},
 };
@@ -76,6 +76,7 @@ struct Upstream {
     policy: RequestPolicy,
     redactor: Redactor,
     capabilities: CapabilityPolicy,
+    tools: ToolSelection,
 }
 
 /// Clones keep the same session. A distinct MCP session shares the upstream
@@ -163,6 +164,7 @@ impl CoreClient {
                 policy,
                 redactor,
                 capabilities,
+                tools: config.tools,
             }),
             terminals: Arc::default(),
             previews: Arc::default(),
@@ -206,6 +208,10 @@ impl CoreClient {
 
     pub fn capabilities(&self) -> CapabilityPolicy {
         self.upstream.capabilities
+    }
+
+    pub(crate) fn selects_tool(&self, name: &str) -> bool {
+        self.upstream.tools.allows(name)
     }
 
     pub(crate) fn terminal_runtime(&self) -> &Arc<crate::terminal::Runtime> {
