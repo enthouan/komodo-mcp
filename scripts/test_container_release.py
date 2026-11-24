@@ -265,7 +265,11 @@ class CandidateChecks(unittest.TestCase):
         identifier = oci.describe(payload)
         path = "/v2/" + oci.REPOSITORY + "/blobs/upload/session"
         digest_query = "digest=sha256%3A" + hashlib.sha256(payload).hexdigest()
-        for location, suffix in [(path, "?"), (registry.HOST + path + "?state=a%2Fb&state=c", "&")]:
+        for location, suffix in (
+            (path, "?"),
+            (registry.HOST + path + "?state=a%2Fb&state=c", "&"),
+            (registry.BASE + "/blobs/uploads/?state=opaque", "&"),
+        ):
             replies = [(404, {}, b""), (202, {"Location": location}, b""), (201, {}, b"")]
             with self.subTest(location=location), patch.object(registry, "exchange", side_effect=replies) as network:
                 registry.upload_blob("fixture", identifier, payload)
@@ -281,6 +285,10 @@ class CandidateChecks(unittest.TestCase):
             "https://unrelated.invalid/upload",
             registry.HOST + "/v2/other/package/blobs/upload/session",
             registry.BASE + "/blobs/upload-other/session",
+            registry.BASE + "/blobs/upload/",
+            registry.BASE + "/blobs/upload/nested/session",
+            registry.BASE + "/blobs/upload/session%2Fother",
+            registry.BASE + "/blobs/upload/%2e%2e",
             registry.BASE + "/blobs/upload/session#fragment",
             registry.BASE + "/blobs/upload/session?digest=existing",
         ):
