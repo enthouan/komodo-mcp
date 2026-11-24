@@ -1,0 +1,260 @@
+[
+  {
+    "crates": [
+      "asn1-rs-impl-0.2.0"
+    ],
+    "repository": "rusticata/asn1-rs",
+    "revision": "a20e5f7319c896737ad0f2557037817b91ad854f",
+    "files": [
+      {
+        "path": "LICENSE-APACHE",
+        "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+      },
+      {
+        "path": "LICENSE-MIT",
+        "sha256": "a5c61b93b6ee1d104af9920cf020ff3c7efe818e31fe562c72261847a728f513"
+      }
+    ]
+  },
+  {
+    "crates": [
+      "async_timing_util-1.1.0"
+    ],
+    "repository": "mbecker20/async_timing_util",
+    "revision": "ea5fbda76436210eac62d138a3b36f6a14414e37",
+    "files": []
+  },
+  {
+    "crates": [
+      "base64urlsafedata-0.5.5",
+      "webauthn-attestation-ca-0.5.5",
+      "webauthn-rs-0.5.5",
+      "webauthn-rs-core-0.5.5",
+      "webauthn-rs-proto-0.5.5"
+    ],
+    "repository": "kanidm/webauthn-rs",
+    "revision": "d2c10d53ca5ef033d37ee6462e936e9eb72ad98c",
+    "files": [
+      {
+        "path": "LICENSE.md",
+        "sha256": "32ee9dbf6196874fc9d406c54a888a6c4cbb9aa4a7f35b46befeaff43a78fe85"
+      }
+    ]
+  },
+  {
+    "crates": [
+      "derive_default_builder-0.1.8"
+    ],
+    "repository": "mbecker20/derive_default_builder",
+    "revision": "4a92bb30b88c6cc64efc7ee9c21a821348c94dac",
+    "files": []
+  },
+  {
+    "crates": [
+      "derive_default_builder_derive-0.1.8"
+    ],
+    "repository": "mbecker20/derive_default_builder",
+    "revision": "f788e32ed3fdeb37513c72754ac4d207a4873b50",
+    "files": []
+  },
+  {
+    "crates": [
+      "jni-0.22.4"
+    ],
+    "repository": "jni-rs/jni-rs",
+    "revision": "5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7",
+    "files": [
+      {
+        "path": "LICENSE-APACHE",
+        "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+      },
+      {
+        "path": "LICENSE-MIT",
+        "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960"
+      }
+    ]
+  },
+  {
+    "crates": [
+      "jni-macros-0.22.4"
+    ],
+    "repository": "jni-rs/jni-rs",
+    "revision": "33045a124105c939d1e2cbdcb5a39e5d868ffa03",
+    "files": [
+      {
+        "path": "LICENSE-APACHE",
+        "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+      },
+      {
+        "path": "LICENSE-MIT",
+        "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960"
+      }
+    ]
+  },
+  {
+    "crates": [
+      "jni-sys-macros-0.4.1"
+    ],
+    "repository": "jni-rs/jni-sys",
+    "revision": "64d77b7a5f119d7b55b4e2c169a4668067ff59e6",
+    "files": [
+      {
+        "path": "LICENSE-APACHE",
+        "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+      },
+      {
+        "path": "LICENSE-MIT",
+        "sha256": "1d85bd754b04ceec93e98e890edd1fa3c6a22e81bcb32135806beeccefa51cd1"
+      }
+    ]
+  },
+  {
+    "crates": [
+      "komodo_client-2.3.2"
+    ],
+    "repository": "moghtech/komodo",
+    "revision": "00091b93c7552568f5fc01a3628c4cad41e4943c",
+    "files": [
+      {
+        "path": "LICENSE",
+        "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+      }
+    ]
+  },
+  {
+    "crates": [
+      "mogh_auth_client-1.7.0"
+    ],
+    "repository": "moghtech/lib",
+    "revision": "5950bbfc3b76bded9fa660b48c60ef0803d7be1e",
+    "files": [
+      {
+        "path": "LICENSE",
+        "sha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
+      }
+    ]
+  },
+  {
+    "crates": [
+      "mogh_error-1.1.0"
+    ],
+    "repository": "moghtech/lib",
+    "revision": "4e6046b2bd7d8418c4d84babff54a11a819ad1fc",
+    "files": [
+      {
+        "path": "LICENSE",
+        "sha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
+      }
+    ]
+  },
+  {
+    "crates": [
+      "mogh_resolver-1.0.1",
+      "mogh_resolver_derive-1.0.1"
+    ],
+    "repository": "moghtech/lib",
+    "revision": "888b61eaf62ee81d7893185640c8281518823217",
+    "files": [
+      {
+        "path": "LICENSE",
+        "sha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
+      }
+    ]
+  },
+  {
+    "crates": [
+      "partial_derive2-0.5.0"
+    ],
+    "repository": "mbecker20/partial_derive2",
+    "revision": "8c3a1e920a85a4711e0c4e9ad89a7cee47f9d475",
+    "files": []
+  },
+  {
+    "crates": [
+      "partial_derive2_derive-0.5.0"
+    ],
+    "repository": "mbecker20/partial_derive2",
+    "revision": "00bb01d4fb282592113127fd6dfd366ec41c0752",
+    "files": []
+  },
+  {
+    "crates": [
+      "r-efi-5.3.0"
+    ],
+    "repository": "r-efi/r-efi",
+    "revision": "97b55bed1c2c91dcbf787674849f05337ff80b33",
+    "files": []
+  },
+  {
+    "crates": [
+      "r-efi-6.0.0"
+    ],
+    "repository": "r-efi/r-efi",
+    "revision": "7e1b0322d31d625f81a5656096330934f9cd835d",
+    "files": []
+  },
+  {
+    "crates": [
+      "rustls-platform-verifier-android-0.2.0"
+    ],
+    "repository": "rustls/rustls-platform-verifier",
+    "revision": "252e25161a91af476cbea620e29d277592d27ec7",
+    "files": [
+      {
+        "path": "LICENSE-APACHE",
+        "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+      },
+      {
+        "path": "LICENSE-MIT",
+        "sha256": "1c7cf76689c837a68ed8d704994e52a0f2940c087958f860d17f3186afbdcc0c"
+      }
+    ]
+  },
+  {
+    "crates": [
+      "typeshare-1.0.5"
+    ],
+    "repository": "1Password/typeshare",
+    "revision": "ecc5324408a67499a91c82f4b3e8b2fc1d756f0d",
+    "files": [
+      {
+        "path": "LICENSE-APACHE",
+        "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+      },
+      {
+        "path": "LICENSE-MIT",
+        "sha256": "1c7cf76689c837a68ed8d704994e52a0f2940c087958f860d17f3186afbdcc0c"
+      }
+    ]
+  },
+  {
+    "crates": [
+      "typeshare-annotation-1.0.5"
+    ],
+    "repository": "1Password/typeshare",
+    "revision": "7c8c3f4256589458041e7fac78dd73d1c92ce74a",
+    "files": [
+      {
+        "path": "LICENSE-APACHE",
+        "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+      },
+      {
+        "path": "LICENSE-MIT",
+        "sha256": "1c7cf76689c837a68ed8d704994e52a0f2940c087958f860d17f3186afbdcc0c"
+      }
+    ]
+  },
+  {
+    "crates": [
+      "valuable-0.1.1"
+    ],
+    "repository": "tokio-rs/valuable",
+    "revision": "9efc29b6e58cef28f6566a47aa7e142a55fead77",
+    "files": [
+      {
+        "path": "LICENSE",
+        "sha256": "ed60d479b8fd1f64e9cbc3de449a16a53ac1b3d1b6aeb9bf9d190a8e93061b44"
+      }
+    ]
+  }
+]

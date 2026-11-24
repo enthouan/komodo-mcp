@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One manual tag-to-Release publisher. Validation never calls the publisher.
 
-Python 3.11+ standard library; Git and authenticated gh are the only API clients.
+Requires Python 3.11+, Git, authenticated gh and the packaged release adapters.
 See .agents/skills/komodo-mcp-release/SKILL.md for authorization and merge policy.
 """
 
@@ -18,7 +18,8 @@ import tempfile
 import time
 import tomllib
 
-REPO = "enthouan/komodo-mcp"
+from release_artifacts import (REPO, CommandError, Packages, ReleaseError, api_file,
+                               hash_stream, require, verify_public_source)
 SCHEMA = "komodo-release-validation/v1"
 BUILD_COMMAND = ["cargo", "build", "--locked", "--release", "--bin", "komodo-mcp", "--message-format=json"]
 CHECKS = [
@@ -39,19 +40,6 @@ SEMVER = re.compile(
     r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
     r"(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
 )
-
-
-class ReleaseError(RuntimeError):
-    pass
-
-
-class CommandError(ReleaseError):
-    """Uncertain transport/process outcome; identity conflicts use ReleaseError."""
-
-
-def require(condition, message):
-    if not condition:
-        raise ReleaseError(message)
 
 
 def version_info(version):
@@ -176,7 +164,8 @@ class Git:
 class GitHub:
     def call(self, *args):
         try:
-            result = subprocess.run(["gh", *args], text=True, capture_output=True, timeout=120)
+            timeout = 1800 if args[:2] == ("release", "upload") else 120
+            result = subprocess.run(["gh", *args], text=True, capture_output=True, timeout=timeout)
         except subprocess.SubprocessError as error:
             raise CommandError(f"gh {' '.join(args)} did not complete: {error}") from error
         if result.returncode:
@@ -216,13 +205,15 @@ class GitHub:
                              "conclusion": latest["conclusion"]})
         return evidence
 
-    def create(self, release, latest):
+    def create(self, release, latest, *, draft=False):
         with tempfile.TemporaryDirectory(prefix="komodo-release-") as directory:
             notes = Path(directory) / "notes.md"
             notes.write_text(release["notes"])
             args = ["release", "create", release["tag"], "--repo", REPO, "--verify-tag",
                     "--title", release["tag"], "--notes-file", str(notes),
                     f"--latest={str(latest).lower()}"]
+            if draft:
+                args.append("--draft")
             if release["prerelease"]:
                 args.append("--prerelease")
             self.call(*args)
@@ -230,6 +221,19 @@ class GitHub:
     def publish_draft(self, release, latest):
         self.call("release", "edit", release["tag"], "--repo", REPO, "--draft=false",
                   f"--latest={str(latest).lower()}")
+
+    def assets(self, release_id):
+        return self.api(f"releases/{release_id}/assets?per_page=100", pages=True)
+
+    def asset_hash(self, asset_id):
+        with tempfile.TemporaryDirectory(prefix="komodo-asset-") as scratch:
+            path = Path(scratch) / "asset"
+            api_file(f"releases/assets/{asset_id}", path, binary=True)
+            with path.open("rb") as stream:
+                return hash_stream(stream)
+
+    def upload(self, tag, path):
+        self.call("release", "upload", tag, str(path), "--repo", REPO)
 
 
 def find_release(releases, expected):
@@ -242,7 +246,8 @@ def find_release(releases, expected):
                 and normalized_notes(release["body"] or "") == expected["notes"],
                 f"release conflict: expected {expected['tag']}, prerelease={expected['prerelease']}, "
                 f"notes SHA256={expected['notes_sha256']}; observed {json.dumps(release)}")
-        require(release.get("assets") == [], "unexpected release assets; inspect scope before proceeding")
+        if not packaged_version(expected["version"]):
+            require(release.get("assets") == [], "unexpected release assets; inspect scope before proceeding")
     return release
 
 
@@ -282,8 +287,13 @@ def verify_latest(github, expected, release, releases):
     return latest_id
 
 
+def packaged_version(version):
+    return version_info(version)[0] >= (0, 8, 0)
+
+
 def reconcile(git, github, expected, commit, publish=False, sleep=time.sleep):
     """Inspect before any write. Lost write responses get reads, never a write retry."""
+    require(not packaged_version(expected["version"]), "packaged releases require verified distribution candidates")
     visibility = github.preflight()
     git.accepted_main(commit)
     local, remote, release, releases = inspect(git, github, expected, commit)
@@ -352,6 +362,135 @@ def read_back(read, sleep, write_error=None):
                        f"inspect before rerun: {errors}")
 
 
+def reconcile_packages(git, github, expected, commit, packages, previous=None,
+                       publish=False, save=lambda state: None, sleep=time.sleep):
+    """Resume only from proven state. Preserve immutable asset IDs across recovery."""
+    tag, version = expected["tag"], expected["version"]
+    require(packaged_version(version), "historical releases cannot acquire package assets")
+    require(not publish or (packages.native_dir and packages.oci_dir), "publication requires exact candidate files")
+    state = dict(previous or {})
+    identity = {"schema": "komodo-release-publication/v2", "repository": REPO,
+                "tag": tag, "commit": commit, "notes_sha256": expected["notes_sha256"],
+                "package_identity": packages.identity}
+    require(not state or all(state.get(k) == value for k, value in identity.items()),
+            "saved release evidence conflicts with this candidate; recover the original run and commit")
+    state.update(identity)
+    visibility = github.preflight()
+    require(visibility == "public", "packaged release requires a publicly accessible source repository")
+    git.accepted_main(commit)
+    expected_names = {f["name"] for f in packages.identity["distribution"]["files"]}
+    source_name = next(f["name"] for f in packages.identity["distribution"]["files"] if f["kind"] == "source")
+    receipt = packages.identity["container"]
+
+    def observe():
+        local, remote, release, releases = inspect(git, github, expected, commit)
+        require(not state.get("tag_object") or state["tag_object"] == remote,
+                "original remote tag object is missing or changed")
+        require(not state.get("release_id") or (release and state["release_id"] == release["id"]),
+                "original Release ID is missing or changed")
+        require(not state.get("published_at") or (release and release["published_at"] == state["published_at"]
+                and not release["draft"]), "published Release changed publication state")
+        assets = packages.inventory(github, release, version, state.get("assets", {})) if release else {}
+        if remote:
+            state["tag_object"] = remote
+        if release:
+            state.update(release_id=release["id"], release_url=release["html_url"], assets=assets)
+            if not release["draft"]:
+                require(release["published_at"], "published Release has no publication timestamp")
+                state["published_at"] = release["published_at"]
+                state["latest_release_id"] = verify_latest(github, expected, release, releases)
+        if publish:
+            save(state)
+        return local, remote, release, releases
+
+    def write_once(write, read):
+        error = None
+        try:
+            write()
+        except CommandError as exc:
+            error = exc
+        return read_back(read, sleep, error)
+
+    local, remote, item, releases = observe()
+    # Inspect both services before changing either. An existing OCI version needs
+    # a published, verified source predecessor even when the image identity matches.
+    def image_state():
+        image = packages.registry.read_published(receipt=receipt)
+        if state.get("authenticated_image"):
+            require(state["authenticated_image"] == image, "previously observed registry tag disappeared or changed")
+        if image:
+            state["authenticated_image"] = image
+            if publish:
+                save(state)
+        return image
+
+    image = image_state()
+    require(image is not None or not state.get("published_image"), "previously published registry tag disappeared")
+    if item is None or item["draft"]:
+        _, newer = stable_policy(releases, expected)
+        if newer and not expected["prerelease"]:
+            require(github.latest() in newer, "Latest conflict before recovering an older stable release")
+    if image is not None:
+        require(item and not item["draft"] and source_name in state["assets"],
+                "registry version exists without its published Corresponding Source")
+        verify_public_source(state["assets"][source_name])
+    if not publish:
+        require(remote and item and not item["draft"] and expected_names == state["assets"].keys()
+                and image is not None, "packaged publication is incomplete; verify does not publish")
+    if publish and not remote:
+        local = local or git.create_tag(tag, commit)
+        seen = write_once(lambda: git.push_tag(tag), lambda: git.remote_tag(tag, commit))
+        require(seen == local, "remote tag object conflicts with the original local tag")
+        _, remote, item, releases = observe()
+    if publish and not item:
+        item = write_once(lambda: github.create(expected, False, draft=True), lambda: observe()[2])
+    if publish:
+        for name in sorted(expected_names - state["assets"].keys()):
+            _, _, item, _ = observe()
+            if name in state["assets"]:
+                continue
+            require(item["draft"] or item.get("immutable") is False,
+                    "cannot append missing assets to an immutable or unconfirmed published Release")
+            write_once(lambda: github.upload(tag, packages.native_dir / name),
+                       lambda: observe()[2] and state["assets"].get(name))
+        _, _, item, releases = observe()
+        require(expected_names == state["assets"].keys(), "incomplete release asset set")
+        if item["draft"]:
+            stable, newer = stable_policy(releases, expected)
+            previous_latest = github.latest() if stable else None
+            latest = not expected["prerelease"] and not newer
+            require(not newer or previous_latest in newer or expected["prerelease"],
+                    "Latest conflict before publishing older stable release")
+            write_once(lambda: github.publish_draft(expected, latest),
+                       lambda: observe()[2] and state.get("published_at"))
+            if not latest and previous_latest is not None:
+                require(github.latest() == previous_latest, "draft publication changed the existing Latest release")
+
+    def published_source():
+        _, _, item, _ = observe()
+        require(item and not item["draft"] and expected_names == state["assets"].keys(),
+                "public Release or its complete asset set is missing")
+        verify_public_source(state["assets"][source_name])
+
+    published_source()
+    if publish and image is None:
+        if image_state() is None:
+            packages.registry.publish_candidate(packages.oci_dir, receipt=receipt)
+            require(image_state(), "promoted image is missing from the authenticated registry")
+    public_image = packages.registry.read_published(receipt=receipt, anonymous=True)
+    require(public_image, "released image and platform descriptors are not anonymously verifiable")
+    require(not state.get("published_image") or state["published_image"] == public_image,
+            "published registry identities differ from the original receipt")
+    # Verify that the same tag, Release, assets, Latest and visibility still hold.
+    observe()
+    require(github.preflight() == visibility, "repository visibility changed during publication")
+    state.update(annotation=tag, prerelease=expected["prerelease"], visibility=visibility,
+                 published_image=public_image, verified_at=datetime.now(timezone.utc).isoformat())
+    if publish:
+        save(state)
+    return state
+
+
 def validation(git, version, commit, output):
     git.exact_checkout(commit)
     require(not any(os.environ.get(name) for name in ("CARGO_TARGET_DIR", "CARGO_BUILD_TARGET")),
@@ -406,7 +545,10 @@ def require_evidence(git, expected, commit, path):
 
 def write_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2) + "\n")
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as output:
+        json.dump(data, output, indent=2)
+        output.write("\n")
+    os.replace(output.name, path)
 
 
 def main(argv=None):
@@ -416,6 +558,9 @@ def main(argv=None):
     parser.add_argument("--commit", help="full validated release commit SHA; never a moving ref")
     parser.add_argument("--evidence", type=Path, help="validation JSON, required for validate/publish")
     parser.add_argument("--output", type=Path, help="write publication verification JSON")
+    parser.add_argument("--native-run", type=int, help="successful Native distribution main Actions run ID")
+    parser.add_argument("--oci-run", type=int, help="successful Container distribution main Actions run ID")
+    parser.add_argument("--receipt", type=Path, help="archived packaged publication JSON for independent verification")
     parser.add_argument("--notes-file", type=Path, help="export reviewed changelog section")
     parser.add_argument("--authorized", action="store_true", help="assert existing user authorization for publication")
     args = parser.parse_args(argv)
@@ -442,7 +587,37 @@ def main(argv=None):
         git.exact_checkout(args.commit)
         require_evidence(git, expected, args.commit, args.evidence)
         workflows = github.main_checks(args.commit)
-    result = reconcile(git, github, expected, args.commit, publish=args.mode == "publish")
+    if packaged_version(args.version):
+        if args.mode == "publish":
+            require(args.output and not args.receipt, "packaged publication requires its original --output path")
+            previous = json.loads(args.output.read_text()) if args.output.exists() else None
+            if previous:
+                saved = previous["package_identity"]
+                require(not args.native_run or args.native_run == saved["native_run"]["run_id"],
+                        "use the original native candidate run when resuming")
+                require(not args.oci_run or args.oci_run == saved["oci_run"]["run_id"],
+                        "use the original OCI candidate run when resuming")
+                args.native_run = saved["native_run"]["run_id"]
+                args.oci_run = saved["oci_run"]["run_id"]
+            if previous and previous.get("published_image") and previous.get("verified_at"):
+                packages = Packages.from_receipt(saved, args.commit, args.version)
+                result = reconcile_packages(git, github, expected, args.commit, packages, previous)
+            else:
+                require(args.native_run and args.oci_run, "supply both --native-run and --oci-run")
+                with tempfile.TemporaryDirectory(prefix="komodo-candidates-") as scratch:
+                    packages = Packages.download(github, Path(scratch), args.commit, args.version,
+                                                 args.native_run, args.oci_run)
+                    result = reconcile_packages(git, github, expected, args.commit, packages, previous, publish=True,
+                                                save=lambda state: write_json(args.output, state))
+        else:
+            require(args.receipt, "packaged verification requires the original --receipt")
+            previous = json.loads(args.receipt.read_text())
+            packages = Packages.from_receipt(previous["package_identity"], args.commit, args.version)
+            result = reconcile_packages(git, github, expected, args.commit, packages, previous)
+    else:
+        require(not (args.native_run or args.oci_run or args.receipt),
+                "historical release verification uses the original tag and asset-free Release")
+        result = reconcile(git, github, expected, args.commit, publish=args.mode == "publish")
     if workflows:
         result["main_workflows"] = workflows
     if args.output:
@@ -453,6 +628,6 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         main()
-    except (ReleaseError, subprocess.SubprocessError, OSError, ValueError, KeyError) as error:
+    except (RuntimeError, subprocess.SubprocessError, OSError, ValueError, KeyError) as error:
         print(f"release: {error}", file=sys.stderr)
         sys.exit(1)
