@@ -82,6 +82,10 @@ Create a Build with an explicit Builder, source, image name and registry list:
 {"name":"preview_build_create","arguments":{"name":"example-build","config":{"builder":{"name":"example-builder"},"source":{"kind":"git","repo":"example/workload","branch":"main"},"image_name":"workload","image_registry":[{"domain":"registry.example.invalid:5000","account":"existing-account-reference","organization":"owned-workloads"}]}}}
 ```
 
+Pass the reviewed creation arguments and preview ID to `apply_build_create`.
+For an existing Build, review the proposed patch with `preview_build_update`
+and pass the same target, patch and preview ID to `apply_build_update`.
+
 An empty image name uses the normalized Build name. `image_registry:[]` means
 local-only and explicitly clears a previous registry list. Registries retain
 their supplied order: Core uses the **first registry** for attached Deployments.

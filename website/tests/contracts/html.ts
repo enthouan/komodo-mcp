@@ -20,9 +20,15 @@ export function routeOutputPath(route: string): URL {
   return new URL(`../../dist${route}index.html`, import.meta.url);
 }
 
-export async function readRoute(route: string) {
-  const source = await readFile(routeOutputPath(route), "utf8");
-  return { document: parse(source), source };
+// The contracts inspect one immutable site build. Parse each of its pages once per worker.
+const routes = new Map<string, Promise<{ document: HtmlDocument; source: string }>>();
+export function readRoute(route: string) {
+  let result = routes.get(route);
+  if (!result) {
+    result = readFile(routeOutputPath(route), "utf8").then((source) => ({ document: parse(source), source }));
+    routes.set(route, result);
+  }
+  return result;
 }
 
 export async function readDist(

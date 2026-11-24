@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import { OPERATOR_GUIDES } from "../../src/data/operator-guides.js";
+import { type Catalog, toolPageId } from "../../src/data/tool-catalog.js";
 
 export const CANONICAL_WEBSITE_URL = "https://komodo-mcp.com/";
 export const CANONICAL_WEBSITE_ORIGIN = new URL(CANONICAL_WEBSITE_URL).origin;
@@ -33,7 +35,9 @@ export const WEBSITE_ROUTES = [
 
 export const GUIDE_ROUTES = OPERATOR_GUIDES.map(({ slug }) => `/docs/${slug}/`);
 
-export const DOCUMENT_ROUTES = [...WEBSITE_ROUTES, ...GUIDE_ROUTES];
+export const TOOL_CATALOG = JSON.parse(readFileSync(new URL("../../../docs/tool-catalog.json", import.meta.url), "utf8")) as Catalog;
+export const TOOL_ROUTES = Object.keys(TOOL_CATALOG.tools).map((name) => `/${toolPageId(name)}/`);
+export const DOCUMENT_ROUTES = [...WEBSITE_ROUTES, ...GUIDE_ROUTES, ...TOOL_ROUTES];
 export const PUBLIC_ROUTES = [...DOCUMENT_ROUTES, "/404.html"];
 
 export const PRIMARY_NAVIGATION = [
@@ -72,5 +76,6 @@ export const REPRESENTATIVE_ACCESSIBILITY_ROUTES = [
   "/reference/configuration/",
   "/reference/tools/",
   "/docs/diagnostics/",
+  "/reference/tools/list_stacks/",
   "/404.html",
 ] as const;

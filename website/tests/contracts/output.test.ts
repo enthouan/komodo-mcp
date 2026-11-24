@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { DISCLAIMER } from "../../src/data/publication.js";
 import { LICENSE_URL, REPOSITORY_URL } from "../../src/data/repository.js";
+import { standaloneSchema, toolPageId } from "../../src/data/tool-catalog.js";
 import {
   CANONICAL_WEBSITE_ORIGIN,
   CANONICAL_WEBSITE_URL,
@@ -12,6 +13,7 @@ import {
   PUBLIC_ROUTES,
   SOCIAL_IMAGE_ALT,
   THEME_COLOR,
+  TOOL_CATALOG,
 } from "../support/site.js";
 import {
   anchorHrefs,
@@ -27,7 +29,28 @@ import {
   readRoute,
   required,
   routeOutputPath,
+  textContent,
 } from "./html.js";
+
+it("publishes every registered tool with its grants, effect hints and complete schemas", async () => {
+  const index = await readRoute("/reference/tools/");
+  const links = new Set(anchorHrefs(index.document));
+  for (const [name, tool] of Object.entries(TOOL_CATALOG.tools)) {
+    const route = `/${toolPageId(name)}/`;
+    expect(links.has(route), name).toBe(true);
+    const { document } = await readRoute(route);
+    const text = normalizedText(document);
+    for (const grant of tool.grantSets.flat()) expect(text, name).toContain(grant);
+    for (const [hint, value] of Object.entries(tool.annotations)) {
+      if (hint.endsWith("Hint")) expect(text, name).toContain(`${hint} — ${value}`);
+    }
+    for (const [label, key] of [["Input", tool.inputSchema], ["Output", tool.outputSchema]] as const) {
+      const block = required(findByAttribute(document, "pre", "aria-label", `${label} JSON Schema`)[0], name);
+      expect(JSON.parse(textContent(block)), name).toEqual(standaloneSchema(TOOL_CATALOG, key));
+    }
+    if (name === "execute_terminal") expect(text).toContain("omits outputSchema in discovery");
+  }
+});
 
 describe("production route contracts", () => {
   for (const route of PUBLIC_ROUTES) {
@@ -92,27 +115,31 @@ describe("production route contracts", () => {
 });
 
 describe("internal links and fragments", () => {
-  it("resolves every internal link and fragment in the artifact", async () => {
-    const idsByRoute = new Map<string, Set<string>>();
-    const ids = async (route: string) => {
-      const cached = idsByRoute.get(route);
-      if (cached) return cached;
-      const { document } = await readRoute(route);
-      const found = new Set(
-        elements(document, (element) => attribute(element, "id") !== undefined).map(
-          (element) => attribute(element, "id") ?? "",
-        ),
-      );
-      idsByRoute.set(route, found);
-      return found;
+  const routes = new Map<string, { hrefs: string[]; ids: Set<string> }>();
+  async function linksAndIds(route: string) {
+    const cached = routes.get(route);
+    if (cached) return cached;
+    const { document } = await readRoute(route);
+    const found = {
+      hrefs: anchorHrefs(document),
+      ids: new Set(elements(document, (element) => attribute(element, "id") !== undefined)
+        .map((element) => attribute(element, "id") ?? "")),
     };
+    routes.set(route, found);
+    return found;
+  }
 
+  it("resolves every internal link and fragment in the artifact", async () => {
     const problems: string[] = [];
+    const checked = new Set<string>();
     for (const route of PUBLIC_ROUTES) {
-      const { document } = await readRoute(route);
-      for (const href of anchorHrefs(document)) {
+      for (const href of (await linksAndIds(route)).hrefs) {
         if (/^(?:[a-z]+:|\/\/)/i.test(href)) continue;
         const url = new URL(href, `${CANONICAL_WEBSITE_URL.replace(/\/$/, "")}${route}`);
+        // Every repeated navigation link resolves to the same static target.
+        const key = url.pathname + url.hash;
+        if (checked.has(key)) continue;
+        checked.add(key);
         const target = url.pathname;
         if (!/\/$|\.html$/.test(target)) {
           if (!existsSync(new URL(`../../dist${target}`, import.meta.url))) {
@@ -125,7 +152,7 @@ describe("internal links and fragments", () => {
           continue;
         }
         const fragment = decodeURIComponent(url.hash.slice(1));
-        if (fragment && !(await ids(target)).has(fragment)) {
+        if (fragment && !(await linksAndIds(target)).ids.has(fragment)) {
           problems.push(`${route} → ${href} (missing fragment)`);
         }
       }
@@ -136,8 +163,7 @@ describe("internal links and fragments", () => {
   it("links the maintainer's GitHub resources only inside the komodo-mcp repository", async () => {
     const githubLinks = new Set<string>();
     for (const route of PUBLIC_ROUTES) {
-      const { document } = await readRoute(route);
-      for (const href of anchorHrefs(document)) {
+      for (const href of (await linksAndIds(route)).hrefs) {
         if (href.startsWith("https://github.com/")) githubLinks.add(href);
       }
     }

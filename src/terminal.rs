@@ -409,12 +409,19 @@ impl Owned {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct Output {
+    /// The resolved Core terminal target, identifying one server or container.
+    #[schemars(with = "serde_json::Map<String, Value>")]
     pub target: Value,
     pub terminal: String,
+    #[schemars(with = "stream::Observation")]
     pub observation: Value,
+    /// Owned cleanup state with the observed reason or evidence of absence.
+    #[schemars(with = "serde_json::Map<String, Value>")]
     pub cleanup: Value,
+    /// Counts of create, command and delete attempts.
+    #[schemars(with = "std::collections::BTreeMap<String, usize>")]
     pub attempts: Value,
     pub duration_ms: u128,
     pub remote_shell_lifetime_seconds: u64,

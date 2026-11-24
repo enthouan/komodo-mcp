@@ -1,17 +1,17 @@
 ---
 title: Tool reference
-description: How komodo-mcp tools are discovered and gated, plus the inventory, operation, fleet-health, and error contracts rendered from the repository README.
+description: Search the complete built-in Komodo MCP tool registry for local grants, input bounds, output shapes, and mutation behavior.
 ---
 
-import { Aside } from '@astrojs/starlight/components';
 import OperatorGuideIndex from '../../../components/OperatorGuideIndex.astro';
 import RepositorySection from '../../../components/RepositorySection.astro';
+import ToolCatalog from '../../../components/ToolCatalog.astro';
 
-The authoritative tool list is what your MCP client receives from `tools/list`: names, descriptions, input and output JSON schemas, and effect annotations for the tools this process enables. The full reference covers the built-in tools. Each instance publishes only those allowed by its local grants and [tool selection](/reference/configuration/#select-individual-tools).
+This catalog covers every built-in tool, including its local grants, mutation behavior, input bounds and output shape. Run `tools/list` in your MCP client to see the tools allowed by your instance’s grants and [tool selection](/reference/configuration/#select-individual-tools). Core checks the configured identity’s permissions on each request.
 
-<Aside type="note" title="Generated catalog pending">
-  A searchable catalog generated from the runtime tool registry, with profile availability, input bounds, output shapes, mutation behavior, and CI drift detection, is tracked in [#43](https://github.com/enthouan/komodo-mcp/issues/43). This page does not hand-maintain a tool list or tool counts in the meantime. The sections below are rendered directly from the repository README.
-</Aside>
+## Built-in tools
+
+<ToolCatalog />
 
 ## Inventory tools
 

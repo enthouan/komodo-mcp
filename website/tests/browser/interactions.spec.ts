@@ -1,14 +1,31 @@
 import { COPY_FAILURE_MESSAGE } from "../support/site.js";
 import { expect, gotoLoaded, monitorBrowserProblems, test } from "./support.js";
 
-test("search opens from the keyboard and finds repository guides", async ({ page }) => {
+test("filtering the catalog opens a registered tool and its schemas", async ({ page }) => {
+  await gotoLoaded(page, "/reference/tools/");
+  const catalog = page.locator("[data-tool-catalog]");
+  const filter = catalog.getByRole("searchbox", { name: "Filter by tool name" });
+  await filter.fill("STACK DIAGNOSE");
+  await expect(catalog.getByRole("status")).toHaveText("1 tool");
+  await catalog.getByRole("link", { name: "stack_diagnose", exact: true }).click();
+  await expect(page).toHaveURL(/\/reference\/tools\/stack_diagnose\/$/);
+  await page.getByText("Show input JSON Schema", { exact: true }).click();
+  await expect(page.locator('pre[aria-label="Input JSON Schema"]')).toBeVisible();
+});
+
+test("keyboard search finds tool references and repository guides", async ({ page }) => {
   const problems = monitorBrowserProblems(page);
   await gotoLoaded(page, "/");
   await page.keyboard.press("Control+k");
   const input = page.locator(".pagefind-ui__search-input:visible").first();
   await expect(input).toBeFocused();
   await input.fill("stack_diagnose");
+  await expect(page.locator('.pagefind-ui__result-link[href="/reference/tools/stack_diagnose/"]').first()).toBeVisible();
   const result = page.locator('.pagefind-ui__result-link[href^="/docs/diagnostics/"]:visible').first();
+  const more = page.getByRole("button", { name: "Load more results" });
+  while (!(await result.isVisible()) && await more.isVisible()) {
+    await more.click();
+  }
   await expect(result).toBeVisible();
   await result.click();
   await expect(page).toHaveURL(/\/docs\/diagnostics\//);

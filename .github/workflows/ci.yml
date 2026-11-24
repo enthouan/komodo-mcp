@@ -30,6 +30,11 @@ jobs:
       - run: cargo test --locked --all-targets
       - run: cargo build --locked --release --bin komodo-mcp
       - run: cargo build --locked --examples
+      - name: Check the full catalog under a restricted tool selection
+        env:
+          KOMODO_ENABLED_TOOLS: list_stacks,get_stack,stack_diagnose
+          KOMODO_DISABLED_TOOLS: get_image_history
+        run: cargo run --locked --example tool_catalog
       - name: Run the documented fresh stdio demonstration
         run: cargo run --locked --example stacks_on_server -- ./target/release/komodo-mcp
       - name: Verify release metadata and the actual executable's MCP version

@@ -56,6 +56,13 @@ komodo-mcp pins `komodo_client` **{KOMODO_CLIENT_VERSION}** and its HTTP fixture
 
 ## Platforms
 
-- **Linux:** CI builds and tests with Rust {RUST_TOOLCHAIN} on GitHub's Ubuntu runners for every pull request and push to `main`.
-- **macOS:** on 2026-11-16 the locked release build and the fresh-checkout `stacks_on_server` demonstration completed on macOS (x86_64) during this website's verification. macOS is not covered by CI.
-- **Windows and other targets:** not verified. Prebuilt binaries and a documented target matrix are tracked in [#42](https://github.com/enthouan/komodo-mcp/issues/42).
+The [native distribution workflow](https://github.com/enthouan/komodo-mcp/blob/main/.github/workflows/native-distribution.yml) builds the locked Rust {RUST_TOOLCHAIN} application from its source archive on each target, then exercises the extracted executable against a synthetic Core fixture.
+
+| Target | Native test host | Runtime requirement |
+| --- | --- | --- |
+| Linux x86-64 | Ubuntu 24.04, x86-64 | 64-bit Linux with the static musl executable |
+| Linux arm64 | Ubuntu 24.04, arm64 | 64-bit Linux with the static musl executable |
+| macOS Intel | macOS 15, Intel | macOS 15 or later |
+| macOS Apple silicon | macOS 15, Apple silicon | macOS 15 or later |
+
+The [container distribution workflow](https://github.com/enthouan/komodo-mcp/blob/main/.github/workflows/container-distribution.yml) exercises the same multi-platform OCI archive on native Ubuntu 24.04 runners for `linux/amd64` and `linux/arm64`, using authenticated HTTP discovery and an inventory read through Compose. See [native binaries and matching source](/docs/distribution/) and [Docker Compose installation](/docs/container/) for setup and verification. Windows and other targets have no recorded build or runtime coverage.

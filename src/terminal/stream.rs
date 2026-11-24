@@ -3,7 +3,8 @@ use crate::client::CoreClient;
 
 const MARKER: &str = "__KOMODO_EXIT_CODE:";
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
 pub(super) struct Observation {
     pub end: &'static str,
     pub reported_exit_code: Option<u8>,
