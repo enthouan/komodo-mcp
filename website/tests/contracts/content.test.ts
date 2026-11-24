@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { CLIENT_SETUPS, EXECUTABLE_PLACEHOLDER, VERIFY_PROMPT } from "../../src/data/clients.js";
 import { CAPABILITY_VARIABLES, CONFIGURATION_VARIABLES } from "../../src/data/configuration.js";
+import { checkPagesPublication, INSTALLATION_RELEASE_TAG } from "../../src/data/publication.js";
 import { INSTALL_METHODS, RELEASE_IMAGE } from "../../src/data/install.js";
 import { OPERATOR_GUIDES } from "../../src/data/operator-guides.js";
 import {
@@ -71,19 +72,28 @@ describe("installation and client accuracy", () => {
     const [native, compose] = INSTALL_METHODS;
     for (const method of INSTALL_METHODS) {
       const links = new Map(method.links.map(({ label, href }) => [label, href]));
-      const release = `https://github.com/enthouan/komodo-mcp/releases/download/${RELEASE_TAG}`;
-      expect(links.get("Matching Corresponding Source")).toBe(`${release}/komodo-mcp-${RELEASE_TAG}-source.tar.gz`);
+      const release = `https://github.com/enthouan/komodo-mcp/releases/download/${INSTALLATION_RELEASE_TAG}`;
+      expect(links.get("Matching Corresponding Source")).toBe(`${release}/komodo-mcp-${INSTALLATION_RELEASE_TAG}-source.tar.gz`);
       expect(links.get("License")).toBe(`${release}/LICENSE`);
       expect(links.get("Third-party notices")).toBe(`${release}/THIRD-PARTY-NOTICES`);
       expect(links.get("SHA-256 checksums")).toBe(`${release}/SHA256SUMS`);
     }
-    const download = `https://github.com/enthouan/komodo-mcp/releases/download/${RELEASE_TAG}/`;
+    const download = `https://github.com/enthouan/komodo-mcp/releases/download/${INSTALLATION_RELEASE_TAG}/`;
     const targets = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "x86_64-apple-darwin", "aarch64-apple-darwin"];
     for (const target of targets) {
-      expect(native.links.map(({ href }) => href)).toContain(`${download}komodo-mcp-${RELEASE_TAG}-${target}.tar.gz`);
+      expect(native.links.map(({ href }) => href)).toContain(`${download}komodo-mcp-${INSTALLATION_RELEASE_TAG}-${target}.tar.gz`);
     }
-    expect(compose.links.some(({ href }) => href.endsWith(`/${RELEASE_TAG}/compose.yaml`))).toBe(true);
-    expect(RELEASE_IMAGE).toBe(`ghcr.io/enthouan/komodo-mcp:${RELEASE_TAG}`);
+    expect(compose.links.some(({ href }) => href.endsWith(`/${INSTALLATION_RELEASE_TAG}/compose.yaml`))).toBe(true);
+    expect(RELEASE_IMAGE).toBe(`ghcr.io/enthouan/komodo-mcp:${INSTALLATION_RELEASE_TAG}`);
+  });
+
+  it("allows installation previews and requires verified publication on the production branch", () => {
+    const production = { CF_PAGES: "1", CF_PAGES_BRANCH: "main" };
+    const preview = { CF_PAGES: "1", CF_PAGES_BRANCH: "antoine/beta-site" };
+    expect(() => checkPagesPublication(preview, "v1.1.0", "v1.0.0")).not.toThrow();
+    expect(() => checkPagesPublication(production, "v1.1.0", "v1.0.0")).toThrow("verified published release");
+    expect(() => checkPagesPublication(production, "v1.1.0", "v1.1.0")).not.toThrow();
+    expect(() => checkPagesPublication({ CF_PAGES: "1" })).toThrow("deployment branch");
   });
 
   it("uses the pinned toolchain and the locked release build", async () => {

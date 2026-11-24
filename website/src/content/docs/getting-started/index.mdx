@@ -5,6 +5,7 @@ description: Connect an MCP client through native stdio or authenticated Docker 
 
 import { CardGrid, Code, LinkCard } from '@astrojs/starlight/components';
 import InstallMethods from '../../../components/InstallMethods.astro';
+import { INSTALLATION_SOURCE_URL } from '../../../data/install.js';
 import { RELEASE_TAG, RELEASE_URL } from '../../../data/project.js';
 
 komodo-mcp is a single Rust executable. Your MCP client can launch it over stdio or connect to a persistent HTTP service. Each instance calls your Komodo Core API with one API key and secret.
@@ -27,7 +28,7 @@ Set `KOMODO_ENABLED_TOOLS=list_stacks,get_stack,stack_diagnose` before starting 
 
 ## Release and source
 
-The <a href={RELEASE_URL}>{RELEASE_TAG} release</a> includes SHA-256 checksums and matching Corresponding Source beside the native downloads. The [native stdio source-build guide](/getting-started/stdio/) also covers building from the tagged repository with the pinned Rust toolchain.
+The beta downloads include checksums and <a href={INSTALLATION_SOURCE_URL}>matching Corresponding Source</a>. To build the current published <a href={RELEASE_URL}>{RELEASE_TAG} release</a> from its Git tag, use the pinned Rust toolchain. See the [native stdio source-build guide](/getting-started/stdio/).
 
 <Code lang="sh" title="Build a tagged release" code={`git clone https://github.com/enthouan/komodo-mcp.git
 cd komodo-mcp

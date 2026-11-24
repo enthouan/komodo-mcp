@@ -1,9 +1,10 @@
-import { RELEASE_SOURCE_ARCHIVE_URL, RELEASE_TAG } from "./project.js";
+import { INSTALLATION_RELEASE_TAG } from "./publication.js";
 import { REPOSITORY_URL } from "./repository.js";
 
-export const RELEASE_IMAGE = `ghcr.io/enthouan/komodo-mcp:${RELEASE_TAG}`;
-const asset = (name: string) => `${REPOSITORY_URL}/releases/download/${RELEASE_TAG}/${name}`;
-const source = { label: "Matching Corresponding Source", href: RELEASE_SOURCE_ARCHIVE_URL };
+export const RELEASE_IMAGE = `ghcr.io/enthouan/komodo-mcp:${INSTALLATION_RELEASE_TAG}`;
+const asset = (name: string) => `${REPOSITORY_URL}/releases/download/${INSTALLATION_RELEASE_TAG}/${name}`;
+export const INSTALLATION_SOURCE_URL = asset(`komodo-mcp-${INSTALLATION_RELEASE_TAG}-source.tar.gz`);
+const source = { label: "Matching Corresponding Source", href: INSTALLATION_SOURCE_URL };
 const checksums = { label: "SHA-256 checksums", href: asset("SHA256SUMS") };
 const license = { label: "License", href: asset("LICENSE") };
 const notices = { label: "Third-party notices", href: asset("THIRD-PARTY-NOTICES") };
@@ -23,7 +24,7 @@ export const INSTALL_METHODS = [
     guide: "/docs/self-hosted-beta/#native-stdio",
     guideLabel: "Install and connect over stdio",
     links: [
-      ...platforms.map(([label, target]) => ({ label, href: asset(`komodo-mcp-${RELEASE_TAG}-${target}.tar.gz`) })),
+      ...platforms.map(([label, target]) => ({ label, href: asset(`komodo-mcp-${INSTALLATION_RELEASE_TAG}-${target}.tar.gz`) })),
       checksums, source, license, notices,
     ],
   },
@@ -34,7 +35,7 @@ export const INSTALL_METHODS = [
     guide: "/docs/self-hosted-beta/#docker-compose",
     guideLabel: "Install and connect over HTTP",
     links: [
-      { label: "Versioned Compose file", href: `https://raw.githubusercontent.com/enthouan/komodo-mcp/${RELEASE_TAG}/compose.yaml` },
+      { label: "Versioned Compose file", href: `https://raw.githubusercontent.com/enthouan/komodo-mcp/${INSTALLATION_RELEASE_TAG}/compose.yaml` },
       { label: "Container image on GHCR", href: `${REPOSITORY_URL}/pkgs/container/komodo-mcp` },
       checksums, source, license, notices,
     ],
