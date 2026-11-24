@@ -24,7 +24,8 @@ env:
 jobs:
   assemble:
     runs-on: ubuntu-24.04
-    timeout-minutes: 170
+    # Reserve time to download the native bundle, build the OCI archive and upload it after the wait.
+    timeout-minutes: 300
     permissions:
       contents: read
       actions: read

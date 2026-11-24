@@ -2,6 +2,7 @@ import gzip
 import hashlib
 import io
 import json
+import re
 from pathlib import Path
 import tarfile
 import tempfile
@@ -354,6 +355,24 @@ class NativeInputChecks(unittest.TestCase):
             "event": "pull_request",
             "pull_requests": [{"number": 17}],
         }
+
+    def test_wait_covers_native_dependencies_and_reserves_container_build_time(self):
+        from container_native import NATIVE_WAIT_MINUTES
+
+        def job_minutes(workflow, job):
+            text = (oci.ROOT / ".github" / "workflows" / workflow).read_text()
+            block = text.split("\n  " + job + ":\n", 1)[1]
+            block = re.split(r"\n  \S", block, maxsplit=1)[0]
+            return int(re.search(r"(?m)^    timeout-minutes: ([0-9]+)$", block)[1])
+
+        native_path = sum(
+            job_minutes("native-distribution.yml", job) for job in ("source", "native", "assemble")
+        )
+        self.assertGreaterEqual(NATIVE_WAIT_MINUTES, native_path)
+        # The shared artifact download and Buildx command allow up to 30 and 10 minutes.
+        self.assertGreaterEqual(
+            job_minutes("container-distribution.yml", "assemble"), NATIVE_WAIT_MINUTES + 40
+        )
 
     def test_pr_requires_the_exact_source_workflow_and_head(self):
         from container_native import select

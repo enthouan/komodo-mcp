@@ -15,6 +15,9 @@ from container_release import REPOSITORY, ROOT, check
 
 WORKFLOW = ".github/workflows/native-distribution.yml"
 FIELDS = ("run_id", "run_attempt", "workflow", "artifact_id", "artifact_digest")
+# The native source, platform matrix and aggregation run in sequence (45 + 90 + 30 minutes).
+# Allow another 45 minutes for runner queues before giving up on an unfinished candidate.
+NATIVE_WAIT_MINUTES = 210
 
 
 @dataclass(frozen=True)
@@ -107,14 +110,16 @@ def acquire(args):
         revision,
     )
     version = tomllib.loads((ROOT / "Cargo.toml").read_text())["package"]["version"]
-    deadline = time.monotonic() + 135 * 60
+    deadline = time.monotonic() + NATIVE_WAIT_MINUTES * 60
     while time.monotonic() < deadline:
         run = select(github, expected, run_id=args.native_run, attempt=args.native_attempt)
         if run is not None:
             break
         time.sleep(30)
     else:
-        raise TimeoutError("no successful matching Native distribution completed within 135 minutes")
+        raise TimeoutError(
+            f"no successful matching Native distribution completed within {NATIVE_WAIT_MINUTES} minutes"
+        )
     identity = acquire_run_artifact(
         github,
         args.output_dir,
