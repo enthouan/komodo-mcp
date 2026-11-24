@@ -7,8 +7,11 @@ description: Prepare, publish, verify, or recover milestone and patch releases o
 
 ## Scope and authorization
 
-Current artifacts are an annotated Git tag and a GitHub Release titled exactly
-`vX.Y.Z`, with notes from `CHANGELOG.md`. The authoritative publisher is
+Every release has an annotated Git tag and a GitHub Release titled exactly
+`vX.Y.Z`, with notes from `CHANGELOG.md`. Starting with the v0.8.0 series,
+including its prereleases, publication also requires the complete native and
+Corresponding Source distribution and the matching two-platform GHCR image.
+The authoritative publisher is
 `python3 scripts/release.py publish`; there is no automatic release workflow.
 CI is read-only and cannot publish. Do not introduce a second publisher. Run
 one authorized publication sequence at a time.
@@ -38,7 +41,10 @@ for a particular merge or publication in that session's evidence.
 Use Git, Python 3.11+ (standard library only), the repository's pinned Rust
 with Cargo/rustfmt/Clippy, and authenticated GitHub CLI `gh`. Preparation needs
 branch/PR/comment write and Actions read access. Publication needs Git tag push
-and GitHub Contents write access, including visibility of draft releases.
+and GitHub Contents write access, including visibility of draft releases. Packaged
+publication also needs Actions read access and authenticated GHCR access for
+this package. Use the container adapter’s registry credentials and its documented
+client prerequisites. Candidate workflows run with read-only permissions.
 Tracking closure needs Issues/Projects write access. Node/npm are needed for
 the existing benchmark, not the MCP version verifier. Never print credentials.
 
@@ -141,14 +147,13 @@ git diff --stat PREVIOUS_VERIFIED_TAG..CANDIDATE_SHA
 python3 scripts/release.py metadata --version X.Y.Z --notes-file target/release-notes.md
 ```
 
-Review user-facing changes and PR links in the notes, and evidence limits and
-distributed artifacts in the supporting docs/tracker. No crates.io, MCP Registry,
-GHCR, binary archive, SBOM or provenance publisher is in current scope.
-#41 (multi-architecture GHCR/Compose), #42 (native binaries/matching
-Corresponding Source), and #51 (stable artifact verification, SBOMs/provenance)
-extend this same process when
-implemented; they are not current gates. Update the helper, skill, tests and
-artifact verification together as those capabilities land.
+Review user-facing changes and PR links in the notes. Record distribution
+evidence and validation limits in the supporting docs and tracker. Earlier
+releases retain their original asset-free contract. The v0.8.0 series adds
+four exercised native targets, checksums, license, notices, Corresponding
+Source and the versioned GHCR image. The adapter from #41 must be present
+before a packaged release can be published. #51 tracks the later stable
+artifact verification and SBOM/provenance work.
 
 ## Release PR and completed review
 
@@ -239,7 +244,45 @@ silently substitute the newer tip.
 
 ## Authoritative publication and read-back
 
-Only with existing authorization for the exact version, from its validated checkout:
+After authorization for the exact version, work from its validated checkout.
+For v0.8.0 and later, select green runs of `native-distribution.yml` and
+`container-distribution.yml` on the exact captured main commit. Record both
+numeric run IDs and attempts. Use the same output file for every publication
+or recovery of that candidate. Preserve the file and its SHA-256 in the
+release record. It records the original candidates before publication as
+well as each subsequently observed remote identity.
+
+```sh
+python3 scripts/release.py publish --version X.Y.Z --commit CAPTURED_MERGED_SHA \
+  --evidence target/release-validation.json --authorized \
+  --native-run NATIVE_RUN_ID --oci-run OCI_RUN_ID \
+  --output target/release-publication.json
+python3 scripts/release.py verify --version X.Y.Z --commit CAPTURED_MERGED_SHA \
+  --receipt target/release-publication.json --output target/release-verification.json
+```
+
+The helper checks the workflow path, repository, main branch, revision and
+successful run, downloads each exact immutable Actions artifact by ID,
+compares the artifact archive digest, then binds the embedded run attempt
+and version to the verified files. An earlier rehearsal at the previous
+application version cannot supply release artifacts. The archived receipt
+allows read-only verification after Actions retention ends.
+
+The helper checks the GitHub tag, drafts, uploaded assets and authenticated
+registry state before the first remote write. It creates or resumes a draft,
+uploads only missing names with their original bytes and verifies the entire
+asset set before publishing. Each release includes four native archives
+(Linux musl and macOS on x86-64 and arm64), the matching source archive,
+`SHA256SUMS`, `LICENSE` and `THIRD-PARTY-NOTICES`. Every uploaded asset
+has its own recorded GitHub ID, size, digest and download URL. A missing
+GitHub digest requires hashing the downloaded asset by its ID. The helper
+downloads the public source through its anonymous release URL, checks its
+length and SHA-256, and promotes the tested OCI index by digest. GHCR
+index and platform identities must be anonymously readable before evidence
+is complete. A private GHCR package requires the authorized maintainer to
+enable public visibility, after which read-only verification can finish.
+
+For a historic asset-free release, use the original commands:
 
 ```sh
 python3 scripts/release.py publish --version X.Y.Z --commit CAPTURED_MERGED_SHA \
@@ -252,7 +295,7 @@ python3 scripts/release.py verify --version X.Y.Z --commit CAPTURED_MERGED_SHA \
 `--authorized` asserts existing user authorization; it does not acquire approval.
 The helper checks clean exact source, evidence/executable hash, origin identity,
 green main workflows and main ancestry, and inspects remote tags and all
-releases (including drafts) before writes. Its conditional publication commands:
+releases (including drafts) before writes. For an asset-free release, its conditional publication commands are:
 
 ```sh
 git tag --no-sign -a vX.Y.Z CAPTURED_MERGED_SHA -m vX.Y.Z
@@ -279,8 +322,7 @@ object without replacing local tags, requires type `tag`, annotation exactly
 `vX.Y.Z`, a direct target equal to the captured commit, and accepted main ancestry.
 It reads the Release's exact tag/title, notes, published/non-draft state,
 stable/prerelease classification and publication timestamp. `target_commitish`
-alone is never identity evidence. Current distribution has no uploaded binary
-assets; unexpected assets require scope review.
+alone is never identity evidence. Unexpected assets require scope review.
 
 ### Authorized editorial note updates
 
@@ -311,6 +353,18 @@ writes and never blindly retries a write. Identity conflicts stop immediately.
 | Matching published Release and tag | Verify completed state; no publication writes. Finish evidence/tracking only. |
 | Lightweight/wrong-target/wrong-annotation tag, conflicting local/remote objects or Release, or Release without expected tag | Report observed/expected identities and stop before changing anything. |
 
+For a packaged release, retain the original evidence file through each retry.
+Reuse its tag object, Release ID, asset IDs and candidate runs. A partial
+draft resumes with missing expected assets. A mutable published Release can
+receive a missing expected asset when previously recorded identities agree.
+An immutable incomplete Release, conflicting digest, abandoned starter
+upload or changed recorded object needs inspection. A registry version
+without its matching published source also blocks publication. The helper
+reads back each uncertain write and stops after bounded attempts. Never
+clobber an asset or repoint a registry tag. The OCI tag write assumes a
+single authorized publisher. Registry protocols do not provide a general
+cross-publisher compare-and-swap for tags.
+
 Recover the **original** commit from durable validation or the verified tag even
 when main advanced. Validate that checkout again if evidence/executable is
 missing, then rerun the same `publish` command. Later reviewed tooling can repair
@@ -324,6 +378,13 @@ URLs, tag, annotated object SHA/annotation, exact commit, observed MCP version,
 executable hash, validation commands/results, main workflow URLs, notes hash,
 rerun result, fixture limits and any recovery. Copy/attach JSON evidence there;
 do not change the release commit to insert its own SHA.
+
+For v0.8.0, also record the candidate workflow and artifact IDs, attempts,
+archive and extracted binary hashes, release asset IDs and public source URL,
+GHCR index and child digests, and independent anonymous access. Complete
+#42’s clean rebuild from the downloaded public source and #41’s anonymous
+platform pulls before closing those issues. #45 exercises both installation
+paths from the live site before the beta announcement.
 
 Only after all acceptance criteria pass, add evidence to #58, update the eventual
 PR body with the exact line `Fixes #58`, and explicitly close #58. Recheck every
