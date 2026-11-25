@@ -1107,7 +1107,7 @@
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
-        "idempotentHint": true
+        "idempotentHint": false
       },
       "inputSchema": "list_containers.input",
       "outputSchema": "list_containers.output"

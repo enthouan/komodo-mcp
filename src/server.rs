@@ -454,7 +454,7 @@ impl KomodoServer {
         inventory::tool_result(&self.client, result)
     }
 
-    #[tool(description="List cached containers on one Server by exact name or stable ID. Requires Server Read. Defaults to running containers. Include stopped containers to see other states. Follow next_page and pass a returned identity to get_container.",input_schema=schema_for_input::<crate::docker::containers::ListContainersInput>().expect("container schema"),output_schema=inventory::output_schema::<crate::docker::Observation<crate::docker::Page<crate::docker::containers::ContainerSummary>>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    #[tool(description="List cached containers on one Server by exact name or stable ID. Requires Server Read. Defaults to running containers. Include stopped containers to see other states. Follow next_page and pass a returned identity to get_container.",input_schema=schema_for_input::<crate::docker::containers::ListContainersInput>().expect("container schema"),output_schema=inventory::output_schema::<crate::docker::Observation<crate::docker::Page<crate::docker::containers::ContainerSummary>>>(),annotations(read_only_hint=true,idempotent_hint=false,destructive_hint=false))]
     async fn list_containers(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "list_containers") {
             Ok(input) => crate::docker::containers::list(&self.client, input).await,
