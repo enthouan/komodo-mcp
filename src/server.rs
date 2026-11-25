@@ -56,6 +56,8 @@ impl KomodoServer {
             | "get_variable"
             | "list_core_secret_names"
             | "observe_deployment_scale"
+            | "list_containers"
+            | "get_container"
             | "list_images"
             | "get_image"
             | "get_image_history"
@@ -447,6 +449,24 @@ impl KomodoServer {
     async fn observe_deployment_scale(&self, arguments: JsonObject) -> CallToolResult {
         let result = match inventory::parse(arguments, "observe_deployment_scale") {
             Ok(input) => crate::scaling::observe(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="List cached containers on one Server by exact name or stable ID. Requires Server Read. Defaults to running containers. Include stopped containers to see other states. Follow next_page and pass a returned identity to get_container.",input_schema=schema_for_input::<crate::docker::containers::ListContainersInput>().expect("container schema"),output_schema=inventory::output_schema::<crate::docker::Observation<crate::docker::Page<crate::docker::containers::ContainerSummary>>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn list_containers(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "list_containers") {
+            Ok(input) => crate::docker::containers::list(&self.client, input).await,
+            Err(error) => return error.into_tool_result(),
+        };
+        inventory::tool_result(&self.client, result)
+    }
+
+    #[tool(description="Inspect the exact Server and full container ID returned by list_containers. Requires Server Read and Inspect. Verify the fresh Docker identity before returning selected state, exit code, health status and restart count.",input_schema=schema_for_input::<crate::docker::containers::GetContainerInput>().expect("container schema"),output_schema=inventory::output_schema::<crate::docker::Observation<crate::docker::containers::ContainerDetail>>(),annotations(read_only_hint=true,idempotent_hint=true,destructive_hint=false))]
+    async fn get_container(&self, arguments: JsonObject) -> CallToolResult {
+        let result = match inventory::parse(arguments, "get_container") {
+            Ok(input) => crate::docker::containers::inspect(&self.client, input).await,
             Err(error) => return error.into_tool_result(),
         };
         inventory::tool_result(&self.client, result)

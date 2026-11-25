@@ -1,7 +1,53 @@
 # Inspect Docker objects on one Server
 
-These seven tools use Core reads in every local capability profile. Select one
-existing, non-template Komodo Server by stable resource ID or exact name:
+All nine tools are available in the read-only profile. Select one existing,
+non-template Komodo Server by stable resource ID or exact name. Every tool
+requires **Server Read**. **`get_container` also requires Server Inspect**.
+To expose only the container pair, set
+`KOMODO_ENABLED_TOOLS=list_containers,get_container` at startup. To expose
+cached discovery alone, set `KOMODO_ENABLED_TOOLS=list_containers`. The denylist
+`KOMODO_DISABLED_TOOLS` takes precedence over the allowlist.
+
+## Investigate a stopped container
+
+In an MCP client connected over stdio or authenticated Streamable HTTP, call
+`list_containers` with your Server name. These are MCP `tools/call` parameters.
+
+```json
+{"name":"list_containers","arguments":{"target":{"name":"test-server"}}}
+```
+
+The default page shows containers whose cached state is `running`. Include
+stopped containers to see all states. Follow `data.next_page` with the same
+Server, filter and page size until it is null.
+
+```json
+{"name":"list_containers","arguments":{"target":{"name":"test-server"},"include_stopped":true,"page":0,"page_size":10}}
+```
+
+Find the exited container by name, then copy its entire `identity` object from
+the result into `get_container`. The IDs below illustrate the shape.
+
+```json
+{"name":"get_container","arguments":{"identity":{"server_id":"000000000000000000000001","container_id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}
+```
+
+The cached summaries contain the Server-bound container identity, name, image
+and state where available. A null identity means the cache lacked a usable full Docker ID or the
+identity contained a configured credential and was withheld. An empty page can reflect the running filter, the page
+offset, an empty or missing cache, or a suppressed Periphery poll failure.
+`observed_count` counts the received rows across all states before filtering.
+
+Fresh inspection addresses only that Server and full container ID. It verifies
+the Docker response ID before returning name, state, exit code, health status
+and restart count. Unavailable fields are null. If Docker reports that exact ID is
+missing, `get_container` returns `not_found`. List again to discover a same-name replacement.
+A different or missing ID in a successful response produces `invalid_response`.
+A caller with Server Read alone can list but receives `permission_denied` on
+inspection. Environment, command arguments, labels, host configuration, health
+logs and raw Docker errors are omitted.
+
+## Inspect images, networks and volumes
 
 ```json
 {"name":"list_images","arguments":{"target":{"name":"test-server"},"page_size":30}}
@@ -13,9 +59,8 @@ existing, non-template Komodo Server by stable resource ID or exact name:
 
 IDs are synthetic; use identifiers from your own inventory. `list_networks` and
 `list_volumes` use the same target and pagination arguments as `list_images`.
-All seven endpoints require **Core Read on the Server** in pinned Core 2.3.2.
-Fresh image/network/volume inspection and image history do not require the
-separate Inspect flag. Local grants never confer Core permissions; denial never
+In pinned Core 2.3.2, Server Read suffices for fresh image, network and volume
+inspection and image history. Local grants never confer Core permissions; denial never
 switches identity, Server or endpoint. No removal, prune, terminal, creation or
 other mutation endpoint is used.
 
@@ -35,7 +80,7 @@ networks with the same name require an explicit ID. Duplicate identities are an
 invalid response. Volumes use their exact name because Core's list has no
 immutable volume identifier.
 
-Details resolve the complete bounded cached selection, request its exact ID
+Image, network and volume details resolve the complete bounded cached selection, request its exact ID
 (volume name), then verify the returned identity. Name selection also checks the
 fresh name or image references. Missing, ambiguous, changed, malformed or locally
 incomplete selectors fail without widening scope. A same-name volume replacement
@@ -90,12 +135,14 @@ Upstream bodies are capped at 2 MiB before decoding, including calls through the
 shared typed client. Lists and history scan at most 512 rows and return local
 pages of 1–100 items, default 30. Follow `next_page` with the same page size.
 `observed_count` and `scan_incomplete` disclose local clipping; a complete local
-scan does not establish upstream cache coverage. Exact object resolution refuses
-a cache larger than 512 rows. Responses are capped at 96 KiB after safe projection
+scan does not establish upstream cache coverage. Image, network and volume detail resolution refuses
+a cache larger than 512 rows. Container inspection addresses its full ID directly.
+Responses are capped at 96 KiB after safe projection
 and configured-credential redaction; request a smaller page if that budget fails.
 
 With an ordinary Server name or stable Komodo ID, lists require at most three
-Core reads, details four and history five. ObjectId-shaped Server names can need
+Core reads, container inspection three, other details four and history five.
+ObjectId-shaped Server names can need
 three extra bounded lookup pages. Each request has a 15-second deadline, with a
 five-second connect timeout. Client-side pagination and response limits do not
 bound Core's or Docker's internal enumeration. Pages are not snapshot tokens.
@@ -107,15 +154,19 @@ prune objects. Separately enabled pruning is tracked in #35.
 
 ## Validation and sources
 
-`cargo test --locked --test docker` exercises the compiled production stdio
-executable against an owned loopback Core wire fixture. It covers every local
+`cargo test --locked --test docker` exercises the compiled executable against an owned
+loopback Core wire fixture. Container discovery, list-to-inspect calls, denied
+inspection, stale identity and per-tool selection run over both stdio and
+authenticated Streamable HTTP. It covers every local
 capability profile, exact/missing/ambiguous/stale selection, Read-only permission
 requirements, unsafe metadata, unavailable/unsupported endpoints, clipped caches,
 oversized bodies and shared-transport bounds, with measured zero `/write` and
 `/execute` requests and child/mock cleanup. This does not run Core's permission
-engine or Docker; integrated live acceptance belongs to #112.
+engine or Docker. The packaged-candidate regression is tracked in
+[#48](https://github.com/enthouan/komodo-mcp/issues/48).
 
 Behavior was verified against tagged v2.3.2 [Core Docker resolvers](https://github.com/moghtech/komodo/blob/v2.3.2/bin/core/src/api/read/docker.rs),
+[container conversion and inspection](https://github.com/moghtech/komodo/blob/cc1c5aa5dabb738e843c47f5e87fc040648c2bb7/bin/periphery/src/docker/container.rs),
 [image conversion and history](https://github.com/moghtech/komodo/blob/v2.3.2/bin/periphery/src/docker/image.rs),
 [network conversion](https://github.com/moghtech/komodo/blob/v2.3.2/bin/periphery/src/docker/network.rs),
 [volume conversion](https://github.com/moghtech/komodo/blob/v2.3.2/bin/periphery/src/docker/volume.rs)

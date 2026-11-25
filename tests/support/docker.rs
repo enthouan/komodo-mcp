@@ -18,6 +18,8 @@ use std::{
 };
 
 pub const SERVER: &str = "000000000000000000000001";
+pub const RUNNING: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+pub const STOPPED: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 pub const IMAGE: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 pub const NETWORK: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 pub const PRIVATE: [&str; 10] = [
@@ -53,6 +55,13 @@ pub fn network(id: &str, name: &str) -> Value {
 pub fn volume(name: &str) -> Value {
     json!({"name":name,"driver":"local","mountpoint":PRIVATE[7],"created":"2026-11-15T00:00:00Z","scope":"local","size":-1,"in_use":false})
 }
+pub fn container(id: &str, name: &str, state: &str) -> Value {
+    json!({
+        "server_id": SERVER, "id": id, "name": name, "state": state,
+        "image": "fixture/web:latest", "status": "sensitive-description-marker",
+        "labels": {"private": "sensitive-config-credential-marker"}
+    })
+}
 impl Core {
     pub async fn start() -> Self {
         let mut replies = BTreeMap::new();
@@ -60,6 +69,23 @@ impl Core {
         summary["info"]["state"] = json!("Ok");
         replies.insert("ListServers".into(), json!([summary]));
         replies.insert("GetServer".into(), Family::Server.detail());
+        replies.insert(
+            "ListContainers".into(),
+            json!([
+                container(RUNNING, "active-web", "running"),
+                container(STOPPED, "failed-job", "exited")
+            ]),
+        );
+        replies.insert("InspectContainer".into(), json!({
+            "Id": STOPPED, "Name": "/failed-job", "Image": IMAGE, "RestartCount": 3,
+            "State": {"Status": "exited", "Running": false, "ExitCode": 17,
+                "Error": "sensitive-description-marker",
+                "Health": {"Status": "unhealthy", "Log": [{"Output": "sensitive-raw-trace-marker"}]}},
+            "Args": ["sensitive-compose-marker"],
+            "Config": {"Env": ["TOKEN=sensitive-environment-marker"],
+                "Cmd": ["sensitive-compose-marker"], "Labels": {"private": "sensitive-config-credential-marker"}},
+            "HostConfig": {"Binds": ["/sensitive-stored-file-marker:/private"]}
+        }));
         replies.insert(
             "ListImages".into(),
             json!([image(IMAGE, "fixture/web:latest")]),

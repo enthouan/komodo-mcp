@@ -20,7 +20,7 @@ provisional results and repeatable commands.
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.11.0 SDK](https://docs.rs/rmcp/3.11.0/rmcp/).
 It connects to Komodo Core using the official **komodo_client 2.3.2**, pinned
-exactly with optional features disabled. Sixty-four read-only tools list and inspect
+exactly with optional features disabled. Sixty-six read-only tools list and inspect
 Servers, Stacks, Deployments, Repos, Builders, Builds, Procedures and Actions, summarize fleet health, inspect alerts/update
 history, read bounded logs, and diagnose a stack in one call.
 The [scoped TOML export](docs/export.md) returns a sanitized inspection document
@@ -28,8 +28,9 @@ for explicit resources/groups, with separate opt-in to all Core variables.
 The [Swarm inspection tools](docs/swarms.md) inspect existing clusters, nodes,
 services and tasks, trace placement failures, and read bounded exact-service logs.
 Cached lists and fresh inspection remain distinct.
-The [Docker inspection tools](docs/docker.md) list and inspect images, networks
-and volumes on one Server, with safe image history and explicit cache limits.
+The [Docker inspection tools](docs/docker.md) list containers, images, networks
+and volumes on one Server. Inspect a stopped container by its returned identity
+to see fresh state, exit code, health status and restart count.
 The [pruning workflow](docs/pruning.md) adds a separate default-off opt-in for
 one reviewed category on one Server, with explicit destructive acknowledgement
 and read-only recovery after uncertain replies.
@@ -253,7 +254,7 @@ Discovery, tool lookup and direct dispatch use the same restricted router.
 Disabled, unknown and unclassified tools are rejected before argument handling,
 target reads or execution; constructing a call manually cannot bypass discovery.
 With both selection settings unset, every grant combination includes the
-sixty-four read tools, including `get_update` and `list_updates` for recovery. Core still
+sixty-six read tools, including `get_update` and `list_updates` for recovery. Core still
 controls which resources and history that identity can read. Configuration editing
 adds `preview_stack_create`/`apply_stack_create` and
 `preview_stack_update`/`apply_stack_update`. Core `Write` on an existing Stack,

@@ -417,6 +417,8 @@ async fn solve(
     ensure!(
         names
             == BTreeSet::from([
+                "list_containers",
+                "get_container",
                 "list_images",
                 "get_image",
                 "get_image_history",

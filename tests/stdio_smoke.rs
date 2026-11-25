@@ -245,6 +245,8 @@ async fn list_tools(process: &mut Process, id: &str) -> Result<()> {
                         "list_variables",
                         "get_variable",
                         "list_core_secret_names",
+                        "list_containers",
+                        "get_container",
                         "list_images",
                         "get_image",
                         "get_image_history",
@@ -294,7 +296,7 @@ async fn list_tools(process: &mut Process, id: &str) -> Result<()> {
                         "wait_for_resource_sync_update",
                     ])
                     .collect();
-                ensure!(names == expected, "expected all sixty-four read-only tools");
+                ensure!(names == expected, "expected all sixty-six read-only tools");
                 for tool in &result.tools {
                     ensure!(tool.output_schema.is_some(), "missing output schema");
                     let metadata = serde_json::to_value(tool)?;

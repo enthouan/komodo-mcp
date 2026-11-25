@@ -64,7 +64,7 @@ async fn discovery_and_denied_direct_calls_are_guarded_before_core_io() {
             let tools = s.list_tools(None).await.unwrap().tools;
             assert_eq!(
                 tools.len(),
-                64 + 20 * usize::from(operate)
+                66 + 20 * usize::from(operate)
                     + 55 * usize::from(edit)
                     + 4 * usize::from(operate && edit)
             );
