@@ -6,7 +6,7 @@ description: What has actually been verified for komodo-mcp clients, the MCP pro
 import { Aside } from '@astrojs/starlight/components';
 import RepositorySection from '../../../components/RepositorySection.astro';
 import { CLIENT_SETUPS } from '../../../data/clients.js';
-import { KOMODO_CLIENT_VERSION, MCP_PROTOCOL_VERSION, RMCP_VERSION, RUST_TOOLCHAIN } from '../../../data/project.js';
+import { MCP_PROTOCOL_VERSION, RMCP_VERSION, RUST_TOOLCHAIN } from '../../../data/project.js';
 
 This page separates three kinds of evidence: **configuration review** (the recipe matches the client's documentation), **connection and discovery** (the client started the server and listed its tools), and **live read** (a real tool call returned data). Nothing here is inherited from other projects or inferred from similar clients.
 
@@ -50,7 +50,7 @@ The repository's compiled-stdio tests initialize the actual executable with prot
 
 ## Komodo Core
 
-komodo-mcp pins `komodo_client` **{KOMODO_CLIENT_VERSION}** and its HTTP fixtures represent Komodo Core {KOMODO_CLIENT_VERSION}. Opt-in disposable Core/Periphery smoke runners are documented in the [operation walkthrough](/docs/operations-walkthrough/) and other walkthroughs; they run only when explicitly enabled and are not part of CI.
+For the disposable Core/Periphery setup and cleanup procedure, see the [operation walkthrough](/docs/operations-walkthrough/).
 
 <RepositorySection id="readme-version-evidence" />
 
