@@ -1,0 +1,142 @@
+{
+  "container": {
+    "archive": {
+      "bytes": 22265856,
+      "name": "candidate.oci.tar",
+      "sha256": "29ce1ebe3b56b97e232b6730694d099ef7526b5f66081bde6ee01b8fe49da048"
+    },
+    "image": "ghcr.io/enthouan/komodo-mcp:v0.8.0",
+    "index_digest": "sha256:3ec251c057387acf2c01501c9bcf466a2ef7dc28d2ea55928b74977276426def",
+    "native_run": {
+      "artifact_digest": "sha256:734896d30584f6fe02cfa69ddbe232c3880b26289bd3cf35c44e3368eaa04f93",
+      "artifact_id": 14989442020,
+      "run_attempt": 1,
+      "run_id": 45539030427,
+      "workflow": ".github/workflows/native-distribution.yml"
+    },
+    "platforms": {
+      "linux/amd64": {
+        "config_digest": "sha256:f4867b96b44180fb0171cce50e86abacad3566a8fbbf7c558cd31162ec188ab0",
+        "executable_sha256": "248d87fc69c51f011846c52b5c3e413d8fb32db857dd058b25ed72dc5d3b640e",
+        "manifest_digest": "sha256:aefc353409cbc1583949c7bab5bb706d1ca0815c6272a2a82c32435a6282721e",
+        "target": "x86_64-unknown-linux-musl"
+      },
+      "linux/arm64": {
+        "config_digest": "sha256:a68b82990516c99bd3421087ee6bdc02642507000f3757b6d76453e9d1cd1664",
+        "executable_sha256": "73c75e4dbcbb1f878b8ce8a5978477f156cd2581f70a0815f3bc8f0360c88126",
+        "manifest_digest": "sha256:4a975b8b681a7f073d6cbf0c5bfbde8ec3492f01c12f9d8fe039d449d0032df6",
+        "target": "aarch64-unknown-linux-musl"
+      }
+    },
+    "repository": "enthouan/komodo-mcp",
+    "revision": "e8432d39d6c12c5278d26f17959f041884ab5a4c",
+    "run_attempt": 1,
+    "run_id": 45539030406,
+    "schema_version": 1,
+    "source_url": "https://github.com/enthouan/komodo-mcp/releases/download/v0.8.0/komodo-mcp-v0.8.0-source.tar.gz",
+    "version": "0.8.0"
+  },
+  "contract": {
+    "baseline_commit": "e8432d39d6c12c5278d26f17959f041884ab5a4c",
+    "path": "docs/contracts/v1.json",
+    "sha256": "62c5f0e6050ffed72c21c32c3e9f017c98a49c83b18bacbe7507692fe33f79f0"
+  },
+  "distribution": {
+    "files": [
+      {
+        "bytes": 324390629,
+        "kind": "source",
+        "name": "komodo-mcp-v0.8.0-source.tar.gz",
+        "sha256": "732684888480e01cce92244c93b2f38dd50bedd4de961b7320369d7949c3d81a"
+      },
+      {
+        "bytes": 35344,
+        "kind": "license",
+        "name": "LICENSE",
+        "sha256": "0137925dd362439a48ef1a75abf6e0d7346c32b0473bf7d453e5ef762e9bfbf5"
+      },
+      {
+        "bytes": 1018847,
+        "kind": "notices",
+        "name": "THIRD-PARTY-NOTICES",
+        "sha256": "774f48e10e72fc7eaf77dcefca6048f2822648558f17ad1b19f99eb18a89644e"
+      },
+      {
+        "bytes": 11364734,
+        "executable_sha256": "248d87fc69c51f011846c52b5c3e413d8fb32db857dd058b25ed72dc5d3b640e",
+        "kind": "native",
+        "name": "komodo-mcp-v0.8.0-x86_64-unknown-linux-musl.tar.gz",
+        "sha256": "f1b70afe98feb499f79a76db22445b1efe3eb6af0b52de878ce1c4b6c74a5353",
+        "target": "x86_64-unknown-linux-musl"
+      },
+      {
+        "bytes": 10259349,
+        "executable_sha256": "73c75e4dbcbb1f878b8ce8a5978477f156cd2581f70a0815f3bc8f0360c88126",
+        "kind": "native",
+        "name": "komodo-mcp-v0.8.0-aarch64-unknown-linux-musl.tar.gz",
+        "sha256": "32eb0133d428e5b1b14a231305247c26739b9bf9262c5401cb554ee0691d7d8e",
+        "target": "aarch64-unknown-linux-musl"
+      },
+      {
+        "bytes": 11400012,
+        "executable_sha256": "6c57369b9c456fab4c95e92e05fd220472e19fc92de298d2da3c1219f213f319",
+        "kind": "native",
+        "minimum_macos": "15.0",
+        "name": "komodo-mcp-v0.8.0-x86_64-apple-darwin.tar.gz",
+        "sha256": "41398a632deae0deb8cde0ef88b8652a2fca9d910fec287e6a31fb93b1132c0f",
+        "target": "x86_64-apple-darwin"
+      },
+      {
+        "bytes": 10574181,
+        "executable_sha256": "c72ff5a38a72856249a6e86aa4cad4e83f0b3f5b4bb3950671a16290e25d72cf",
+        "kind": "native",
+        "minimum_macos": "15.0",
+        "name": "komodo-mcp-v0.8.0-aarch64-apple-darwin.tar.gz",
+        "sha256": "75a1052997dfe5122d204c4bcb46f8eb9f123edb476620d24aea8160dc53b8f8",
+        "target": "aarch64-apple-darwin"
+      },
+      {
+        "bytes": 716,
+        "kind": "checksums",
+        "name": "SHA256SUMS",
+        "sha256": "d4089b8ea6a3f6b84d2dafb284a85802ec003014a722fdf0039b4545b25cda71"
+      }
+    ],
+    "repository": "enthouan/komodo-mcp",
+    "revision": "e8432d39d6c12c5278d26f17959f041884ab5a4c",
+    "run_attempt": 1,
+    "run_id": 45539030427,
+    "schema_version": 1,
+    "version": "0.8.0"
+  },
+  "native_run": {
+    "artifact_digest": "sha256:734896d30584f6fe02cfa69ddbe232c3880b26289bd3cf35c44e3368eaa04f93",
+    "artifact_id": 14989442020,
+    "run_attempt": 1,
+    "run_id": 45539030427,
+    "url": "https://github.com/enthouan/komodo-mcp/actions/runs/45539030427",
+    "workflow": ".github/workflows/native-distribution.yml"
+  },
+  "oci_run": {
+    "artifact_digest": "sha256:06932a58a92ba1c75eebafd0d1e053923e61cbc89b7e1b33efe9d8421cdfe7de",
+    "artifact_id": 14989138601,
+    "run_attempt": 1,
+    "run_id": 45539030406,
+    "url": "https://github.com/enthouan/komodo-mcp/actions/runs/45539030406",
+    "workflow": ".github/workflows/container-distribution.yml"
+  },
+  "version_probe": {
+    "cargo_version": "0.8.0",
+    "client": {
+      "name": "stacks-on-server",
+      "protocol": "2025-11-25",
+      "version": "1"
+    },
+    "executable_sha256": "6c57369b9c456fab4c95e92e05fd220472e19fc92de298d2da3c1219f213f319",
+    "fixture_core_version": "2.3.2",
+    "matching_stacks": 3,
+    "mcp_server_version": "0.8.0",
+    "target": "x86_64-apple-darwin",
+    "transport": "stdio"
+  }
+}

@@ -9,7 +9,7 @@ from itertools import chain
 
 
 SUMMARY = b"benchmarks/results/README.md"
-REPORT_FORMAT = re.compile(rb'"format"\s*:\s*"komodo-(?:inventory-benchmark|incident-benchmark|benchmark-artifacts)/')
+REPORT_FORMAT = re.compile(rb'"format"\s*:\s*"komodo-(?:inventory-benchmark|incident-benchmark|live-inventory-benchmark|benchmark-artifacts)/')
 LOCAL_PATH = re.compile(rb"(?:/(?:Users|home|(?:private/)?tmp|(?:private/)?var/folders)/|[A-Z]:[\\/]+Users[\\/]+)", re.I)
 
 

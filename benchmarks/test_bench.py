@@ -293,7 +293,7 @@ class PreparedIntegrationTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(count=count), tempfile.TemporaryDirectory(prefix="inventory spaces ") as temp, Core(count) as core:
                 home = Path(temp)
                 (home / "config.toml").write_text("")
-                for name in ("rust", "reference"):
+                for name in bench.packaged.participants(artifacts):
                     core.mark(name, 0, "startup")
                     client = Client(artifacts[name]["argv"], child_env(home, core.address), home)
                     try:
@@ -301,7 +301,9 @@ class PreparedIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         core.mark(name, 0, "warm", 0)
                         sample = await client.inventory(name, 3, core.expected)
                         self.assertEqual(sample["equivalence"]["count"], count)
-                        self.assertEqual(sample["mcp_calls"], max(1, (count + 2) // 3))
+                        # Raw ListStacks has no next cursor. A full last page needs one final read.
+                        pages = count // 3 + 1 if name == "rust_reference" else max(1, (count + 2) // 3)
+                        self.assertEqual(sample["mcp_calls"], pages)
                         self.assertGreater(sample["response_bytes"], 0)
                     finally:
                         await client.close()

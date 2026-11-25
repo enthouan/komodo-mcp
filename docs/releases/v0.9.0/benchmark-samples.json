@@ -1,0 +1,5405 @@
+{
+  "format": "komodo-public-measurements/v1",
+  "artifacts": {
+    "candidate": {
+      "commit": "e8432d39d6c12c5278d26f17959f041884ab5a4c",
+      "baseline_commit": "e8432d39d6c12c5278d26f17959f041884ab5a4c",
+      "version": "0.8.0",
+      "target": "x86_64-apple-darwin",
+      "sha256": "6c57369b9c456fab4c95e92e05fd220472e19fc92de298d2da3c1219f213f319",
+      "cargo_lock_sha256": "6547c646af5f0ec367f5daae23e960e3a049b217f901e530c59e6cfe02cb8c68",
+      "source_sha256": "732684888480e01cce92244c93b2f38dd50bedd4de961b7320369d7949c3d81a",
+      "candidate_record_sha256": "624c2d481ee60d3ccfdd1da1c5badf0c895f00480b7e11ccc4848acad892e60c",
+      "archive_bytes": 11400012,
+      "archive_sha256": "41398a632deae0deb8cde0ef88b8652a2fca9d910fec287e6a31fb93b1132c0f",
+      "executable_bytes": 32497640,
+      "toolchain": "1.99.1",
+      "profile": "release, distribution feature, stripped symbols",
+      "native": {
+        "run_id": 45539030427,
+        "run_attempt": 1,
+        "artifact_id": 14989442020
+      },
+      "oci": {
+        "run_id": 45539030406,
+        "run_attempt": 1,
+        "artifact_id": 14989138601
+      }
+    },
+    "rust_reference": {
+      "repository": "https://github.com/Kalaghni/komodo-mcp.git",
+      "commit": "2efbe2232d98ac0c7eec90135fd683b5b39c1cca",
+      "version": "0.1.0",
+      "rustc": "1.99.1",
+      "cargo": "1.99.1",
+      "target": "x86_64-apple-darwin",
+      "profile": "release, thin LTO, one codegen unit, stripped",
+      "sha256": "da4aa02de386328699aaa86f9c77352036c3997b2b3d115fb2b23b713010b277",
+      "cargo_lock_sha256": "1e0fd7673968cddd83cbb2d56bf5e0600c501791387c2fc261cd539569b3410c",
+      "executable_bytes": 5673600
+    },
+    "typescript_reference": {
+      "repository": "https://github.com/MP-Tool/komodo-mcp-server.git",
+      "commit": "489f7e04b16019480f84e1d2fff8b872b880e335",
+      "version": "1.5.0",
+      "build_sha256": "87ac1f0020ead2e21d111e67a67d3836d253aadbc1a5778f5843d2cee96d2761",
+      "dependencies_sha256": "1df3f9d89a1864ece51bb8a4cf2ff4f64c7373fa67e8eabd1083ceacb2fd6691",
+      "package_lock_sha256": "946c81c79078bb55984e14cdda86552a34e55678a90a272bf0ac53f81e00b6ad",
+      "node_sha256": "c5afe80c9fd47c0e1ba3a7221173d061dae04577acc67e21e945d16e34c696c8",
+      "build_bytes": 1708728,
+      "dependencies_bytes": 142646635,
+      "node_bytes": 123320000,
+      "node_version": "v24.18.0",
+      "npm_version": "11.16.0"
+    }
+  },
+  "runs": [
+    {
+      "workload": "inventory",
+      "environment": "fixture",
+      "controls": {
+        "fixture_size": 31,
+        "page_size": 7,
+        "warmup": 2,
+        "samples": 10,
+        "cold_samples": 5,
+        "repetitions": 2,
+        "idle_ms": 200,
+        "rss_interval_ms": 20,
+        "timeout": 20,
+        "concurrency": 1
+      },
+      "protocol": "2025-03-26",
+      "client": "komodo-inventory-benchmark/1",
+      "transport": "stdio",
+      "host": {
+        "logical_cpus": 6,
+        "memory_bytes": 68719476736,
+        "python": "3.13.14",
+        "cpu_model": "Intel(R) Core(TM) i5-8500B",
+        "system": "Darwin",
+        "architecture": "x86_64"
+      },
+      "observed_cpu_load": [
+        3.232421875,
+        3.681640625,
+        8.3486328125
+      ],
+      "implementations": {
+        "candidate": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 170.795428,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 169.721176,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 173.307475,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 165.41032,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 167.574319,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 166.97033,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 202.731419,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 170.684139,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 175.138671,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 178.157448,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 236.745335,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 201.416523,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 180.68789,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 188.139018,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 182.904909,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 206.043843,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 184.750671,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 177.437541,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 197.048266,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 201.160988,
+              "response_bytes": 14734,
+              "mcp_calls": 5,
+              "core_requests": 9,
+              "core_response_bytes": 41380
+            }
+          ],
+          "memory": [
+            {
+              "batch": 0,
+              "idle_rss_bytes": 5713920,
+              "peak_sampled_rss_bytes": 94687232
+            },
+            {
+              "batch": 1,
+              "idle_rss_bytes": 5779456,
+              "peak_sampled_rss_bytes": 92131328
+            }
+          ],
+          "cold": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 19.22367,
+              "response_bytes": 150,
+              "core_requests": 1,
+              "core_response_bytes": 19
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 19.757516,
+              "response_bytes": 150,
+              "core_requests": 1,
+              "core_response_bytes": 19
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 16.497008,
+              "response_bytes": 150,
+              "core_requests": 1,
+              "core_response_bytes": 19
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 19.743289,
+              "response_bytes": 150,
+              "core_requests": 1,
+              "core_response_bytes": 19
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 19.819606,
+              "response_bytes": 150,
+              "core_requests": 1,
+              "core_response_bytes": 19
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 51.58575,
+              "response_bytes": 150,
+              "core_requests": 1,
+              "core_response_bytes": 19
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 16.247457,
+              "response_bytes": 150,
+              "core_requests": 1,
+              "core_response_bytes": 19
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 17.173645,
+              "response_bytes": 150,
+              "core_requests": 1,
+              "core_response_bytes": 19
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 17.381021,
+              "response_bytes": 150,
+              "core_requests": 1,
+              "core_response_bytes": 19
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 15.827873,
+              "response_bytes": 150,
+              "core_requests": 1,
+              "core_response_bytes": 19
+            }
+          ]
+        },
+        "typescript_reference": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 28.681462,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 20.020981,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 19.516611,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 20.905499,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 19.629716,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 20.070245,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 20.716899,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 20.793897,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 24.016147,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 24.651984,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 24.946273,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 19.899155,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 20.687279,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 20.868008,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 21.031756,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 19.653888,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 19.743708,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 19.453759,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 21.925743,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 19.135871,
+              "response_bytes": 8614,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 116595
+            }
+          ],
+          "memory": [
+            {
+              "batch": 0,
+              "idle_rss_bytes": 103292928,
+              "peak_sampled_rss_bytes": 154001408
+            },
+            {
+              "batch": 1,
+              "idle_rss_bytes": 103616512,
+              "peak_sampled_rss_bytes": 153968640
+            }
+          ],
+          "cold": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 567.570939,
+              "response_bytes": 10067,
+              "core_requests": 2,
+              "core_response_bytes": 24
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 621.632177,
+              "response_bytes": 10067,
+              "core_requests": 2,
+              "core_response_bytes": 24
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 626.055944,
+              "response_bytes": 10067,
+              "core_requests": 2,
+              "core_response_bytes": 24
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 571.594284,
+              "response_bytes": 10067,
+              "core_requests": 2,
+              "core_response_bytes": 24
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 554.971336,
+              "response_bytes": 10067,
+              "core_requests": 2,
+              "core_response_bytes": 24
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 680.542942,
+              "response_bytes": 10067,
+              "core_requests": 2,
+              "core_response_bytes": 24
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 553.854199,
+              "response_bytes": 10067,
+              "core_requests": 2,
+              "core_response_bytes": 24
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 621.842063,
+              "response_bytes": 10067,
+              "core_requests": 2,
+              "core_response_bytes": 24
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 583.050239,
+              "response_bytes": 10067,
+              "core_requests": 2,
+              "core_response_bytes": 24
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 603.020146,
+              "response_bytes": 10067,
+              "core_requests": 2,
+              "core_response_bytes": 24
+            }
+          ]
+        },
+        "rust_reference": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 4.032422,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 4.407784,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 5.107449,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 4.234471,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 4.854023,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 4.205076,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 4.241907,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 6.198833,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 4.228418,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 3.983418,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 5.600512,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 4.073029,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 4.509692,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 6.018579,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 4.144488,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 4.932867,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 5.761915,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 4.284769,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 3.921915,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 4.484961,
+              "response_bytes": 27074,
+              "mcp_calls": 5,
+              "core_requests": 5,
+              "core_response_bytes": 23323
+            }
+          ],
+          "memory": [
+            {
+              "batch": 0,
+              "idle_rss_bytes": 3907584,
+              "peak_sampled_rss_bytes": 5443584
+            },
+            {
+              "batch": 1,
+              "idle_rss_bytes": 3936256,
+              "peak_sampled_rss_bytes": 5451776
+            }
+          ],
+          "cold": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 13.818099,
+              "response_bytes": 640,
+              "core_requests": 0,
+              "core_response_bytes": 0
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 13.059826,
+              "response_bytes": 640,
+              "core_requests": 0,
+              "core_response_bytes": 0
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 16.800157,
+              "response_bytes": 640,
+              "core_requests": 0,
+              "core_response_bytes": 0
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 14.131389,
+              "response_bytes": 640,
+              "core_requests": 0,
+              "core_response_bytes": 0
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 13.798806,
+              "response_bytes": 640,
+              "core_requests": 0,
+              "core_response_bytes": 0
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 16.792812,
+              "response_bytes": 640,
+              "core_requests": 0,
+              "core_response_bytes": 0
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 18.162025,
+              "response_bytes": 640,
+              "core_requests": 0,
+              "core_response_bytes": 0
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 18.306985,
+              "response_bytes": 640,
+              "core_requests": 0,
+              "core_response_bytes": 0
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 16.523562,
+              "response_bytes": 640,
+              "core_requests": 0,
+              "core_response_bytes": 0
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 15.618375,
+              "response_bytes": 640,
+              "core_requests": 0,
+              "core_response_bytes": 0
+            }
+          ]
+        },
+        "direct_core": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 2.841277,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 2.808072,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 2.844017,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 2.861889,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 2.85738,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 2.74946,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 2.812342,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 3.195413,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 2.892699,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 2.801543,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 2.708561,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 2.76276,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 3.106067,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 2.901406,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 2.816102,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 2.917371,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 2.808543,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 2.931289,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 2.9096,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 2.686637,
+              "http_calls": 5,
+              "response_body_bytes": 23323
+            }
+          ],
+          "version": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 0.694762,
+              "http_calls": 1,
+              "response_body_bytes": 19
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 0.376179,
+              "http_calls": 1,
+              "response_body_bytes": 19
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 0.403728,
+              "http_calls": 1,
+              "response_body_bytes": 19
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 0.385425,
+              "http_calls": 1,
+              "response_body_bytes": 19
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 0.358208,
+              "http_calls": 1,
+              "response_body_bytes": 19
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 0.677554,
+              "http_calls": 1,
+              "response_body_bytes": 19
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 0.394353,
+              "http_calls": 1,
+              "response_body_bytes": 19
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 0.393556,
+              "http_calls": 1,
+              "response_body_bytes": 19
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 0.422223,
+              "http_calls": 1,
+              "response_body_bytes": 19
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 0.407528,
+              "http_calls": 1,
+              "response_body_bytes": 19
+            }
+          ]
+        }
+      },
+      "fixture_wire_sha256": "4804d3640107dc2e0c2aa2b9d6cac9c05e6f83aa9e9e866d962bd3105e23806b",
+      "fixture_delay_ms": 0,
+      "fixture_service_ms": {
+        "n": 1084,
+        "min": 0.086978,
+        "p50": 0.255529,
+        "p95": 0.957741,
+        "max": 6.835057
+      },
+      "summary": {
+        "candidate": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 165.41032,
+              "p50": 178.157448,
+              "p95": 206.043843,
+              "max": 236.745335
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 14734,
+              "p50": 14734,
+              "p95": 14734,
+              "max": 14734
+            },
+            "mcp_calls": {
+              "n": 20,
+              "min": 5,
+              "p50": 5,
+              "p95": 5,
+              "max": 5
+            },
+            "core_requests": {
+              "n": 20,
+              "min": 9,
+              "p50": 9,
+              "p95": 9,
+              "max": 9
+            },
+            "core_response_bytes": {
+              "n": 20,
+              "min": 41380,
+              "p50": 41380,
+              "p95": 41380,
+              "max": 41380
+            }
+          },
+          "cold": {
+            "elapsed_ms": {
+              "n": 10,
+              "min": 15.827873,
+              "p50": 17.381021,
+              "p95": 51.58575,
+              "max": 51.58575
+            },
+            "response_bytes": {
+              "n": 10,
+              "min": 150,
+              "p50": 150,
+              "p95": 150,
+              "max": 150
+            },
+            "core_requests": {
+              "n": 10,
+              "min": 1,
+              "p50": 1,
+              "p95": 1,
+              "max": 1
+            },
+            "core_response_bytes": {
+              "n": 10,
+              "min": 19,
+              "p50": 19,
+              "p95": 19,
+              "max": 19
+            }
+          },
+          "memory": {
+            "idle_rss_bytes": {
+              "n": 2,
+              "min": 5713920,
+              "p50": 5713920,
+              "p95": 5779456,
+              "max": 5779456
+            },
+            "peak_sampled_rss_bytes": {
+              "n": 2,
+              "min": 92131328,
+              "p50": 92131328,
+              "p95": 94687232,
+              "max": 94687232
+            }
+          }
+        },
+        "typescript_reference": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 19.135871,
+              "p50": 20.687279,
+              "p95": 24.946273,
+              "max": 28.681462
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 8614,
+              "p50": 8614,
+              "p95": 8614,
+              "max": 8614
+            },
+            "mcp_calls": {
+              "n": 20,
+              "min": 5,
+              "p50": 5,
+              "p95": 5,
+              "max": 5
+            },
+            "core_requests": {
+              "n": 20,
+              "min": 5,
+              "p50": 5,
+              "p95": 5,
+              "max": 5
+            },
+            "core_response_bytes": {
+              "n": 20,
+              "min": 116595,
+              "p50": 116595,
+              "p95": 116595,
+              "max": 116595
+            }
+          },
+          "cold": {
+            "elapsed_ms": {
+              "n": 10,
+              "min": 553.854199,
+              "p50": 583.050239,
+              "p95": 680.542942,
+              "max": 680.542942
+            },
+            "response_bytes": {
+              "n": 10,
+              "min": 10067,
+              "p50": 10067,
+              "p95": 10067,
+              "max": 10067
+            },
+            "core_requests": {
+              "n": 10,
+              "min": 2,
+              "p50": 2,
+              "p95": 2,
+              "max": 2
+            },
+            "core_response_bytes": {
+              "n": 10,
+              "min": 24,
+              "p50": 24,
+              "p95": 24,
+              "max": 24
+            }
+          },
+          "memory": {
+            "idle_rss_bytes": {
+              "n": 2,
+              "min": 103292928,
+              "p50": 103292928,
+              "p95": 103616512,
+              "max": 103616512
+            },
+            "peak_sampled_rss_bytes": {
+              "n": 2,
+              "min": 153968640,
+              "p50": 153968640,
+              "p95": 154001408,
+              "max": 154001408
+            }
+          }
+        },
+        "rust_reference": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 3.921915,
+              "p50": 4.284769,
+              "p95": 6.018579,
+              "max": 6.198833
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 27074,
+              "p50": 27074,
+              "p95": 27074,
+              "max": 27074
+            },
+            "mcp_calls": {
+              "n": 20,
+              "min": 5,
+              "p50": 5,
+              "p95": 5,
+              "max": 5
+            },
+            "core_requests": {
+              "n": 20,
+              "min": 5,
+              "p50": 5,
+              "p95": 5,
+              "max": 5
+            },
+            "core_response_bytes": {
+              "n": 20,
+              "min": 23323,
+              "p50": 23323,
+              "p95": 23323,
+              "max": 23323
+            }
+          },
+          "cold": {
+            "elapsed_ms": {
+              "n": 10,
+              "min": 13.059826,
+              "p50": 15.618375,
+              "p95": 18.306985,
+              "max": 18.306985
+            },
+            "response_bytes": {
+              "n": 10,
+              "min": 640,
+              "p50": 640,
+              "p95": 640,
+              "max": 640
+            },
+            "core_requests": {
+              "n": 10,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0
+            },
+            "core_response_bytes": {
+              "n": 10,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0
+            }
+          },
+          "memory": {
+            "idle_rss_bytes": {
+              "n": 2,
+              "min": 3907584,
+              "p50": 3907584,
+              "p95": 3936256,
+              "max": 3936256
+            },
+            "peak_sampled_rss_bytes": {
+              "n": 2,
+              "min": 5443584,
+              "p50": 5443584,
+              "p95": 5451776,
+              "max": 5451776
+            }
+          }
+        },
+        "direct_core": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 2.686637,
+              "p50": 2.841277,
+              "p95": 3.106067,
+              "max": 3.195413
+            },
+            "http_calls": {
+              "n": 20,
+              "min": 5,
+              "p50": 5,
+              "p95": 5,
+              "max": 5
+            },
+            "response_body_bytes": {
+              "n": 20,
+              "min": 23323,
+              "p50": 23323,
+              "p95": 23323,
+              "max": 23323
+            }
+          },
+          "version": {
+            "elapsed_ms": {
+              "n": 10,
+              "min": 0.358208,
+              "p50": 0.394353,
+              "p95": 0.694762,
+              "max": 0.694762
+            },
+            "http_calls": {
+              "n": 10,
+              "min": 1,
+              "p50": 1,
+              "p95": 1,
+              "max": 1
+            },
+            "response_body_bytes": {
+              "n": 10,
+              "min": 19,
+              "p50": 19,
+              "p95": 19,
+              "max": 19
+            }
+          }
+        }
+      }
+    },
+    {
+      "workload": "incident",
+      "environment": "fixture",
+      "controls": {
+        "fixture_size": 7,
+        "page_size": 3,
+        "concurrency": 2,
+        "warmup": 2,
+        "samples": 10,
+        "repetitions": 2,
+        "idle_ms": 200,
+        "rss_interval_ms": 20,
+        "timeout": 30
+      },
+      "protocol": "2025-03-26",
+      "client": "komodo-inventory-benchmark/1",
+      "transport": "stdio",
+      "host": {
+        "logical_cpus": 6,
+        "memory_bytes": 68719476736,
+        "python": "3.13.14",
+        "cpu_model": "Intel(R) Core(TM) i5-8500B",
+        "system": "Darwin",
+        "architecture": "x86_64"
+      },
+      "observed_cpu_load": [
+        3.048828125,
+        3.58740234375,
+        8.02197265625
+      ],
+      "implementations": {
+        "candidate": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 299.536591,
+              "response_bytes": 41540,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 7,
+              "callers": [
+                {
+                  "elapsed_ms": 299.385663,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                },
+                {
+                  "elapsed_ms": 280.203719,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 321.380258,
+              "response_bytes": 41540,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 301.072793,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                },
+                {
+                  "elapsed_ms": 321.174986,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 324.445795,
+              "response_bytes": 41540,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 7,
+              "callers": [
+                {
+                  "elapsed_ms": 303.250257,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                },
+                {
+                  "elapsed_ms": 324.253224,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 317.661386,
+              "response_bytes": 41540,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 6,
+              "callers": [
+                {
+                  "elapsed_ms": 317.510009,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                },
+                {
+                  "elapsed_ms": 299.361891,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 319.342067,
+              "response_bytes": 41540,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 5,
+              "callers": [
+                {
+                  "elapsed_ms": 319.176045,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                },
+                {
+                  "elapsed_ms": 300.209332,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 324.870279,
+              "response_bytes": 41554,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 304.185039,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                },
+                {
+                  "elapsed_ms": 324.641885,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 314.539434,
+              "response_bytes": 41554,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 295.646569,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                },
+                {
+                  "elapsed_ms": 314.278754,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 316.102277,
+              "response_bytes": 41554,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 6,
+              "callers": [
+                {
+                  "elapsed_ms": 296.343385,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                },
+                {
+                  "elapsed_ms": 315.913575,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 308.628442,
+              "response_bytes": 41554,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 290.5852,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                },
+                {
+                  "elapsed_ms": 308.427909,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 311.795225,
+              "response_bytes": 41554,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 291.93721,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                },
+                {
+                  "elapsed_ms": 311.493815,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 319.068306,
+              "response_bytes": 41540,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 7,
+              "callers": [
+                {
+                  "elapsed_ms": 318.928702,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                },
+                {
+                  "elapsed_ms": 303.557154,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 316.868357,
+              "response_bytes": 41540,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 316.693222,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                },
+                {
+                  "elapsed_ms": 299.216283,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 307.513105,
+              "response_bytes": 41540,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 7,
+              "callers": [
+                {
+                  "elapsed_ms": 307.365976,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                },
+                {
+                  "elapsed_ms": 287.659486,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 307.174553,
+              "response_bytes": 41540,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 288.556319,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                },
+                {
+                  "elapsed_ms": 306.974884,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 314.465811,
+              "response_bytes": 41540,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 295.481308,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                },
+                {
+                  "elapsed_ms": 314.285514,
+                  "mcp_calls": 7,
+                  "response_bytes": 20770
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 337.044287,
+              "response_bytes": 41554,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 5,
+              "callers": [
+                {
+                  "elapsed_ms": 317.791388,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                },
+                {
+                  "elapsed_ms": 336.839032,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 388.229002,
+              "response_bytes": 41554,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 388.061605,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                },
+                {
+                  "elapsed_ms": 365.408362,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 317.586211,
+              "response_bytes": 41554,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 4,
+              "callers": [
+                {
+                  "elapsed_ms": 317.366765,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                },
+                {
+                  "elapsed_ms": 298.724033,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 316.653321,
+              "response_bytes": 41554,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 300.7315,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                },
+                {
+                  "elapsed_ms": 316.36667,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 317.803901,
+              "response_bytes": 41554,
+              "mcp_calls": 14,
+              "core_requests": 92,
+              "core_response_bytes": 42440,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 298.047182,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                },
+                {
+                  "elapsed_ms": 317.621096,
+                  "mcp_calls": 7,
+                  "response_bytes": 20777
+                }
+              ]
+            }
+          ],
+          "memory": [
+            {
+              "batch": 0,
+              "idle_rss_bytes": 5640192,
+              "peak_sampled_rss_bytes": 164462592
+            },
+            {
+              "batch": 1,
+              "idle_rss_bytes": 5693440,
+              "peak_sampled_rss_bytes": 163528704
+            }
+          ]
+        },
+        "typescript_reference": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 34.399131,
+              "response_bytes": 17860,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 34.2595,
+                  "mcp_calls": 10,
+                  "response_bytes": 8930
+                },
+                {
+                  "elapsed_ms": 32.923715,
+                  "mcp_calls": 10,
+                  "response_bytes": 8930
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 45.692362,
+              "response_bytes": 17860,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 45.180252,
+                  "mcp_calls": 10,
+                  "response_bytes": 8930
+                },
+                {
+                  "elapsed_ms": 45.380213,
+                  "mcp_calls": 10,
+                  "response_bytes": 8930
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 48.594273,
+              "response_bytes": 17862,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 43.946339,
+                  "mcp_calls": 10,
+                  "response_bytes": 8930
+                },
+                {
+                  "elapsed_ms": 48.363053,
+                  "mcp_calls": 10,
+                  "response_bytes": 8932
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 36.371531,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 36.182957,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 35.881025,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 33.945067,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 31.706997,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 33.748208,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 25.436343,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 25.300037,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 24.242669,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 32.150539,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 1,
+              "callers": [
+                {
+                  "elapsed_ms": 31.046474,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 31.973469,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 29.886048,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 27.295701,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 29.676094,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 40.196969,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 37.261806,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 40.020751,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 31.509354,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 30.559135,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 31.336192,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 35.875664,
+              "response_bytes": 17860,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 1,
+              "callers": [
+                {
+                  "elapsed_ms": 34.663749,
+                  "mcp_calls": 10,
+                  "response_bytes": 8930
+                },
+                {
+                  "elapsed_ms": 35.644789,
+                  "mcp_calls": 10,
+                  "response_bytes": 8930
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 40.145645,
+              "response_bytes": 17860,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 38.785766,
+                  "mcp_calls": 10,
+                  "response_bytes": 8930
+                },
+                {
+                  "elapsed_ms": 39.962899,
+                  "mcp_calls": 10,
+                  "response_bytes": 8930
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 43.379841,
+              "response_bytes": 17862,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 43.234342,
+                  "mcp_calls": 10,
+                  "response_bytes": 8931
+                },
+                {
+                  "elapsed_ms": 41.924465,
+                  "mcp_calls": 10,
+                  "response_bytes": 8931
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 52.871011,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 1,
+              "callers": [
+                {
+                  "elapsed_ms": 51.243696,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 52.647216,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 41.877211,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 41.730964,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 40.518516,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 41.157003,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 1,
+              "callers": [
+                {
+                  "elapsed_ms": 39.514352,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 40.953913,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 51.561919,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 1,
+              "callers": [
+                {
+                  "elapsed_ms": 48.77291,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 51.371997,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 38.660499,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 1,
+              "callers": [
+                {
+                  "elapsed_ms": 37.392576,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 38.469849,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 37.519419,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 1,
+              "callers": [
+                {
+                  "elapsed_ms": 36.088636,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 37.3326,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 46.240708,
+              "response_bytes": 17880,
+              "mcp_calls": 20,
+              "core_requests": 20,
+              "core_response_bytes": 36860,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 46.080313,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                },
+                {
+                  "elapsed_ms": 42.837929,
+                  "mcp_calls": 10,
+                  "response_bytes": 8940
+                }
+              ]
+            }
+          ],
+          "memory": [
+            {
+              "batch": 0,
+              "idle_rss_bytes": 103575552,
+              "peak_sampled_rss_bytes": 178221056
+            },
+            {
+              "batch": 1,
+              "idle_rss_bytes": 103432192,
+              "peak_sampled_rss_bytes": 178700288
+            }
+          ]
+        },
+        "rust_reference": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 6.37825,
+              "response_bytes": 16950,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 6.25915,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                },
+                {
+                  "elapsed_ms": 6.113526,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 7.078817,
+              "response_bytes": 16950,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 6.961992,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                },
+                {
+                  "elapsed_ms": 6.80623,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 6.605399,
+              "response_bytes": 16950,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 6.354431,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                },
+                {
+                  "elapsed_ms": 6.426283,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 6.503707,
+              "response_bytes": 16950,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 6.276627,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                },
+                {
+                  "elapsed_ms": 6.335937,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 8.466279,
+              "response_bytes": 16950,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 8.339134,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                },
+                {
+                  "elapsed_ms": 8.16629,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 6.744194,
+              "response_bytes": 16964,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 6.612034,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                },
+                {
+                  "elapsed_ms": 6.386719,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 6.836096,
+              "response_bytes": 16964,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 6.571864,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                },
+                {
+                  "elapsed_ms": 6.601263,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 9.26719,
+              "response_bytes": 16964,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 9.135282,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                },
+                {
+                  "elapsed_ms": 8.926892,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 6.856686,
+              "response_bytes": 16964,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 6.732526,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                },
+                {
+                  "elapsed_ms": 6.413752,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 6.110717,
+              "response_bytes": 16964,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 5.881382,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                },
+                {
+                  "elapsed_ms": 5.952322,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 7.508067,
+              "response_bytes": 16950,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 7.384051,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                },
+                {
+                  "elapsed_ms": 7.234946,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 6.584378,
+              "response_bytes": 16950,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 6.348402,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                },
+                {
+                  "elapsed_ms": 6.417392,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 7.959259,
+              "response_bytes": 16950,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 7.835144,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                },
+                {
+                  "elapsed_ms": 7.683014,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 6.196015,
+              "response_bytes": 16950,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 6.076016,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                },
+                {
+                  "elapsed_ms": 5.930185,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 6.338805,
+              "response_bytes": 16950,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 6.114752,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                },
+                {
+                  "elapsed_ms": 6.181352,
+                  "mcp_calls": 7,
+                  "response_bytes": 8475
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 9.134351,
+              "response_bytes": 16964,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 8.866719,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                },
+                {
+                  "elapsed_ms": 8.972276,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 20.862743,
+              "response_bytes": 16964,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 20.737021,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                },
+                {
+                  "elapsed_ms": 20.361712,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 7.006198,
+              "response_bytes": 16964,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 6.777806,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                },
+                {
+                  "elapsed_ms": 6.835263,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 6.296707,
+              "response_bytes": 16964,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 6.176482,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                },
+                {
+                  "elapsed_ms": 6.027655,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 8.470311,
+              "response_bytes": 16964,
+              "mcp_calls": 14,
+              "core_requests": 14,
+              "core_response_bytes": 13788,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 8.346581,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                },
+                {
+                  "elapsed_ms": 8.193682,
+                  "mcp_calls": 7,
+                  "response_bytes": 8482
+                }
+              ]
+            }
+          ],
+          "memory": [
+            {
+              "batch": 0,
+              "idle_rss_bytes": 3977216,
+              "peak_sampled_rss_bytes": 5513216
+            },
+            {
+              "batch": 1,
+              "idle_rss_bytes": 3919872,
+              "peak_sampled_rss_bytes": 5525504
+            }
+          ]
+        }
+      },
+      "fixture_wire_sha256": "7fed94aba5b1bb605b65bac9d166e071a0d5a336d46ac8e5c9ffb6100cbd55ff",
+      "fixture_delay_ms": 0,
+      "fixture_service_ms": {
+        "n": 6060,
+        "min": 0.090896,
+        "p50": 0.389173,
+        "p95": 2.017826,
+        "max": 10.819657
+      },
+      "summary": {
+        "candidate": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 299.536591,
+              "p50": 316.868357,
+              "p95": 337.044287,
+              "max": 388.229002
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 41540,
+              "p50": 41540,
+              "p95": 41554,
+              "max": 41554
+            },
+            "mcp_calls": {
+              "n": 20,
+              "min": 14,
+              "p50": 14,
+              "p95": 14,
+              "max": 14
+            },
+            "core_requests": {
+              "n": 20,
+              "min": 92,
+              "p50": 92,
+              "p95": 92,
+              "max": 92
+            },
+            "core_response_bytes": {
+              "n": 20,
+              "min": 42440,
+              "p50": 42440,
+              "p95": 42440,
+              "max": 42440
+            },
+            "peak_observed_core_concurrency": {
+              "n": 20,
+              "min": 4,
+              "p50": 8,
+              "p95": 8,
+              "max": 8
+            }
+          },
+          "memory": {
+            "idle_rss_bytes": {
+              "n": 2,
+              "min": 5640192,
+              "p50": 5640192,
+              "p95": 5693440,
+              "max": 5693440
+            },
+            "peak_sampled_rss_bytes": {
+              "n": 2,
+              "min": 163528704,
+              "p50": 163528704,
+              "p95": 164462592,
+              "max": 164462592
+            }
+          },
+          "caller_latency_ms": {
+            "n": 40,
+            "min": 280.203719,
+            "p50": 306.974884,
+            "p95": 336.839032,
+            "max": 388.061605
+          }
+        },
+        "typescript_reference": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 25.436343,
+              "p50": 38.660499,
+              "p95": 51.561919,
+              "max": 52.871011
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 17860,
+              "p50": 17880,
+              "p95": 17880,
+              "max": 17880
+            },
+            "mcp_calls": {
+              "n": 20,
+              "min": 20,
+              "p50": 20,
+              "p95": 20,
+              "max": 20
+            },
+            "core_requests": {
+              "n": 20,
+              "min": 20,
+              "p50": 20,
+              "p95": 20,
+              "max": 20
+            },
+            "core_response_bytes": {
+              "n": 20,
+              "min": 36860,
+              "p50": 36860,
+              "p95": 36860,
+              "max": 36860
+            },
+            "peak_observed_core_concurrency": {
+              "n": 20,
+              "min": 1,
+              "p50": 2,
+              "p95": 2,
+              "max": 2
+            }
+          },
+          "memory": {
+            "idle_rss_bytes": {
+              "n": 2,
+              "min": 103432192,
+              "p50": 103432192,
+              "p95": 103575552,
+              "max": 103575552
+            },
+            "peak_sampled_rss_bytes": {
+              "n": 2,
+              "min": 178221056,
+              "p50": 178221056,
+              "p95": 178700288,
+              "max": 178700288
+            }
+          },
+          "caller_latency_ms": {
+            "n": 40,
+            "min": 24.242669,
+            "p50": 37.392576,
+            "p95": 51.243696,
+            "max": 52.647216
+          }
+        },
+        "rust_reference": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 6.110717,
+              "p50": 6.836096,
+              "p95": 9.26719,
+              "max": 20.862743
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 16950,
+              "p50": 16950,
+              "p95": 16964,
+              "max": 16964
+            },
+            "mcp_calls": {
+              "n": 20,
+              "min": 14,
+              "p50": 14,
+              "p95": 14,
+              "max": 14
+            },
+            "core_requests": {
+              "n": 20,
+              "min": 14,
+              "p50": 14,
+              "p95": 14,
+              "max": 14
+            },
+            "core_response_bytes": {
+              "n": 20,
+              "min": 13788,
+              "p50": 13788,
+              "p95": 13788,
+              "max": 13788
+            },
+            "peak_observed_core_concurrency": {
+              "n": 20,
+              "min": 2,
+              "p50": 2,
+              "p95": 2,
+              "max": 2
+            }
+          },
+          "memory": {
+            "idle_rss_bytes": {
+              "n": 2,
+              "min": 3919872,
+              "p50": 3919872,
+              "p95": 3977216,
+              "max": 3977216
+            },
+            "peak_sampled_rss_bytes": {
+              "n": 2,
+              "min": 5513216,
+              "p50": 5513216,
+              "p95": 5525504,
+              "max": 5525504
+            }
+          },
+          "caller_latency_ms": {
+            "n": 40,
+            "min": 5.881382,
+            "p50": 6.601263,
+            "p95": 9.135282,
+            "max": 20.737021
+          }
+        }
+      }
+    },
+    {
+      "workload": "incident",
+      "environment": "fixture",
+      "controls": {
+        "fixture_size": 31,
+        "page_size": 3,
+        "concurrency": 2,
+        "warmup": 2,
+        "samples": 10,
+        "repetitions": 2,
+        "idle_ms": 200,
+        "rss_interval_ms": 20,
+        "timeout": 30
+      },
+      "protocol": "2025-03-26",
+      "client": "komodo-inventory-benchmark/1",
+      "transport": "stdio",
+      "host": {
+        "logical_cpus": 6,
+        "memory_bytes": 68719476736,
+        "python": "3.13.14",
+        "cpu_model": "Intel(R) Core(TM) i5-8500B",
+        "system": "Darwin",
+        "architecture": "x86_64"
+      },
+      "observed_cpu_load": [
+        3.3505859375,
+        3.5791015625,
+        7.8125
+      ],
+      "implementations": {
+        "candidate": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 740.797644,
+              "response_bytes": 116180,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 740.598482,
+                  "mcp_calls": 15,
+                  "response_bytes": 58090
+                },
+                {
+                  "elapsed_ms": 718.240434,
+                  "mcp_calls": 15,
+                  "response_bytes": 58090
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 719.404477,
+              "response_bytes": 116202,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 6,
+              "callers": [
+                {
+                  "elapsed_ms": 719.119207,
+                  "mcp_calls": 15,
+                  "response_bytes": 58101
+                },
+                {
+                  "elapsed_ms": 700.944536,
+                  "mcp_calls": 15,
+                  "response_bytes": 58101
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 844.081034,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 7,
+              "callers": [
+                {
+                  "elapsed_ms": 820.195895,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 843.715068,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 709.716971,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 7,
+              "callers": [
+                {
+                  "elapsed_ms": 688.075802,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 709.459056,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 670.782866,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 650.458385,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 670.523477,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 714.323335,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 689.766564,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 714.096928,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 702.735585,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 682.482813,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 702.508193,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 705.367786,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 705.158385,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 681.895492,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 729.137529,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 710.215735,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 728.84276,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 656.40568,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 634.144726,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 656.181655,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 768.766649,
+              "response_bytes": 116180,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 745.674608,
+                  "mcp_calls": 15,
+                  "response_bytes": 58090
+                },
+                {
+                  "elapsed_ms": 768.531149,
+                  "mcp_calls": 15,
+                  "response_bytes": 58090
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 813.373922,
+              "response_bytes": 116202,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 791.816436,
+                  "mcp_calls": 15,
+                  "response_bytes": 58101
+                },
+                {
+                  "elapsed_ms": 813.0911,
+                  "mcp_calls": 15,
+                  "response_bytes": 58101
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 790.725474,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 7,
+              "callers": [
+                {
+                  "elapsed_ms": 790.517366,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 766.967286,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 716.628268,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 716.104715,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 698.548803,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 712.452102,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 6,
+              "callers": [
+                {
+                  "elapsed_ms": 712.150071,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 690.426054,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 778.431559,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 778.23427,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 757.184862,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 797.193602,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 796.995898,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 771.20641,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 828.022198,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 827.824758,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 804.374173,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 809.413281,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 788.981983,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 809.173979,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 757.508913,
+              "response_bytes": 116210,
+              "mcp_calls": 30,
+              "core_requests": 284,
+              "core_response_bytes": 144216,
+              "peak_observed_core_concurrency": 8,
+              "callers": [
+                {
+                  "elapsed_ms": 735.780364,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                },
+                {
+                  "elapsed_ms": 757.25948,
+                  "mcp_calls": 15,
+                  "response_bytes": 58105
+                }
+              ]
+            }
+          ],
+          "memory": [
+            {
+              "batch": 0,
+              "idle_rss_bytes": 5660672,
+              "peak_sampled_rss_bytes": 166936576
+            },
+            {
+              "batch": 1,
+              "idle_rss_bytes": 5709824,
+              "peak_sampled_rss_bytes": 164507648
+            }
+          ]
+        },
+        "typescript_reference": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 104.175239,
+              "response_bytes": 33896,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 101.215796,
+                  "mcp_calls": 18,
+                  "response_bytes": 16948
+                },
+                {
+                  "elapsed_ms": 103.936397,
+                  "mcp_calls": 18,
+                  "response_bytes": 16948
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 99.697964,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 1,
+              "callers": [
+                {
+                  "elapsed_ms": 96.286845,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 99.41425,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 79.998388,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 78.653194,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 79.763797,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 85.421413,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 82.787698,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 85.202873,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 82.233096,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 80.940258,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 82.005357,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 82.827249,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 82.654992,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 81.544165,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 81.046529,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 79.978777,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 80.838848,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 74.685159,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 67.435623,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 74.47393,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 90.138327,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 80.781201,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 89.923727,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 67.936661,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 66.904315,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 67.727273,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 82.700051,
+              "response_bytes": 33896,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 81.971684,
+                  "mcp_calls": 18,
+                  "response_bytes": 16948
+                },
+                {
+                  "elapsed_ms": 82.444577,
+                  "mcp_calls": 18,
+                  "response_bytes": 16948
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 66.424141,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 64.919372,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 66.20301,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 84.762903,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 84.593565,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 82.169574,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 74.98831,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 73.639227,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 74.7791,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 71.273778,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 69.083288,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 71.062699,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 75.712601,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 72.612905,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 75.43555,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 80.264165,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 73.576446,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 78.300848,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 61.803971,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 60.409101,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 61.589445,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 64.771833,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 64.601621,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 58.644636,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 72.347082,
+              "response_bytes": 33922,
+              "mcp_calls": 36,
+              "core_requests": 36,
+              "core_response_bytes": 523228,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 72.193163,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                },
+                {
+                  "elapsed_ms": 71.353796,
+                  "mcp_calls": 18,
+                  "response_bytes": 16961
+                }
+              ]
+            }
+          ],
+          "memory": [
+            {
+              "batch": 0,
+              "idle_rss_bytes": 103161856,
+              "peak_sampled_rss_bytes": 183447552
+            },
+            {
+              "batch": 1,
+              "idle_rss_bytes": 103145472,
+              "peak_sampled_rss_bytes": 186961920
+            }
+          ]
+        },
+        "rust_reference": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 17.128077,
+              "response_bytes": 60070,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 16.995221,
+                  "mcp_calls": 15,
+                  "response_bytes": 30035
+                },
+                {
+                  "elapsed_ms": 16.814986,
+                  "mcp_calls": 15,
+                  "response_bytes": 30035
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 18.593934,
+              "response_bytes": 60092,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 18.45534,
+                  "mcp_calls": 15,
+                  "response_bytes": 30046
+                },
+                {
+                  "elapsed_ms": 18.271238,
+                  "mcp_calls": 15,
+                  "response_bytes": 30046
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 17.350733,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 17.073189,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 17.167422,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 18.235525,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 17.949219,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 18.05105,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 19.704103,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 19.542221,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 19.351835,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 17.212596,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 17.018709,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 16.753881,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 17.824359,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 17.651942,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 17.410834,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 17.493541,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 17.344836,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 17.142622,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 15.587535,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 15.440912,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 15.071389,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 17.700187,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 17.414687,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 17.516403,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 17.675371,
+              "response_bytes": 60070,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 17.396447,
+                  "mcp_calls": 15,
+                  "response_bytes": 30035
+                },
+                {
+                  "elapsed_ms": 17.498979,
+                  "mcp_calls": 15,
+                  "response_bytes": 30035
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 15.573097,
+              "response_bytes": 60092,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 15.414427,
+                  "mcp_calls": 15,
+                  "response_bytes": 30046
+                },
+                {
+                  "elapsed_ms": 15.274218,
+                  "mcp_calls": 15,
+                  "response_bytes": 30046
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 21.731324,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 21.561453,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 21.120264,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 22.225096,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 22.062608,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 21.162971,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 17.306563,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 17.102696,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 16.830565,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 24.191333,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 23.995863,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 23.81568,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 15.116241,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 14.830084,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 14.916315,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 23.495453,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 22.708056,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 23.239638,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 19.821954,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 18.780212,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 19.598782,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 15.408853,
+              "response_bytes": 60100,
+              "mcp_calls": 30,
+              "core_requests": 30,
+              "core_response_bytes": 50332,
+              "peak_observed_core_concurrency": 2,
+              "callers": [
+                {
+                  "elapsed_ms": 15.003855,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                },
+                {
+                  "elapsed_ms": 15.187488,
+                  "mcp_calls": 15,
+                  "response_bytes": 30050
+                }
+              ]
+            }
+          ],
+          "memory": [
+            {
+              "batch": 0,
+              "idle_rss_bytes": 3899392,
+              "peak_sampled_rss_bytes": 5554176
+            },
+            {
+              "batch": 1,
+              "idle_rss_bytes": 4026368,
+              "peak_sampled_rss_bytes": 5554176
+            }
+          ]
+        }
+      },
+      "fixture_wire_sha256": "b79eafdc1e6d50d3072909aebb3bc9a01e358adc22112737048a4519d7549aaa",
+      "fixture_delay_ms": 0,
+      "fixture_service_ms": {
+        "n": 16812,
+        "min": 0.093663,
+        "p50": 0.489234,
+        "p95": 2.422024,
+        "max": 22.366307
+      },
+      "summary": {
+        "candidate": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 656.40568,
+              "p50": 729.137529,
+              "p95": 828.022198,
+              "max": 844.081034
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 116180,
+              "p50": 116210,
+              "p95": 116210,
+              "max": 116210
+            },
+            "mcp_calls": {
+              "n": 20,
+              "min": 30,
+              "p50": 30,
+              "p95": 30,
+              "max": 30
+            },
+            "core_requests": {
+              "n": 20,
+              "min": 284,
+              "p50": 284,
+              "p95": 284,
+              "max": 284
+            },
+            "core_response_bytes": {
+              "n": 20,
+              "min": 144216,
+              "p50": 144216,
+              "p95": 144216,
+              "max": 144216
+            },
+            "peak_observed_core_concurrency": {
+              "n": 20,
+              "min": 6,
+              "p50": 8,
+              "p95": 8,
+              "max": 8
+            }
+          },
+          "memory": {
+            "idle_rss_bytes": {
+              "n": 2,
+              "min": 5660672,
+              "p50": 5660672,
+              "p95": 5709824,
+              "max": 5709824
+            },
+            "peak_sampled_rss_bytes": {
+              "n": 2,
+              "min": 164507648,
+              "p50": 164507648,
+              "p95": 166936576,
+              "max": 166936576
+            }
+          },
+          "caller_latency_ms": {
+            "n": 40,
+            "min": 634.144726,
+            "p50": 719.119207,
+            "p95": 820.195895,
+            "max": 843.715068
+          }
+        },
+        "typescript_reference": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 61.803971,
+              "p50": 79.998388,
+              "p95": 99.697964,
+              "max": 104.175239
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 33896,
+              "p50": 33922,
+              "p95": 33922,
+              "max": 33922
+            },
+            "mcp_calls": {
+              "n": 20,
+              "min": 36,
+              "p50": 36,
+              "p95": 36,
+              "max": 36
+            },
+            "core_requests": {
+              "n": 20,
+              "min": 36,
+              "p50": 36,
+              "p95": 36,
+              "max": 36
+            },
+            "core_response_bytes": {
+              "n": 20,
+              "min": 523228,
+              "p50": 523228,
+              "p95": 523228,
+              "max": 523228
+            },
+            "peak_observed_core_concurrency": {
+              "n": 20,
+              "min": 1,
+              "p50": 2,
+              "p95": 2,
+              "max": 2
+            }
+          },
+          "memory": {
+            "idle_rss_bytes": {
+              "n": 2,
+              "min": 103145472,
+              "p50": 103145472,
+              "p95": 103161856,
+              "max": 103161856
+            },
+            "peak_sampled_rss_bytes": {
+              "n": 2,
+              "min": 183447552,
+              "p50": 183447552,
+              "p95": 186961920,
+              "max": 186961920
+            }
+          },
+          "caller_latency_ms": {
+            "n": 40,
+            "min": 58.644636,
+            "p50": 78.300848,
+            "p95": 99.41425,
+            "max": 103.936397
+          }
+        },
+        "rust_reference": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 15.116241,
+              "p50": 17.675371,
+              "p95": 23.495453,
+              "max": 24.191333
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 60070,
+              "p50": 60100,
+              "p95": 60100,
+              "max": 60100
+            },
+            "mcp_calls": {
+              "n": 20,
+              "min": 30,
+              "p50": 30,
+              "p95": 30,
+              "max": 30
+            },
+            "core_requests": {
+              "n": 20,
+              "min": 30,
+              "p50": 30,
+              "p95": 30,
+              "max": 30
+            },
+            "core_response_bytes": {
+              "n": 20,
+              "min": 50332,
+              "p50": 50332,
+              "p95": 50332,
+              "max": 50332
+            },
+            "peak_observed_core_concurrency": {
+              "n": 20,
+              "min": 2,
+              "p50": 2,
+              "p95": 2,
+              "max": 2
+            }
+          },
+          "memory": {
+            "idle_rss_bytes": {
+              "n": 2,
+              "min": 3899392,
+              "p50": 3899392,
+              "p95": 4026368,
+              "max": 4026368
+            },
+            "peak_sampled_rss_bytes": {
+              "n": 2,
+              "min": 5554176,
+              "p50": 5554176,
+              "p95": 5554176,
+              "max": 5554176
+            }
+          },
+          "caller_latency_ms": {
+            "n": 40,
+            "min": 14.830084,
+            "p50": 17.410834,
+            "p95": 23.239638,
+            "max": 23.995863
+          }
+        }
+      }
+    },
+    {
+      "workload": "inventory",
+      "environment": "live",
+      "controls": {
+        "fixture_size": 7,
+        "page_size": 3,
+        "concurrency": 1,
+        "warmup": 2,
+        "samples": 10,
+        "repetitions": 2,
+        "timeout": 30
+      },
+      "protocol": "2025-03-26",
+      "client": "komodo-inventory-benchmark/1",
+      "transport": "stdio",
+      "host": {
+        "logical_cpus": 6,
+        "memory_bytes": 68719476736,
+        "python": "3.13.14",
+        "cpu_model": "Intel(R) Core(TM) i5-8500B",
+        "system": "Darwin",
+        "architecture": "x86_64"
+      },
+      "observed_cpu_load": [
+        3.9072265625,
+        3.70703125,
+        7.28125
+      ],
+      "implementations": {
+        "candidate": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 471.345125,
+              "response_bytes": 3748,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 466.903651,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 426.035892,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 456.05956,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 436.184975,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 435.406238,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 467.977437,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 439.126865,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 429.194359,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 440.84996,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 430.017782,
+              "response_bytes": 3748,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 438.48905,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 439.242492,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 583.688211,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 466.778958,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 455.704538,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 451.37648,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 458.258971,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 425.769392,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 447.402002,
+              "response_bytes": 3750,
+              "mcp_calls": 3
+            }
+          ]
+        },
+        "typescript_reference": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 216.648472,
+              "response_bytes": 2249,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 205.159042,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 208.564328,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 217.123554,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 236.56657,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 210.864585,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 209.615723,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 218.836172,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 212.33406,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 208.456242,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 211.344756,
+              "response_bytes": 2249,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 217.3834,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 215.835239,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 221.599912,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 209.587702,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 205.116484,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 211.591261,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 207.820829,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 206.279382,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 202.868748,
+              "response_bytes": 2251,
+              "mcp_calls": 3
+            }
+          ]
+        },
+        "rust_reference": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 214.251524,
+              "response_bytes": 5519,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 195.904395,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 197.115547,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 193.652885,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 203.773868,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 198.767668,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 194.254997,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 201.462959,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 199.518321,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 201.313663,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 211.925608,
+              "response_bytes": 5519,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 224.268796,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 200.976266,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 206.600446,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 210.245447,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 233.150563,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 214.920798,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 199.153657,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 199.175515,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 199.353034,
+              "response_bytes": 5521,
+              "mcp_calls": 3
+            }
+          ]
+        },
+        "direct_core": {
+          "warm": [
+            {
+              "batch": 0,
+              "sample": 0,
+              "elapsed_ms": 200.923278,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 0,
+              "sample": 1,
+              "elapsed_ms": 200.099367,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 0,
+              "sample": 2,
+              "elapsed_ms": 203.026209,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 0,
+              "sample": 3,
+              "elapsed_ms": 204.843143,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 0,
+              "sample": 4,
+              "elapsed_ms": 206.273924,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 0,
+              "sample": 5,
+              "elapsed_ms": 203.970947,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 0,
+              "sample": 6,
+              "elapsed_ms": 197.535906,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 0,
+              "sample": 7,
+              "elapsed_ms": 203.331361,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 0,
+              "sample": 8,
+              "elapsed_ms": 224.518178,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 0,
+              "sample": 9,
+              "elapsed_ms": 197.526325,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 1,
+              "sample": 0,
+              "elapsed_ms": 198.006842,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 1,
+              "sample": 1,
+              "elapsed_ms": 207.017693,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 1,
+              "sample": 2,
+              "elapsed_ms": 202.390235,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 1,
+              "sample": 3,
+              "elapsed_ms": 200.297306,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 1,
+              "sample": 4,
+              "elapsed_ms": 216.822222,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 1,
+              "sample": 5,
+              "elapsed_ms": 197.69522,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 1,
+              "sample": 6,
+              "elapsed_ms": 213.457746,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 1,
+              "sample": 7,
+              "elapsed_ms": 202.855916,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 1,
+              "sample": 8,
+              "elapsed_ms": 199.526575,
+              "response_bytes": 4586,
+              "core_requests": 3
+            },
+            {
+              "batch": 1,
+              "sample": 9,
+              "elapsed_ms": 203.583005,
+              "response_bytes": 4586,
+              "core_requests": 3
+            }
+          ]
+        }
+      },
+      "core_version": "2.3.2",
+      "periphery_version": "2.3.2",
+      "summary": {
+        "candidate": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 425.769392,
+              "p50": 440.84996,
+              "p95": 471.345125,
+              "max": 583.688211
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 3748,
+              "p50": 3750,
+              "p95": 3750,
+              "max": 3750
+            },
+            "mcp_calls": {
+              "n": 20,
+              "min": 3,
+              "p50": 3,
+              "p95": 3,
+              "max": 3
+            }
+          }
+        },
+        "typescript_reference": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 202.868748,
+              "p50": 210.864585,
+              "p95": 221.599912,
+              "max": 236.56657
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 2249,
+              "p50": 2251,
+              "p95": 2251,
+              "max": 2251
+            },
+            "mcp_calls": {
+              "n": 20,
+              "min": 3,
+              "p50": 3,
+              "p95": 3,
+              "max": 3
+            }
+          }
+        },
+        "rust_reference": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 193.652885,
+              "p50": 200.976266,
+              "p95": 224.268796,
+              "max": 233.150563
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 5519,
+              "p50": 5521,
+              "p95": 5521,
+              "max": 5521
+            },
+            "mcp_calls": {
+              "n": 20,
+              "min": 3,
+              "p50": 3,
+              "p95": 3,
+              "max": 3
+            }
+          }
+        },
+        "direct_core": {
+          "warm": {
+            "elapsed_ms": {
+              "n": 20,
+              "min": 197.526325,
+              "p50": 202.855916,
+              "p95": 216.822222,
+              "max": 224.518178
+            },
+            "response_bytes": {
+              "n": 20,
+              "min": 4586,
+              "p50": 4586,
+              "p95": 4586,
+              "max": 4586
+            },
+            "core_requests": {
+              "n": 20,
+              "min": 3,
+              "p50": 3,
+              "p95": 3,
+              "max": 3
+            }
+          }
+        }
+      }
+    }
+  ]
+}

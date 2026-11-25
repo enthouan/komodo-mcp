@@ -111,8 +111,13 @@ class Client:
                     future.set_exception(error)
 
     async def send(self, message):
-        self.process.stdin.write(encoded(message) + b"\n")
-        await self.process.stdin.drain()
+        try:
+            self.process.stdin.write(encoded(message) + b"\n")
+            await self.process.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError) as error:
+            if self.failure is not None:
+                raise self.failure
+            raise EOFError("MCP stdin closed") from error
 
     async def request(self, method, params):
         if self.failure:
@@ -133,6 +138,9 @@ class Client:
             return message["result"], size
         finally:
             self.pending.pop(request_id, None)
+            if future.done() and not future.cancelled():
+                # A failed write can race the reader failing this same request.
+                future.exception()
 
     async def initialize(self):
         # No driver/mock preparation between this timestamp and actual process spawn.
@@ -154,6 +162,15 @@ class Client:
                 "response_bytes": size, "server_info": result["serverInfo"]}
 
     async def inventory(self, implementation, page_size, expected):
+        if implementation == "rust_reference":
+            from rust_reference import Reader
+            reader = Reader(self)
+            start = time.perf_counter_ns()
+            async with asyncio.timeout(self.timeout):
+                items = await reader.inventory(page_size, len(expected))
+            elapsed = (time.perf_counter_ns() - start) / 1e6
+            return {"elapsed_ms": elapsed, "mcp_calls": reader.calls, "response_bytes": reader.response_bytes,
+                    "equivalence": verify(items, expected)}
         page, cursor, seen_cursors, items = 0, None, set(), []
         wire_bytes, calls = 0, 0
         start = time.perf_counter_ns()

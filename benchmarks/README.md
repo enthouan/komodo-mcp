@@ -335,3 +335,45 @@ Sources for the boundaries and adapters:
   [pagination](https://github.com/MP-Tool/komodo-mcp-server/blob/489f7e04b16019480f84e1d2fff8b872b880e335/src/utils/pagination.ts),
   [startup client](https://github.com/MP-Tool/komodo-mcp-server/blob/489f7e04b16019480f84e1d2fff8b872b880e335/src/client.ts)
   and [dependency lock](https://github.com/MP-Tool/komodo-mcp-server/blob/489f7e04b16019480f84e1d2fff8b872b880e335/package-lock.json).
+
+## Shared packaged candidate
+
+Use the same verified candidate record and extracted binary as disposable regression. The benchmark checkout must contain the packaged source commit in Git history. The timed server is the extracted binary. The separate Rust comparator is [Kalaghni/komodo-mcp 0.1.0](https://github.com/Kalaghni/komodo-mcp/tree/2efbe2232d98ac0c7eec90135fd683b5b39c1cca). Its checked-in lock, optimized thin-LTO release profile, read-only stdio transport and Core 2.3.2 inventory and history APIs make both workloads reproducible. The TypeScript comparator retains its original [1.5.0 pin](https://github.com/MP-Tool/komodo-mcp-server/tree/489f7e04b16019480f84e1d2fff8b872b880e335). Keep preparations in a private work directory on a separate benchmark host.
+
+Set `CANDIDATE_RECORD`, `EXTRACTED_BINARY` and `NATIVE_TARGET` from the shared bundle. Set `HOST_NOTE` to the machine and power conditions and `DOCKER_CONTEXT` to a local Unix-socket Docker context. Run from the checkout root with the selected Cargo, Rust, Node and npm on `PATH`.
+
+```sh
+set -eu
+umask 077
+mkdir -p target/benchmark
+study=$(mktemp -d "$PWD/target/benchmark/packaged-XXXXXX")
+manifest="$study/artifacts.json"
+python3 benchmarks/bench.py prepare --artifacts "$manifest" \
+  --candidate-record "$CANDIDATE_RECORD" --candidate-binary "$EXTRACTED_BINARY" \
+  --candidate-target "$NATIVE_TARGET" --reference-dir target/benchmark/typescript-ref \
+  --rust-reference-dir target/benchmark/rust-ref
+BENCHMARK_ARTIFACTS="$manifest" python3 -m unittest discover -s benchmarks -v
+python3 benchmarks/bench.py run --artifacts "$manifest" --fixture-size 31 --page-size 7 \
+  --warmup 2 --samples 10 --cold-samples 5 --repetitions 2 --host-note "$HOST_NOTE" \
+  --output "$study/inventory.json.gz"
+for size in 7 31; do
+  python3 benchmarks/bench.py incident --artifacts "$manifest" --fixture-size "$size" \
+    --page-size 3 --concurrency 2 --warmup 2 --samples 10 --repetitions 2 \
+    --host-note "$HOST_NOTE" --output "$study/incident-$size.json.gz"
+done
+project="komodo-mcp-smoke-bench-$(python3 -c 'import uuid; print(uuid.uuid4().hex[:12])')"
+python3 benchmarks/disposable_inventory.py --artifacts "$manifest" --candidate-record "$CANDIDATE_RECORD" \
+  --candidate-binary "$EXTRACTED_BINARY" --candidate-target "$NATIVE_TARGET" --fixture-size 7 \
+  --docker-context "$DOCKER_CONTEXT" --project "$project" --evidence "$study/live-fixture.json" \
+  --output "$study/live.json.gz"
+for report in "$study"/*.json.gz; do python3 benchmarks/bench.py validate "$report"; done
+python3 benchmarks/export_samples.py --output "$study/public-samples.json" \
+  "$study/inventory.json.gz" "$study/incident-7.json.gz" "$study/incident-31.json.gz" "$study/live.json.gz"
+python3 benchmarks/check_reports.py
+```
+
+Set the candidate target to the native archive for the actual host. Preparation verifies that the candidate, Rust comparator and Node runtime match the host architecture. Linux permits a native GNU or musl comparator with the static musl candidate. Preparation also checks the shared receipt, Core/OCI relationship, native executable hash, candidate Cargo manifest and repository lock at that commit. Each run hashes the participating executables and validates the reference builds before starting timers. The candidate uses the distribution workflow's frozen release with stripped symbols. The Rust comparator uses its locked release build on the host toolchain. TypeScript runs the built JavaScript directly on the selected Node executable. The public export gives separate bytes for each standalone executable, the TypeScript build tree, installed dependencies and Node runtime. The last two tree sizes count regular files and exclude symbolic links. Throughput and memory on another platform can differ.
+
+The comparator's general read tool accepts explicit Core request parameters. For inventory the driver pages `ListStacks` because its dedicated `komodo_list` omits page and limit. For incident triage it pages the same full list, resolves the unhealthy service from `ListAllStackServices`, checks `ListUpdates` and `GetUpdate` for that Stack, and reads `GetStackLog` for the affected service. The native comparator returns serialized JSON inside MCP text. The driver counts the complete JSON-RPC frame and checks the independent oracle after parsing. Truncated JSON, incomplete discovery, duplicate IDs and mismatched stage or log evidence invalidate the run. Candidate fleet-wide probes and the TypeScript Docker inspection sequence do additional work. Timing order rotates across the three implementations.
+
+The live disposable runner provisions seven owned Stacks and grants its reader Read on each. It verifies the provisioner's ID, name and state oracle before and after measurement and checks teardown. Each of two batches measures ten warm inventory reads following two warmups at concurrency one and page size three. It measures MCP frame bytes and calls for the MCP participants and HTTP body bytes and calls for direct Core reads. Core traffic from the live MCP participants is uninstrumented. Live incident results require independent verification of every seeded diagnostic signal. Full reports and preparation manifests stay under `target/benchmark/`.
