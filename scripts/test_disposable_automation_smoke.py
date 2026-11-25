@@ -136,8 +136,9 @@ class AutomationScopeTests(unittest.TestCase):
                 self.assertEqual(events, ['bootstrap', 'exercise', 'disable', 'cleanup'])
                 report = json.loads(evidence.read_text())
                 self.assertEqual(report['passed'], fail_at is None)
-                self.assertTrue(report['cleanup_verified'])
-                self.assertFalse(private.exists())
+                self.assertTrue(report['compose_cleanup_verified'])
+                self.assertEqual(report['cleanup_verified'], fail_at != 'disable')
+                self.assertEqual(private.exists(), fail_at == 'disable')
 
     def test_automation_entry_selects_extensions_and_clears_previous_run_state(self):
         automation.CONTEXT['old'] = 'must not be reused'

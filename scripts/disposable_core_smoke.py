@@ -116,15 +116,16 @@ class Api:
         self.address, self.headers = address, headers or {}
         self.port = parsed.port
 
-    def request(self, endpoint, operation=None, params=None):
+    def request(self, endpoint, operation=None, params=None, *, timeout=None):
+        timeout = HTTP_TIMEOUT if timeout is None else timeout
         headers = {'content-type': 'application/json', **self.headers}
         data = None if operation is None else json.dumps({'type': operation, 'params': params or {}}).encode()
         # Direct loopback HTTP never follows redirects or consults proxy env.
         # A watchdog shuts down the actual socket, including during slow header
         # reads; cancelling a to_thread waiter alone cannot stop that I/O.
-        deadline = time.monotonic() + HTTP_TIMEOUT
+        deadline = time.monotonic() + timeout
         expired = threading.Event()
-        connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=HTTP_TIMEOUT)
+        connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=timeout)
         transport = timer = None
 
         def abort():
@@ -1175,9 +1176,9 @@ def exercise_environment(extension=None, *, retain_legacy=True):
     SECRETS.append(jwt)
     admin = Api(address, {'authorization': jwt})
     version = admin.read('GetVersion')['version']
+    REPORT['core_version'] = version
     if version != CORE_VERSION:
         raise Failure('disposable Core version mismatch')
-    REPORT['core_version'] = version
     servers = admin.read('ListServers', {'limit': 10})
     matches = [s for s in servers if s['name'] == 'mcp-smoke-server']
     if len(matches) != 1:
@@ -1192,9 +1193,9 @@ def exercise_environment(extension=None, *, retain_legacy=True):
     alternate_server_id = identity(alternate)
     poll(lambda: admin.read('GetServerState', {'server': server_id})['status'] == 'Ok', 'private Periphery/daemon readiness')
     periphery = admin.read('GetPeripheryInformation', {'server': server_id})
+    REPORT['periphery_version'] = periphery['version']
     if periphery['version'] != CORE_VERSION:
         raise Failure('disposable Periphery version mismatch')
-    REPORT['periphery_version'] = periphery['version']
     REPORT['docker_version'] = poll(lambda: run([*COMPOSE, 'exec', '-T', 'docker', 'docker', 'version', '--format', '{{.Server.Version}}']), 'isolated Docker daemon readiness')
     REPORT['scope'] = {'server_id': server_id, 'alternate_server_id':alternate_server_id,
         'non_admin_identities': [], 'host_docker_socket_mounted': False,
@@ -1406,18 +1407,23 @@ def entry(argv=None, *, fixture_customizer=None, exercise_extension=None, before
             REPORT['passed'] = False
             REPORT['evidence_error'] = type(error).__name__
         try:
+            REPORT["compose_cleanup_verified"] = False
             if RESERVED:
+                extension_cleanup_ok = True
                 if before_cleanup is not None:
                     try:
                         before_cleanup()
                     except BaseException as error:
                         result = 1
                         REPORT['passed'] = False
+                        extension_cleanup_ok = False
                         REPORT['automatic_execution_cleanup_error'] = (
                             str(error) if isinstance(error, Failure) else type(error).__name__)
                 cleanup()
+                REPORT["compose_cleanup_verified"] = REPORT["cleanup_verified"]
+                REPORT["cleanup_verified"] = REPORT["compose_cleanup_verified"] and extension_cleanup_ok
             else:
-                REPORT.update(cleanup_verified=True,cleanup_action='no resources created')
+                REPORT.update(cleanup_verified=True, compose_cleanup_verified=True, cleanup_action='no resources created')
             if REPORT['cleanup_verified']:
                 shutil.rmtree(ROOT)
                 REPORT.pop('private_cleanup_directory',None)
