@@ -197,6 +197,8 @@ impl AppError {
                 )
             {
                 "Core denied Swarm inspection; this identity needs Read plus the Inspect specific permission on the selected Swarm."
+            } else if kind == ErrorKind::PermissionDenied && operation == "InspectContainer" {
+                "Core requires Read and the Inspect permission on the selected Server to inspect a container."
             } else if kind == ErrorKind::PermissionDenied && operation == "GetSwarmServiceLog" {
                 "Core denied service logs; this identity needs Read plus the Logs specific permission on the selected Swarm."
             } else if kind == ErrorKind::PermissionDenied && operation == "CreateTag" {
@@ -295,7 +297,7 @@ impl AppError {
         body: &[u8],
         locator: Option<&str>,
     ) -> Self {
-        let error = Self::from_http_failure("InspectContainer", status, body);
+        let error = Self::from_docker_http_failure("InspectContainer", status, body, locator);
         if error.kind != ErrorKind::NotFound {
             return error;
         }
@@ -312,7 +314,10 @@ impl AppError {
                 })
             });
         if exact {
-            error
+            Self {
+                message: "Docker reports the requested full container ID is absent on this Server. List containers again to identify a replacement.",
+                ..error
+            }
         } else {
             Self::new(ErrorKind::Upstream, "InspectContainer", Some(status))
         }
@@ -419,6 +424,7 @@ impl AppError {
             .flatten()
             .collect::<Vec<_>>();
         let action = match operation {
+            "InspectContainer" => "inspect container",
             "InspectImage" => "inspect image",
             "ListImageHistory" => "get image history",
             "InspectNetwork" => "inspect network",

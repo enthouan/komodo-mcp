@@ -1,12 +1,18 @@
-//! Production-executable stdio acceptance of bounded read-only Docker tools.
+//! Production-executable acceptance of bounded, read-only Docker tools.
 #[path = "support/docker.rs"]
 mod fixture;
+#[path = "support/http.rs"]
+mod http;
+#[path = "support/peer.rs"]
+mod peer;
 mod support;
 use fixture::*;
 use rmcp::model::CallToolResult;
 use serde_json::{Value, json};
 use support::operations::{Process, Session, call};
-const TOOLS: [&str; 7] = [
+const TOOLS: [&str; 9] = [
+    "list_containers",
+    "get_container",
     "list_images",
     "get_image",
     "get_image_history",
@@ -39,6 +45,9 @@ fn target() -> Value {
     json!({"target":{"id":SERVER}})
 }
 fn object(tool: &str) -> Value {
+    if tool == "get_container" {
+        return json!({"identity":{"server_id":SERVER,"container_id":STOPPED}});
+    }
     json!({"target":{"id":SERVER},"object":match tool { "get_image"|"get_image_history"=>json!({"id":IMAGE}),"get_network"=>json!({"id":NETWORK}),_=>json!({"name":"fixture-volume"}) }})
 }
 async fn finish(p: Process, s: Session, c: &Core) {
@@ -398,6 +407,8 @@ async fn missing_ambiguous_and_changed_objects_never_broaden_or_follow_replaceme
 }
 fn tool(op: &str) -> &'static str {
     match op {
+        "ListContainers" => "list_containers",
+        "InspectContainer" => "get_container",
         "ListImages" => "list_images",
         "InspectImage" => "get_image",
         "ListImageHistory" => "get_image_history",
@@ -419,6 +430,8 @@ async fn read_permissions_unsupported_and_unsafe_errors_never_use_another_api() 
     for op in [
         "ListServers",
         "GetServer",
+        "ListContainers",
+        "InspectContainer",
         "ListImages",
         "InspectImage",
         "ListImageHistory",
@@ -554,6 +567,8 @@ async fn large_caches_clip_lists_but_refuse_exact_resolution_and_bodies_are_boun
         c.data.lock().unwrap().replies = original.clone();
     }
     for op in [
+        "ListContainers",
+        "InspectContainer",
         "ListImages",
         "InspectImage",
         "ListImageHistory",
@@ -870,5 +885,253 @@ async fn ipv6_registry_tags_and_digests_are_preserved_and_bound_to_immutable_ima
         );
         assert_eq!(c.requests("read").len(), reads);
     }
+    finish(p, s, &c).await;
+}
+
+#[tokio::test]
+async fn stopped_container_inspection_is_scoped_fresh_and_safe_on_both_transports() {
+    for transport in peer::TRANSPORTS {
+        let c = Core::start().await;
+        let peer = transport.connect(&c.address, &[]).await;
+        let catalog = peer.catalog().await;
+        for tool in ["list_containers", "get_container"] {
+            assert_eq!(
+                catalog[tool].annotations.as_ref().unwrap().read_only_hint,
+                Some(true)
+            );
+        }
+        let list = |page, include_stopped| {
+            json!({
+                "target":{"name":"fixture-server"}, "page":page, "page_size":1,
+                "include_stopped":include_stopped
+            })
+        };
+        let running = data(peer.call("list_containers", target()).await.unwrap());
+        assert_eq!(running["source"], "core_cache");
+        assert_eq!(running["data"]["items"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            running["data"]["items"][0]["identity"],
+            json!({"server_id":SERVER,"container_id":RUNNING})
+        );
+        assert_eq!(running["data"]["items"][0]["state"], "running");
+        assert!(running["data"]["next_page"].is_null());
+
+        let first = data(peer.call("list_containers", list(0, true)).await.unwrap());
+        assert_eq!(first["data"]["next_page"], 1);
+        let second = data(peer.call("list_containers", list(1, true)).await.unwrap());
+        assert!(second["data"]["next_page"].is_null());
+        let first = &first["data"]["items"][0];
+        let second = &second["data"]["items"][0];
+        assert_ne!(first["identity"], second["identity"]);
+        let stopped = [first, second]
+            .into_iter()
+            .find(|item| item["state"] == "exited")
+            .unwrap();
+        assert_eq!(stopped["name"], "failed-job");
+        assert_eq!(stopped["image"], "fixture/web:latest");
+        let inspect = json!({"identity":stopped["identity"]});
+        assert_eq!(
+            inspect["identity"],
+            json!({"server_id":SERVER,"container_id":STOPPED})
+        );
+
+        // Drop the cache after discovery. A fresh inspect still addresses only the observed ID.
+        c.data
+            .lock()
+            .unwrap()
+            .replies
+            .insert("ListContainers".into(), json!([]));
+        let detail = data(peer.call("get_container", inspect.clone()).await.unwrap());
+        assert_eq!(detail["source"], "fresh_inspect");
+        assert_eq!(detail["server"]["id"], SERVER);
+        assert_eq!(
+            detail["data"],
+            json!({
+                "identity": inspect["identity"], "name":"failed-job", "state":"exited",
+                "exit_code":17, "health_status":"unhealthy", "restart_count":3
+            })
+        );
+        let empty = data(peer.call("list_containers", list(0, true)).await.unwrap());
+        assert_eq!(empty["data"]["items"], json!([]));
+        assert!(empty["evidence_limit"].as_str().unwrap().contains("cache"));
+
+        // Core checks Read + Inspect on the fresh endpoint, while this identity can still list.
+        let denied = "User does not have required permissions on this Server. Must have at least Read permissions, as well as these specific permissions: [Inspect]";
+        c.data.lock().unwrap().errors.insert(
+            "InspectContainer".into(),
+            (
+                500,
+                json!({"error":denied,"trace":["sensitive-raw-trace-marker"]}),
+            ),
+        );
+        assert_eq!(
+            error(peer.call("get_container", inspect.clone()).await.unwrap())["kind"],
+            "permission_denied"
+        );
+        data(peer.call("list_containers", target()).await.unwrap());
+
+        let missing =
+            format!("Docker responded with status code 404: No such container: {STOPPED}");
+        c.data.lock().unwrap().errors.insert(
+            "InspectContainer".into(),
+            (
+                500,
+                json!({"error":"sensitive-description-marker","trace":[missing]}),
+            ),
+        );
+        assert_eq!(
+            error(peer.call("get_container", inspect.clone()).await.unwrap())["kind"],
+            "not_found"
+        );
+
+        // A name can now point at a replacement, or Periphery can omit identity proof.
+        c.data.lock().unwrap().errors.clear();
+        for fresh_id in [json!(RUNNING), Value::Null] {
+            c.data
+                .lock()
+                .unwrap()
+                .replies
+                .get_mut("InspectContainer")
+                .unwrap()["Id"] = fresh_id;
+            assert_eq!(
+                error(peer.call("get_container", inspect.clone()).await.unwrap())["kind"],
+                "invalid_response"
+            );
+        }
+        let reads = c.requests("read");
+        let inspected: Vec<_> = reads
+            .iter()
+            .filter(|r| r.operation == "InspectContainer")
+            .collect();
+        assert_eq!(inspected.len(), 5);
+        assert!(
+            inspected
+                .iter()
+                .all(|r| r.params == json!({"server":SERVER,"container":STOPPED}))
+        );
+        for request in reads {
+            match request.operation.as_str() {
+                "ListContainers" | "GetServer" => assert_eq!(request.params["server"], SERVER),
+                "GetVersion" | "ListServers" | "InspectContainer" => (),
+                unexpected => panic!("unexpected Core read {unexpected}"),
+            }
+        }
+        c.assert_readonly();
+        peer.finish().await;
+    }
+}
+
+#[tokio::test]
+async fn container_tool_selection_disallows_hidden_calls_before_core_on_both_transports() {
+    for transport in peer::TRANSPORTS {
+        let c = Core::start().await;
+        for (visible, excluded) in [
+            ("list_containers", "get_container"),
+            ("get_container", "list_containers"),
+        ] {
+            let p = transport
+                .connect(
+                    &c.address,
+                    &[
+                        ("KOMODO_ENABLED_TOOLS", "list_containers,get_container"),
+                        ("KOMODO_DISABLED_TOOLS", excluded),
+                    ],
+                )
+                .await;
+            assert_eq!(p.catalog().await.into_keys().collect::<Vec<_>>(), [visible]);
+            data(p.call(visible, args(visible)).await.unwrap());
+            let before = c.requests("read").len();
+            let hidden = p.call(excluded, args(excluded)).await.unwrap_err();
+            assert_eq!(
+                hidden.code,
+                p.call("unknown_fixture_tool", json!({}))
+                    .await
+                    .unwrap_err()
+                    .code
+            );
+            assert_eq!(c.requests("read").len(), before);
+            p.finish().await;
+        }
+        c.assert_readonly();
+    }
+}
+
+#[tokio::test]
+async fn incomplete_container_identity_never_becomes_a_name_lookup() {
+    let c = Core::start().await;
+    let (p, s) = Process::start_profile(&c.address, false, false).await;
+    c.data
+        .lock()
+        .unwrap()
+        .replies
+        .get_mut("ListContainers")
+        .unwrap()[0]["id"] = Value::Null;
+    let page = data(call(&s, "list_containers", target()).await);
+    assert_eq!(page["data"]["items"][0]["name"], "active-web");
+    assert!(page["data"]["items"][0]["identity"].is_null());
+    for identity in [
+        json!({"server_id":SERVER,"container_id":"failed-job"}),
+        json!({"server_id":SERVER,"container_id":&STOPPED[..12]}),
+        json!({"server_id":"fixture-server","container_id":STOPPED}),
+        json!({"server_id":SERVER,"name":"failed-job"}),
+        Value::Null,
+    ] {
+        let before = c.requests("read").len();
+        assert_eq!(
+            error(call(&s, "get_container", json!({"identity":identity})).await)["kind"],
+            "invalid_arguments"
+        );
+        assert_eq!(c.requests("read").len(), before);
+    }
+    c.data
+        .lock()
+        .unwrap()
+        .replies
+        .get_mut("ListContainers")
+        .unwrap()[0]["server_id"] = json!("000000000000000000000009");
+    assert_eq!(
+        error(call(&s, "list_containers", target()).await)["kind"],
+        "invalid_response"
+    );
+    finish(p, s, &c).await;
+}
+
+#[tokio::test]
+async fn container_scan_bounds_and_template_servers_preserve_scope() {
+    let c = Core::start().await;
+    let (p, s) = Process::start_profile(&c.address, false, false).await;
+    let mut rows = (0..512)
+        .map(|i| container(&format!("{i:064x}"), &format!("finished-{i}"), "exited"))
+        .collect::<Vec<_>>();
+    rows.push(container(RUNNING, "running-beyond-scan", "running"));
+    c.data
+        .lock()
+        .unwrap()
+        .replies
+        .insert("ListContainers".into(), json!(rows));
+    let list = data(call(&s, "list_containers", target()).await);
+    assert_eq!(list["data"]["observed_count"], 513);
+    assert_eq!(list["data"]["scan_incomplete"], true);
+    assert_eq!(list["data"]["items"], json!([]));
+    assert!(list["data"]["next_page"].is_null());
+
+    {
+        let mut d = c.data.lock().unwrap();
+        d.replies.get_mut("ListServers").unwrap()[0]["template"] = json!(true);
+        d.replies.get_mut("GetServer").unwrap()["template"] = json!(true);
+    }
+    let before = c.requests("read").len();
+    for tool in ["list_containers", "get_container"] {
+        assert_eq!(
+            error(call(&s, tool, args(tool)).await)["kind"],
+            "unsupported_target"
+        );
+    }
+    assert!(
+        c.requests("read")
+            .iter()
+            .skip(before)
+            .all(|r| matches!(r.operation.as_str(), "ListServers" | "GetServer"))
+    );
     finish(p, s, &c).await;
 }

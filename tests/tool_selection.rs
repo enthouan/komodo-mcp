@@ -3,118 +3,21 @@
 mod http;
 mod support;
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::process::Stdio;
+#[path = "support/peer.rs"]
+mod peer;
 
-use http::{Binary, DEADLINE, FIRST};
-use rmcp::{
-    ErrorData,
-    model::{CallToolRequestParams, CallToolResult, ListToolsResult, Tool},
-    service::ServiceError,
-};
+use http::{DEADLINE, FIRST};
+use peer::{Peer, TRANSPORTS, Transport};
 use serde_json::{Value, json};
-use support::operations::{Core, Options, Process, STACK, Session};
+use std::{collections::BTreeMap, process::Stdio};
+use support::operations::{Core, Options, STACK};
 use tokio::time::timeout;
 
 const ENABLED: &str = "KOMODO_ENABLED_TOOLS";
 const DISABLED: &str = "KOMODO_DISABLED_TOOLS";
 const TRIAGE: [&str; 3] = ["get_stack", "list_stacks", "stack_diagnose"];
 
-#[derive(Clone, Copy)]
-enum Transport {
-    Stdio,
-    Http,
-}
-const TRANSPORTS: [Transport; 2] = [Transport::Stdio, Transport::Http];
-
-enum Peer {
-    Stdio(Process, Box<Session>),
-    Http(Binary, String),
-}
-
-impl Transport {
-    async fn connect(self, core: &Core, settings: &[(&str, &str)]) -> Peer {
-        match self {
-            Self::Stdio => {
-                let (process, session) =
-                    Process::start_with_settings(&core.address, settings).await;
-                Peer::Stdio(process, Box::new(session))
-            }
-            Self::Http => {
-                let process = Binary::start(&core.address, settings).await;
-                let session = process.http.session(FIRST, None).await;
-                Peer::Http(process, session)
-            }
-        }
-    }
-}
-
 impl Peer {
-    async fn catalog(&self) -> BTreeMap<String, Tool> {
-        let tools = match self {
-            Self::Stdio(_, s) => timeout(DEADLINE, s.list_all_tools())
-                .await
-                .unwrap()
-                .unwrap(),
-            Self::Http(p, s) => {
-                let mut tools = Vec::new();
-                let mut cursors = BTreeSet::new();
-                let mut params = json!({});
-                loop {
-                    let response = p.http.rpc(FIRST, s, "tools/list", params).await;
-                    let page: ListToolsResult =
-                        serde_json::from_value(response["result"].clone()).unwrap();
-                    tools.extend(page.tools);
-                    let Some(cursor) = page.next_cursor else {
-                        break;
-                    };
-                    assert!(
-                        cursors.insert(cursor.clone()),
-                        "repeated cursor in discovery"
-                    );
-                    params = json!({"cursor":cursor});
-                }
-                tools
-            }
-        };
-        let mut result = BTreeMap::new();
-        for tool in tools {
-            assert!(
-                result.insert(tool.name.to_string(), tool).is_none(),
-                "duplicate advertised tool"
-            );
-        }
-        result
-    }
-
-    async fn call(&self, name: &str, args: Value) -> Result<CallToolResult, ErrorData> {
-        match self {
-            Self::Stdio(_, s) => {
-                let req = CallToolRequestParams::new(name.to_owned())
-                    .with_arguments(args.as_object().unwrap().clone());
-                match timeout(DEADLINE, s.call_tool(req)).await.unwrap() {
-                    Ok(result) => Ok(result),
-                    Err(ServiceError::McpError(error)) => Err(error),
-                    Err(other) => panic!("unexpected stdio transport failure: {other}"),
-                }
-            }
-            Self::Http(p, s) => {
-                let response = p.http.call(FIRST, s, name, args).await;
-                if let Some(error) = response.get("error") {
-                    Err(serde_json::from_value(error.clone()).unwrap())
-                } else {
-                    Ok(serde_json::from_value(response["result"].clone()).unwrap())
-                }
-            }
-        }
-    }
-
-    async fn data(&self, name: &str, args: Value) -> Value {
-        let call = self.call(name, args).await.unwrap();
-        assert_eq!(call.is_error, Some(false));
-        call.structured_content.unwrap()
-    }
-
     async fn assert_excluded(&self, core: &Core, name: &str, args: Value) {
         let before = core.requests().len();
         let excluded = self.call(name, args).await.unwrap_err();
@@ -129,13 +32,6 @@ impl Peer {
             "excluded calls must be rejected before Core"
         );
     }
-
-    async fn finish(self) {
-        match self {
-            Self::Stdio(p, s) => p.finish(*s).await,
-            Self::Http(p, _) => p.finish().await,
-        }
-    }
 }
 
 #[tokio::test]
@@ -143,7 +39,7 @@ async fn triage_exposes_exactly_three_unchanged_schemas_and_diagnoses_the_fixtur
     let core = Core::start(Options::default()).await;
     let mut first_catalog = None;
     for transport in TRANSPORTS {
-        let default = transport.connect(&core, &[]).await;
+        let default = transport.connect(&core.address, &[]).await;
         let all = default.catalog().await;
         default.finish().await;
         let expected: BTreeMap<_, _> = TRIAGE
@@ -152,7 +48,7 @@ async fn triage_exposes_exactly_three_unchanged_schemas_and_diagnoses_the_fixtur
             .collect();
         let triage = transport
             .connect(
-                &core,
+                &core.address,
                 &[(ENABLED, " list_stacks, get_stack , stack_diagnose ")],
             )
             .await;
@@ -191,12 +87,12 @@ async fn disabling_one_tool_preserves_every_other_schema_and_its_core_permission
     })
     .await;
     for transport in TRANSPORTS {
-        let default = transport.connect(&core, &[]).await;
+        let default = transport.connect(&core.address, &[]).await;
         let mut expected = default.catalog().await;
         default.finish().await;
         assert!(expected.remove("get_image_history").is_some());
         let selected = transport
-            .connect(&core, &[(DISABLED, " get_image_history ")])
+            .connect(&core.address, &[(DISABLED, " get_image_history ")])
             .await;
         assert_eq!(selected.catalog().await, expected);
         selected
@@ -230,7 +126,7 @@ async fn disabled_overlap_wins_and_allowlisting_cannot_enable_the_terminal_capab
     for transport in TRANSPORTS {
         let selected = transport
             .connect(
-                &core,
+                &core.address,
                 &[
                     (ENABLED, "list_stacks,get_stack,execute_terminal"),
                     (DISABLED, "get_stack"),
@@ -250,7 +146,7 @@ async fn disabled_overlap_wins_and_allowlisting_cannot_enable_the_terminal_capab
         selected.finish().await;
         let empty = transport
             .connect(
-                &core,
+                &core.address,
                 &[(ENABLED, "list_stacks"), (DISABLED, "list_stacks")],
             )
             .await;

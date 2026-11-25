@@ -696,6 +696,19 @@
       "inputSchema": "deploy_deployment.input",
       "outputSchema": "get_builder.output"
     },
+    "get_container": {
+      "description": "Inspect the exact Server and full container ID returned by list_containers. Requires Server Read and Inspect. Verify the fresh Docker identity before returning selected state, exit code, health status and restart count.",
+      "grantSets": [
+        []
+      ],
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "inputSchema": "get_container.input",
+      "outputSchema": "get_container.output"
+    },
     "get_container_logs": {
       "description": "Read a bounded container log tail by stable Server ID and exact container name. Tail 1..500; combined stdout/stderr max_bytes 1..65536 after redaction, with truncation metadata.",
       "grantSets": [
@@ -1085,6 +1098,19 @@
       },
       "inputSchema": "list_actions.input",
       "outputSchema": "list_builds.output"
+    },
+    "list_containers": {
+      "description": "List cached containers on one Server by exact name or stable ID. Requires Server Read. Defaults to running containers. Include stopped containers to see other states. Follow next_page and pass a returned identity to get_container.",
+      "grantSets": [
+        []
+      ],
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "inputSchema": "list_containers.input",
+      "outputSchema": "list_containers.output"
     },
     "list_core_secret_names": {
       "description": "List configured Core secret key names only, using authenticated ListSecrets with target=None. Separate from is_secret variable metadata. Bounded local pages/512-name scan; unsafe names omitted. Never expand Server/Builder secrets, reveal values, access host configuration or write files. No mutation.",
@@ -3301,6 +3327,32 @@
         }
       ]
     },
+    "get_container.input": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "identity": {
+          "$ref": "#/$defs/ContainerIdentity",
+          "description": "Copy the complete identity from the selected list_containers row."
+        }
+      },
+      "required": [
+        "identity"
+      ]
+    },
+    "get_container.output": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Observation"
+        },
+        {
+          "$ref": "#/$defs/AppError"
+        }
+      ]
+    },
     "get_container_logs.input": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -3928,6 +3980,49 @@
       "anyOf": [
         {
           "$ref": "#/$defs/Page"
+        },
+        {
+          "$ref": "#/$defs/AppError"
+        }
+      ]
+    },
+    "list_containers.input": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "include_stopped": {
+          "default": false,
+          "description": "Include every cached state, including exited, paused and unknown.",
+          "type": "boolean"
+        },
+        "page": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "page_size": {
+          "default": 30,
+          "format": "uint64",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "target": {
+          "$ref": "#/$defs/DetailInput"
+        }
+      },
+      "required": [
+        "target"
+      ]
+    },
+    "list_containers.output": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Observation"
         },
         {
           "$ref": "#/$defs/AppError"
@@ -6016,6 +6111,18 @@
       "DefinitionSummary": "apply_action_create.output/DefinitionSummary6",
       "ErrorKind": "apply_access_change.output/ErrorKind"
     },
+    "get_container.input": {
+      "ContainerIdentity": "get_container.input/ContainerIdentity"
+    },
+    "get_container.output": {
+      "AppError": "apply_access_change.output/AppError",
+      "Candidate": "apply_access_change.output/Candidate",
+      "ContainerDetail": "get_container.output/ContainerDetail",
+      "ContainerIdentity": "get_container.input/ContainerIdentity",
+      "ErrorKind": "apply_access_change.output/ErrorKind",
+      "Observation": "get_container.output/Observation",
+      "Server": "get_container.output/Server"
+    },
     "get_container_logs.output": {
       "AppError": "apply_access_change.output/AppError",
       "Candidate": "apply_access_change.output/Candidate",
@@ -6059,7 +6166,7 @@
       "ErrorKind": "apply_access_change.output/ErrorKind",
       "ImageDetail": "get_image.output/ImageDetail",
       "Observation": "get_image.output/Observation",
-      "Server": "get_image.output/Server"
+      "Server": "get_container.output/Server"
     },
     "get_image_history.input": {
       "DetailInput": "apply_access_change.input/DetailInput",
@@ -6073,7 +6180,7 @@
       "Layer": "get_image_history.output/Layer",
       "Observation": "get_image_history.output/Observation",
       "Page": "get_image_history.output/Page",
-      "Server": "get_image.output/Server"
+      "Server": "get_container.output/Server"
     },
     "get_network.output": {
       "AppError": "apply_access_change.output/AppError",
@@ -6081,7 +6188,7 @@
       "ErrorKind": "apply_access_change.output/ErrorKind",
       "NetworkSummary": "get_network.output/NetworkSummary",
       "Observation": "get_network.output/Observation",
-      "Server": "get_image.output/Server"
+      "Server": "get_container.output/Server"
     },
     "get_procedure.output": {
       "Acknowledgement": "apply_docker_prune.output/Acknowledgement",
@@ -6259,7 +6366,7 @@
       "Candidate": "apply_access_change.output/Candidate",
       "ErrorKind": "apply_access_change.output/ErrorKind",
       "Observation": "get_volume.output/Observation",
-      "Server": "get_image.output/Server",
+      "Server": "get_container.output/Server",
       "VolumeSummary": "get_volume.output/VolumeSummary"
     },
     "list_actions.output": {
@@ -6302,6 +6409,19 @@
       "Candidate": "apply_access_change.output/Candidate",
       "ErrorKind": "apply_access_change.output/ErrorKind",
       "Page": "list_builds.output/Page"
+    },
+    "list_containers.input": {
+      "DetailInput": "apply_access_change.input/DetailInput"
+    },
+    "list_containers.output": {
+      "AppError": "apply_access_change.output/AppError",
+      "Candidate": "apply_access_change.output/Candidate",
+      "ContainerIdentity": "get_container.input/ContainerIdentity",
+      "ContainerSummary": "list_containers.output/ContainerSummary",
+      "ErrorKind": "apply_access_change.output/ErrorKind",
+      "Observation": "list_containers.output/Observation",
+      "Page": "list_containers.output/Page",
+      "Server": "get_container.output/Server"
     },
     "list_core_secret_names.output": {
       "AppError": "apply_access_change.output/AppError",
@@ -6346,18 +6466,18 @@
       "Candidate": "apply_access_change.output/Candidate",
       "ErrorKind": "apply_access_change.output/ErrorKind",
       "ImageSummary": "list_images.output/ImageSummary",
-      "Observation": "list_images.output/Observation",
+      "Observation": "list_containers.output/Observation",
       "Page": "list_images.output/Page",
-      "Server": "get_image.output/Server"
+      "Server": "get_container.output/Server"
     },
     "list_networks.output": {
       "AppError": "apply_access_change.output/AppError",
       "Candidate": "apply_access_change.output/Candidate",
       "ErrorKind": "apply_access_change.output/ErrorKind",
       "NetworkSummary": "get_network.output/NetworkSummary",
-      "Observation": "list_images.output/Observation",
+      "Observation": "list_containers.output/Observation",
       "Page": "list_networks.output/Page",
-      "Server": "get_image.output/Server"
+      "Server": "get_container.output/Server"
     },
     "list_procedures.output": {
       "AppError": "apply_access_change.output/AppError",
@@ -6496,9 +6616,9 @@
       "AppError": "apply_access_change.output/AppError",
       "Candidate": "apply_access_change.output/Candidate",
       "ErrorKind": "apply_access_change.output/ErrorKind",
-      "Observation": "list_images.output/Observation",
+      "Observation": "list_containers.output/Observation",
       "Page": "list_volumes.output/Page",
-      "Server": "get_image.output/Server",
+      "Server": "get_container.output/Server",
       "VolumeSummary": "get_volume.output/VolumeSummary"
     },
     "observe_deployment_scale.output": {
@@ -16592,6 +16712,122 @@
       ],
       "type": "object"
     },
+    "get_container.input/ContainerIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "container_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "server_id": {
+          "pattern": "^[0-9a-fA-F]{24}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "server_id",
+        "container_id"
+      ],
+      "type": "object"
+    },
+    "get_container.output/ContainerDetail": {
+      "properties": {
+        "exit_code": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "health_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "identity": {
+          "$ref": "#/$defs/ContainerIdentity"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "restart_count": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "identity",
+        "name",
+        "state",
+        "exit_code",
+        "health_status",
+        "restart_count"
+      ],
+      "type": "object"
+    },
+    "get_container.output/Observation": {
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ContainerDetail"
+        },
+        "evidence_limit": {
+          "type": "string"
+        },
+        "server": {
+          "$ref": "#/$defs/Server"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "source",
+        "evidence_limit",
+        "data"
+      ],
+      "type": "object"
+    },
+    "get_container.output/Server": {
+      "properties": {
+        "cached_state": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "infrastructure_error_present": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "cached_state",
+        "enabled",
+        "infrastructure_error_present"
+      ],
+      "type": "object"
+    },
     "get_container_logs.output/LogTarget": {
       "additionalProperties": false,
       "properties": {
@@ -16969,33 +17205,6 @@
         "source",
         "evidence_limit",
         "data"
-      ],
-      "type": "object"
-    },
-    "get_image.output/Server": {
-      "properties": {
-        "cached_state": {
-          "type": "string"
-        },
-        "enabled": {
-          "type": "boolean"
-        },
-        "id": {
-          "type": "string"
-        },
-        "infrastructure_error_present": {
-          "type": "boolean"
-        },
-        "name": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "cached_state",
-        "enabled",
-        "infrastructure_error_present"
       ],
       "type": "object"
     },
@@ -18040,6 +18249,114 @@
       ],
       "type": "object"
     },
+    "list_containers.output/ContainerSummary": {
+      "properties": {
+        "identity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContainerIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null when the cache supplied insufficient evidence for exact inspection."
+        },
+        "image": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "identity",
+        "name",
+        "image",
+        "state"
+      ],
+      "type": "object"
+    },
+    "list_containers.output/Observation": {
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/Page"
+        },
+        "evidence_limit": {
+          "type": "string"
+        },
+        "server": {
+          "$ref": "#/$defs/Server"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "source",
+        "evidence_limit",
+        "data"
+      ],
+      "type": "object"
+    },
+    "list_containers.output/Page": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ContainerSummary"
+          },
+          "type": "array"
+        },
+        "next_page": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "observed_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "page": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "page_size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scan_incomplete": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "page",
+        "page_size",
+        "next_page",
+        "observed_count",
+        "scan_incomplete"
+      ],
+      "type": "object"
+    },
     "list_core_secret_names.output/CoreSecretNames": {
       "properties": {
         "evidence": {
@@ -18268,29 +18585,6 @@
         "created_unix_seconds",
         "size_bytes",
         "cached_in_use"
-      ],
-      "type": "object"
-    },
-    "list_images.output/Observation": {
-      "properties": {
-        "data": {
-          "$ref": "#/$defs/Page"
-        },
-        "evidence_limit": {
-          "type": "string"
-        },
-        "server": {
-          "$ref": "#/$defs/Server"
-        },
-        "source": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "server",
-        "source",
-        "evidence_limit",
-        "data"
       ],
       "type": "object"
     },

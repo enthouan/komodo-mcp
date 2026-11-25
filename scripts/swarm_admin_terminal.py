@@ -45,7 +45,7 @@ async def profiles():
                                                     operate, edit, prune, terminal) as process:
                             tools = f.checked(await process.rpc('tools/list', {}))['tools']
                             names = {tool['name'] for tool in tools}
-                            expected = 64 + 20*operate + 55*edit + 4*(operate and edit) + 2*(operate and prune) + (operate and terminal)
+                            expected = 66 + 20*operate + 55*edit + 4*(operate and edit) + 2*(operate and prune) + (operate and terminal)
                             s.require(len(tools) == expected, 'combined capability discovery count mismatch')
                             for name, visible in [('apply_variable_change', edit),
                                 ('apply_access_change', edit and operate), ('test_alerter', operate),

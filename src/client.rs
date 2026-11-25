@@ -1067,7 +1067,8 @@ impl CoreClient {
             }
             if matches!(
                 operation,
-                "ListImages"
+                "ListContainers"
+                    | "ListImages"
                     | "InspectImage"
                     | "ListImageHistory"
                     | "ListNetworks"

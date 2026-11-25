@@ -1,4 +1,6 @@
 //! Bounded, read-only Docker observations on one explicitly selected Server.
+pub mod containers;
+
 use std::collections::BTreeSet;
 
 use komodo_client::{
@@ -22,8 +24,14 @@ use crate::{
 };
 
 const SCAN: usize = 512;
-const CACHE: &str = "Core cache; no generation timestamp or completeness guarantee. Empty can mean no objects, missing cache or a suppressed Periphery poll failure. Pagination bounds local output, not Core/Docker enumeration. Cached in_use is not an authoritative prune dry run.";
-const FRESH: &str = "Fresh exact-object inspection through the selected Server. Lists and details are separate non-atomic reads. Raw configuration, labels, commands, driver options, mountpoints and credentials are omitted. Volume names have no immutable identity in Core's list: a same-name replacement cannot be excluded.";
+const CACHE: (&str, &str) = (
+    "core_cache",
+    "Core cache; no generation timestamp or completeness guarantee. Empty can mean no objects, missing cache or a suppressed Periphery poll failure. Pagination bounds local output, not Core/Docker enumeration. Cached in_use is not an authoritative prune dry run.",
+);
+const FRESH: (&str, &str) = (
+    "fresh_inspect",
+    "Fresh exact-object inspection through the selected Server. Lists and details are separate non-atomic reads. Raw configuration, labels, commands, driver options, mountpoints and credentials are omitted. Volume names have no immutable identity in Core's list: a same-name replacement cannot be excluded.",
+);
 
 fn size() -> u64 {
     30
@@ -344,13 +352,13 @@ fn finish<T: Serialize>(
     client: &CoreClient,
     server: Server,
     data: T,
-    fresh: bool,
+    (source, evidence_limit): (&'static str, &'static str),
 ) -> Result<Observation<T>, AppError> {
     let value = Observation {
         server,
         data,
-        source: if fresh { "fresh_inspect" } else { "core_cache" },
-        evidence_limit: if fresh { FRESH } else { CACHE },
+        source,
+        evidence_limit,
     };
     if serde_json::to_vec(&inventory::projected_value(client, &value))
         .map_or(true, |v| v.len() > 96 * 1024)
@@ -633,7 +641,7 @@ pub async fn images(
         &client,
         server,
         page(values, input.page, input.page_size, observed)?,
-        false,
+        CACHE,
     )
 }
 pub async fn image(
@@ -644,7 +652,7 @@ pub async fn image(
     let client = client.bounded_evidence();
     let server = server(&client, input.target).await?;
     let full = selected_image(&client, &server.id, &input.object).await?;
-    finish(&client, server, image_detail(&client, full)?, true)
+    finish(&client, server, image_detail(&client, full)?, FRESH)
 }
 pub async fn history(
     client: &CoreClient,
@@ -690,7 +698,7 @@ pub async fn history(
             image_id: id,
             layers: page(layers, input.page, input.page_size, observed)?,
         },
-        true,
+        FRESH,
     )
 }
 pub async fn networks(
@@ -722,7 +730,7 @@ pub async fn networks(
         &client,
         server,
         page(values, input.page, input.page_size, observed)?,
-        false,
+        CACHE,
     )
 }
 pub async fn network(
@@ -765,7 +773,7 @@ pub async fn network(
     {
         return Err(invalid());
     }
-    finish(&client, server, network_detail(&client, full)?, true)
+    finish(&client, server, network_detail(&client, full)?, FRESH)
 }
 pub async fn volumes(
     client: &CoreClient,
@@ -796,7 +804,7 @@ pub async fn volumes(
         &client,
         server,
         page(values, input.page, input.page_size, observed)?,
-        false,
+        CACHE,
     )
 }
 pub async fn volume(
@@ -824,5 +832,5 @@ pub async fn volume(
     if full.name != selected.name {
         return Err(invalid());
     }
-    finish(&client, server, volume_detail(&client, full)?, true)
+    finish(&client, server, volume_detail(&client, full)?, FRESH)
 }
