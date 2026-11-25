@@ -99,6 +99,8 @@ def export(raw):
               "host": nums(report["host"], ("logical_cpus", "memory_bytes")),
               "observed_cpu_load": [nums({"load": x}, ("load",))["load"] for x in report["host"]["load_average"]],
               "implementations": {}}
+    if not live and not incident:
+        result["controls"]["concurrency"] = report["workload"]["concurrency"]
     python = re.match(r"(\d+\.\d+\.\d+)\b", report["host"]["python"])
     if python:
         result["host"]["python"] = python[1]
@@ -115,6 +117,8 @@ def export(raw):
     else:
         result.update(fixture_wire_sha256=token(report["fixture"]["wire_sha256"], "[a-f0-9]{64}"),
                       fixture_delay_ms=nums(report["fixture"], ("delay_ms",))["delay_ms"])
+        result["fixture_service_ms"] = bench.stats([nums(event, ("service_ms",))["service_ms"]
+                                                   for event in report["core_requests"]])
     for name, data in report["implementations"].items():
         phases = {"warm": rows(data if live else data["warm"])}
         if not live:
