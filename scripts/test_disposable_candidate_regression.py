@@ -125,11 +125,28 @@ class CandidateTests(unittest.TestCase):
             outer.assert_called_once()
             report = reg.smoke.REPORT
             self.assertEqual(report["workload_cleanup_status"], "failed")
+            self.assertEqual(report["failed_workload_cleanup_step"], "start")
             self.assertFalse(report["workload_cleanup_verified"])
             self.assertEqual(report["owned_workload_cleanup"], {
                 "Stack":["mcp-smoke-stack"], "Deployment":None, "ResourceSync":[], "Server":[],
                 "service_users":[], "nested_fixture_containers":[], "nested_deployment_containers":[],
                 "outer_candidate_containers":["c"*64]})
+
+    def test_running_deployment_deletion_has_its_own_bounded_deadline(self):
+        candidate = reg.Candidate.__new__(reg.Candidate)
+        candidate.args = SimpleNamespace(transport="stdio")
+        admin = Mock()
+        candidate.context = {"provisioner":admin}
+        scope = {"stack_id":"a"*24,"deployment_id":"b"*24}
+        admin.read.side_effect = [{"id":scope["stack_id"],"name":"mcp-smoke-stack"},
+                                  {"id":scope["deployment_id"],"name":"mcp-smoke-deployment"}]
+        admin.request.side_effect = reg.smoke.Failure("synthetic teardown failure")
+        with patch.dict(reg.smoke.REPORT,{"scope":scope},clear=True), patch.object(candidate,"observe_cleanup",return_value={}):
+            with self.assertRaisesRegex(reg.smoke.Failure,"synthetic teardown"):
+                candidate.cleanup()
+            self.assertEqual(reg.smoke.REPORT["failed_workload_cleanup_step"], "delete Deployment")
+        admin.write.assert_called_once_with("DeleteStack",{"id":scope["stack_id"]})
+        admin.request.assert_called_once_with("/write","DeleteDeployment",{"id":scope["deployment_id"]},timeout=45)
 
     def test_native_stderr_detects_a_marker_split_across_chunks(self):
         async def run():

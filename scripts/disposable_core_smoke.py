@@ -116,15 +116,16 @@ class Api:
         self.address, self.headers = address, headers or {}
         self.port = parsed.port
 
-    def request(self, endpoint, operation=None, params=None):
+    def request(self, endpoint, operation=None, params=None, *, timeout=None):
+        timeout = HTTP_TIMEOUT if timeout is None else timeout
         headers = {'content-type': 'application/json', **self.headers}
         data = None if operation is None else json.dumps({'type': operation, 'params': params or {}}).encode()
         # Direct loopback HTTP never follows redirects or consults proxy env.
         # A watchdog shuts down the actual socket, including during slow header
         # reads; cancelling a to_thread waiter alone cannot stop that I/O.
-        deadline = time.monotonic() + HTTP_TIMEOUT
+        deadline = time.monotonic() + timeout
         expired = threading.Event()
-        connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=HTTP_TIMEOUT)
+        connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=timeout)
         transport = timer = None
 
         def abort():

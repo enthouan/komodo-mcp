@@ -29,6 +29,10 @@ WORKLOAD_RESOURCES = (*CORE_WORKLOADS, "service_users", "nested_fixture_containe
 REDACTION_SURFACES = ("MCP frames", "protocol errors", "process diagnostics", "scenario evidence")
 DENIAL_TOOLS = ("apply_resource_sync", "get_resource_sync_pending", "refresh_resource_sync_pending",
                 "review_resource_sync_pending")
+CLEANUP_STEPS = {"start", "outer candidate containers", "stop Periphery", "verify service users", "delete service user",
+                 "list deployed container", "delete deployed container", "verify fixture container", "delete fixture container",
+                 *(verb + " " + name for verb in ("verify", "delete")
+                   for name in ("ResourceSync","Deployment","Stack","alternate Server","bootstrap Server"))}
 
 
 def expect_clean(value):
@@ -446,6 +450,7 @@ class Candidate:
         # The shared runner always removes the private Core database and nested daemon.
         # Also remove and list workload objects while both authoritative services exist.
         if self.args.transport == "http":
+            self.cleanup_step = "outer candidate containers"
             # Recover a Docker create whose reply was interrupted.
             for cid in self.candidate_containers():
                 self.owned.setdefault(cid, smoke.OWNER)
@@ -459,31 +464,48 @@ class Candidate:
             if getattr(self, "sync_id", None):
                 expected.insert(0, ("ResourceSync", "mcp-regression-stale", self.sync_id))
             for kind, name, ident in expected:
+                self.cleanup_step = "verify " + kind
                 arg = "sync" if kind == "ResourceSync" else kind.lower()
                 current = admin.read("Get" + kind, {arg:ident})
                 smoke.require(smoke.identity(current) == ident and current["name"] == name,
                               "owned Core identity changed before cleanup")
-                admin.write("Delete" + kind, {"id":ident})
+                self.cleanup_step = "delete " + kind
+                if kind == "Deployment":
+                    # Core waits for the container's 10s termination grace. The
+                    # ordinary 10s API deadline can expire before its reply.
+                    admin.request("/write", "DeleteDeployment", {"id":ident}, timeout=45)
+                else:
+                    admin.write("Delete" + kind, {"id":ident})
             # Stop the fixture agent before deleting its bootstrap Server.
+            self.cleanup_step = "stop Periphery"
             smoke.run([*smoke.COMPOSE, "stop", "periphery"])
             for name, ident in [("mcp-smoke-alternate", scope["alternate_server_id"]),
                                 ("mcp-smoke-server", scope["server_id"])]:
+                role = "alternate Server" if name == "mcp-smoke-alternate" else "bootstrap Server"
+                self.cleanup_step = "verify " + role
                 current = admin.read("GetServer", {"server":ident})
                 smoke.require(smoke.identity(current) == ident and current["name"] == name,
                               "server replaced before cleanup")
+                self.cleanup_step = "delete " + role
                 admin.write("DeleteServer", {"id":ident})
+            self.cleanup_step = "verify service users"
             users = {entry["id"]:entry["username"] for entry in self.context["users"]}
             current_users = {smoke.identity(user):user["username"] for user in admin.read("ListUsers")}
             smoke.require(all(current_users.get(i) == name for i,name in users.items()),
                           "scoped service user identity changed")
             for ident in users:
+                self.cleanup_step = "delete service user"
                 admin.write("DeleteUser", {"user":ident})
+            self.cleanup_step = "list deployed container"
             deployed = nested("ps", "-aq", "--no-trunc", "--filter","name=^/mcp-smoke-deployment$").splitlines()
             if deployed and deployed == [getattr(self, "deployed_id", None)]:
+                self.cleanup_step = "delete deployed container"
                 nested("rm", "-f", deployed[0])
             for cid in self.nested_ids:
+                self.cleanup_step = "verify fixture container"
                 owner = nested("inspect", "--format", '{{index .Config.Labels "komodo-mcp.test.session"}}', cid)
                 smoke.require(owner == smoke.OWNER, "nested container ownership changed")
+                self.cleanup_step = "delete fixture container"
                 nested("rm", "-f", cid)
 
     def observe_cleanup(self):
@@ -523,10 +545,17 @@ class Candidate:
     def cleanup(self):
         report = smoke.REPORT
         report.update(workload_cleanup_status="failed", workload_cleanup_verified=False)
+        self.cleanup_step = "start"
         removed = False
         try:
             self.remove_workloads()
             removed = True
+        except Exception as error:
+            report["failed_workload_cleanup_step"] = self.cleanup_step
+            print("Workload cleanup failed during " + self.cleanup_step, flush=True)
+            if isinstance(error, smoke.CoreHttpFailure):
+                report["workload_cleanup_http_status"] = error.status
+            raise
         finally:
             # These are the last authoritative observations before Compose tears down
             # the database and nested daemon. A failed removal still gets a listing.

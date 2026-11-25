@@ -35,6 +35,7 @@ class HostedRegressionTests(unittest.TestCase):
             candidate = root/"record.json"
             candidate.write_text(json.dumps(record()))
             private = {"passed":False,"phase":"failed","cleanup_verified":False,
+                       "failed_workload_cleanup_step":"delete Deployment","workload_cleanup_http_status":503,
                        "private_cleanup_directory":"/Users/"+marker, "failure":marker,
                        "scenarios":{"container_workflow":{"pages":2,"Env":[marker]}},
                        "owned_workload_cleanup":{"Server":[marker]}}
@@ -43,6 +44,8 @@ class HostedRegressionTests(unittest.TestCase):
             ci.export(candidate, record(), root, "stdio", output)
             result = json.loads(output.read_bytes())
             self.assertFalse(result["passed"])
+            self.assertEqual(result["failed_workload_cleanup_step"], "delete Deployment")
+            self.assertEqual(result["workload_cleanup_http_status"], 503)
             expected = dict.fromkeys(ci.WORKLOAD_RESOURCES)
             expected["Server"] = 1
             self.assertEqual(result["remaining_test_resources"], expected)

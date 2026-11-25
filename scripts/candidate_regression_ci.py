@@ -11,7 +11,7 @@ import sys
 import tomllib
 
 from candidate_clients import CLIENT_INFO, PROTOCOL, NativeMcp
-from disposable_candidate_regression import DENIAL_TOOLS, REDACTION_SURFACES, WORKLOAD_RESOURCES, native_host_platform
+from disposable_candidate_regression import CLEANUP_STEPS, DENIAL_TOOLS, REDACTION_SURFACES, WORKLOAD_RESOURCES, native_host_platform
 from disposable_core_smoke import CORE_VERSION
 from distribution import sha256, stem
 from distribution_archive import extract
@@ -248,6 +248,7 @@ def export(path, data, work, case, destination):
                     "docker_version":VERSION, "executable_sha256":DIGEST, "index_digest":"sha256:"+DIGEST,
                     "platform_manifest_digest":"sha256:"+DIGEST, "compose_cleanup_verified":bool,
                     "workload_cleanup_verified":bool, "workload_cleanup_status":{"not_started","failed","residue","unknown","verified"},
+                    "failed_workload_cleanup_step":CLEANUP_STEPS, "workload_cleanup_http_status":lambda v: type(v) is int and 400 <= v <= 599,
                     "phase":{"preflight","provisioning","exercising","cleanup","complete","failed"},
                     "candidate_image_cleanup":{"removed","failed"}}))
         result["scenarios"] = {name: project_values(raw["scenarios"][name], fields)
