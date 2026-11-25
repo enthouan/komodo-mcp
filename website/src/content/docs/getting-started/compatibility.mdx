@@ -8,7 +8,7 @@ import RepositorySection from '../../../components/RepositorySection.astro';
 import { CLIENT_SETUPS } from '../../../data/clients.js';
 import { MCP_PROTOCOL_VERSION, RMCP_VERSION, RUST_TOOLCHAIN } from '../../../data/project.js';
 
-This page separates three kinds of evidence: **configuration review** (the recipe matches the client's documentation), **connection and discovery** (the client started the server and listed its tools), and **live read** (a real tool call returned data). Nothing here is inherited from other projects or inferred from similar clients.
+A reviewed configuration records the client's setup syntax. Initialization and discovery show that the client connected and listed tools. A fixture call checks the response against synthetic Core data. A live call exercises the named workflow against a running Core with the reported permissions and service versions.
 
 ## MCP clients
 
@@ -39,6 +39,8 @@ This page separates three kinds of evidence: **configuration review** (the recip
     </tr>
   </tbody>
 </table>
+
+The `komodo-mcp-disposable-candidate` 1 client exercised native stdio and authenticated Streamable HTTP against running Core and Periphery 2.3.2 on Linux x86-64. The `komodo-inventory-benchmark` 1 client checked seven live Stacks over stdio on Intel macOS. [Exact packages, protocols and workflows](/docs/v0-9-0-compatibility/)
 
 <Aside type="note" title="Client checks on 2026-11-16">
   Claude Code 2.1.228 parsed the `.mcp.json` recipe and listed its command and environment with `claude mcp get`, but the session was not approved or connected, so no connection is claimed. A Codex CLI 0.151.0 run could not start a model turn in the test environment, so no Codex result is claimed either. Reports of successful connections are welcome as [issues](/reference/reporting-issues/).
