@@ -30,6 +30,32 @@ class WireClient:
 
 
 class PackagedTests(unittest.TestCase):
+    def test_rejects_foreign_native_targets_before_preparing_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            args = SimpleNamespace(reference_dir=directory / "ts", node="node", npm="npm", cargo="cargo",
+                                   rustc="rustc", candidate_binary=directory / "binary", candidate_record=directory / "record",
+                                   candidate_target="x86_64-apple-darwin", rust_reference_dir=directory / "rust",
+                                   artifacts=directory / "artifacts.json")
+            outputs = ["node", "v24.18.0", tmp, "rustc 1.99.1\nhost: aarch64-apple-darwin", "arm64"]
+            with patch.object(bench, "command", side_effect=outputs), patch.object(bench, "executable", side_effect=str), \
+                    patch.object(bench.platform, "system", return_value="Darwin"), \
+                    patch.object(bench.platform, "machine", return_value="arm64"), \
+                    patch.object(packaged, "candidate") as prepare_candidate:
+                with self.assertRaisesRegex(ValueError, "candidate target differs"):
+                    bench.prepare(args)
+                prepare_candidate.assert_not_called()
+            self.assertFalse(args.artifacts.exists())
+
+    def test_native_linux_libcs_and_mismatched_comparators(self):
+        target = "aarch64-unknown-linux-musl"
+        for libc in ("gnu", "musl"):
+            packaged.check_host_targets(target, f"aarch64-unknown-linux-{libc}", "Linux", "aarch64", "arm64")
+        with self.assertRaisesRegex(ValueError, "Rust comparator target differs"):
+            packaged.check_host_targets(target, "x86_64-unknown-linux-gnu", "Linux", "arm64")
+        with self.assertRaisesRegex(ValueError, "Node runtime architecture differs"):
+            packaged.check_host_targets(target, target, "Linux", "arm64", "x64")
+
     def test_reference_pages_and_diagnostic_evidence(self):
         with incident.IncidentCore(7) as fixture:
             reader = Reader(WireClient(fixture))

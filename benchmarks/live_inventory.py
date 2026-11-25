@@ -87,7 +87,7 @@ async def measure(artifacts, url, credentials, expected, controls, report):
 
 def validate(report):
     bench.require(report["format"] == FORMAT and report["status"] == "complete", "incomplete live comparison")
-    packaged.validate_artifacts(report["artifacts"])
+    packaged.validate_artifacts(report["artifacts"], report["host"])
     controls = report["controls"]
     for key in ("page_size", "samples", "repetitions", "timeout"):
         bench.require(bench.number(controls[key], True), "invalid live controls")

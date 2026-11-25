@@ -12,15 +12,7 @@ import disposable_core_smoke as smoke
 from distribution import sha256
 from bench import preflight, read_json, write_json
 from live_inventory import run as measure_inventory
-from packaged import packaged_entry
-
-
-def native_target():
-    # The measured process runs on the host. Docker Desktop runs only Core/Periphery.
-    machine = {"amd64": "x86_64", "arm64": "aarch64"}.get(platform.machine().lower(), platform.machine().lower())
-    suffix = {"Darwin": "apple-darwin", "Linux": "unknown-linux-musl"}.get(platform.system())
-    smoke.require(machine in ("x86_64", "aarch64") and suffix, "unsupported native benchmark host")
-    return f"{machine}-{suffix}"
+from packaged import native_target, packaged_entry
 
 
 def exercise(context, args, pending):
@@ -62,7 +54,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--candidate-record', required=True, type=Path)
     parser.add_argument('--candidate-binary', required=True, type=Path)
-    parser.add_argument('--candidate-target', default=native_target(), help='native executable target on this host')
+    host_target = native_target(platform.system(), platform.machine())
+    parser.add_argument('--candidate-target', default=host_target, help='native executable target on this host')
     parser.add_argument('--artifacts', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--fixture-size', default=7, type=int, choices=range(2, 32))
@@ -70,7 +63,7 @@ def main():
     parser.add_argument('--project', required=True, type=smoke.project_name)
     parser.add_argument('--evidence', required=True, type=Path)
     args = parser.parse_args()
-    smoke.require(args.candidate_target == native_target(), 'candidate target differs from the native benchmark host')
+    smoke.require(args.candidate_target == host_target, 'candidate target differs from the native benchmark host')
     if args.output.exists() or args.output.resolve() in {args.evidence.resolve(), args.artifacts.resolve(), args.candidate_record.resolve()}:
         parser.error('choose a new live report separate from evidence, manifest and candidate record')
     record = json.loads(args.candidate_record.read_text())

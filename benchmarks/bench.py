@@ -110,7 +110,13 @@ def prepare(args):
     selection = [args.candidate_binary, args.candidate_record, args.candidate_target, args.rust_reference_dir]
     if any(selection) and not all(selection):
         raise ValueError("packaged preparation requires the executable, target, shared candidate record and Rust reference dir")
-    packaged_candidate = packaged.candidate(args) if all(selection) else None
+    rust_version = command([rustc, "-vV"])
+    target = next(line.removeprefix("host: ") for line in rust_version.splitlines() if line.startswith("host: "))
+    packaged_candidate = None
+    if all(selection):
+        node_arch = command([node, "-p", "process.arch"])
+        packaged.check_host_targets(args.candidate_target, target, platform.system(), platform.machine(), node_arch)
+        packaged_candidate = packaged.candidate(args)
     if not reference.exists():
         execute(["git", "clone", "--no-checkout", REFERENCE_URL, str(reference)], ROOT)
         execute(["git", "checkout", "--detach", REFERENCE_REV], reference)
@@ -123,8 +129,6 @@ def prepare(args):
     execute([npm, "run", "build"], reference)
     if git_state(reference)["dirty"]:
         raise ValueError("reference preparation modified source or dependency lock")
-    rust_version = command([rustc, "-vV"])
-    target = next(line.removeprefix("host: ") for line in rust_version.splitlines() if line.startswith("host: "))
     # Explicit target/output location prevents an inherited CARGO_TARGET_DIR or
     # CARGO_BUILD_TARGET from making us attribute an older binary to this build.
     if packaged_candidate is not None:
@@ -162,7 +166,7 @@ def prepare(args):
 
         manifest["reference"].update(build_bytes=regular_file_bytes(reference / "build"),
                                      dependencies_bytes=regular_file_bytes(reference / "node_modules"),
-                                     node_bytes=Path(node).stat().st_size)
+                                     node_bytes=Path(node).stat().st_size, node_arch=node_arch)
         manifest["rust_reference"] = packaged.build_reference(args.rust_reference_dir, target, executable(Path(sysroot) / "bin/cargo"), rustc,
                                                               execute, command, git_state)
     write_json(args.artifacts, manifest)
@@ -493,7 +497,7 @@ def validate(report):
             for v in (rust["sha256"], reference["package_lock_sha256"], reference["build_sha256"],
                       reference["dependencies_sha256"], reference["node_sha256"])), "missing artifact identities")
     if "candidate" in rust or "rust_reference" in report["artifacts"]:
-        packaged.validate_artifacts(report["artifacts"])
+        packaged.validate_artifacts(report["artifacts"], report["host"])
         packaged.check_versions(report)
     fields(report["definitions"], "startup warm response_bytes percentiles direct_core fixture_service rss")
     fields(report["workload"], "name protocol rust_tool reference_tool arguments concurrency logging environment")

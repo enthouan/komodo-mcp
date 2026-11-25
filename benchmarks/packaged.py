@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import re
 import subprocess
 import sys
@@ -21,6 +22,24 @@ RUST_LOCK = "1e0fd7673968cddd83cbb2d56bf5e0600c501791387c2fc261cd539569b3410c"
 def check(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def native_target(system, machine):
+    arch = {"amd64": "x86_64", "arm64": "aarch64"}.get(machine.lower(), machine.lower())
+    suffix = {"Darwin": "apple-darwin", "Linux": "unknown-linux-musl"}.get(system)
+    check(arch in ("x86_64", "aarch64") and suffix, "unsupported native benchmark host")
+    return f"{arch}-{suffix}"
+
+
+def check_host_targets(candidate, comparator, system, machine, node_arch=None):
+    expected = native_target(system, machine)
+    check(candidate == expected, "packaged candidate target differs from the native benchmark host")
+    # Linux packages use static musl. A native comparator can use the host's GNU libc.
+    check(comparator in {expected, expected.replace("-linux-musl", "-linux-gnu")},
+          "Rust comparator target differs from the native benchmark host")
+    if node_arch is not None:
+        check(node_arch == {"x86_64": "x64", "aarch64": "arm64"}[expected.split("-", 1)[0]],
+              "Node runtime architecture differs from the native benchmark host")
 
 
 def sha(path):
@@ -91,7 +110,7 @@ def build_reference(directory, target, cargo, rustc, execute, command, git_state
                                            "RUSTC_WORKSPACE_WRAPPER"}}}
 
 
-def validate_artifacts(artifacts):
+def validate_artifacts(artifacts, host=None):
     candidate = artifacts["rust"]
     receipt = candidate["candidate"]
     entry = packaged_entry(receipt, candidate["target"])
@@ -107,6 +126,8 @@ def validate_artifacts(artifacts):
     check(ref["repository"] == RUST_REPOSITORY and ref["revision"] == RUST_REVISION
           and ref["cargo_lock_sha256"] == RUST_LOCK and re.fullmatch(r"[a-f0-9]{64}", ref["sha256"])
           and ref["bytes"] > 0, "incorrect independent Rust reference identity")
+    if host is not None:
+        check_host_targets(candidate["target"], ref["target"], host["system"], host["architecture"], ts.get("node_arch"))
 
 
 def check_versions(report):
@@ -119,6 +140,11 @@ def check_versions(report):
 def preflight(artifacts, git_state):
     validate_artifacts(artifacts)
     candidate = artifacts["rust"]
+    ts = artifacts["reference"]
+    node_arch = subprocess.check_output([ts["node"], "-p", "process.arch"], text=True).strip()
+    check(ts.get("node_arch", node_arch) == node_arch, "Node runtime architecture changed after preparation")
+    check_host_targets(candidate["target"], artifacts["rust_reference"]["target"],
+                       platform.system(), platform.machine(), node_arch)
     path = Path(candidate["candidate_record_path"])
     check(sha(path) == candidate["candidate_record_sha256"]
           and json.loads(path.read_bytes()) == candidate["candidate"], "shared candidate record changed")

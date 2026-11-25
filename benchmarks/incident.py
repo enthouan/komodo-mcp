@@ -459,7 +459,7 @@ def validate(report):
             (rust["sha256"], rust["source_sha256"], rust["cargo_lock_sha256"], reference["package_lock_sha256"],
              reference["node_sha256"], reference["build_sha256"], reference["dependencies_sha256"])), "missing artifact hashes")
     if "candidate" in rust or "rust_reference" in report["artifacts"]:
-        packaged.validate_artifacts(report["artifacts"])
+        packaged.validate_artifacts(report["artifacts"], report["host"])
         packaged.check_versions(report)
     fields(report["definitions"], "warm concurrency response_bytes core_requests rss percentiles limits")
     fields(report["workload"], "name protocol concurrency rust reference equivalence environment")
