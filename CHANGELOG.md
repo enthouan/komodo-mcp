@@ -5,6 +5,8 @@ notes: short, categorized bullets with links to the relevant pull requests.
 
 ## Unreleased
 
+## v0.9.0
+
 ### Added
 
 - Install the self-hosted beta from the website with verified native downloads and a versioned Compose configuration. ([#140](https://github.com/enthouan/komodo-mcp/pull/140))
@@ -13,6 +15,10 @@ notes: short, categorized bullets with links to the relevant pull requests.
 - Look up tested clients, packages and live Core workflows alongside Komodo API coverage and official `km` command equivalents. ([#148](https://github.com/enthouan/komodo-mcp/pull/148), [#151](https://github.com/enthouan/komodo-mcp/pull/151))
 - Reproduce the packaged stdio and HTTP checks against disposable Komodo Core and verify the matching offline source rebuild. ([#149](https://github.com/enthouan/komodo-mcp/pull/149))
 - Compare packaged startup, memory and read latency with pinned Rust and TypeScript references using the published benchmark samples. ([#150](https://github.com/enthouan/komodo-mcp/pull/150))
+
+### Fixed
+
+- Publish container images when GHCR returns a session URL for a layer upload. ([#143](https://github.com/enthouan/komodo-mcp/pull/143))
 
 ## v0.8.0
 
