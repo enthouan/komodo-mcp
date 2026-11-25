@@ -98,6 +98,10 @@ impl Http {
     }
 
     pub async fn session(&self, token: &str, origin: Option<&str>) -> String {
+        self.initialize_session(token, origin).await.0
+    }
+
+    pub async fn initialize_session(&self, token: &str, origin: Option<&str>) -> (String, Value) {
         let mut request = self.request(Method::POST, Some(token), None);
         if let Some(origin) = origin {
             request = request.header("origin", origin);
@@ -123,7 +127,7 @@ impl Http {
             post(request, notice).send().await.unwrap().status(),
             StatusCode::ACCEPTED
         );
-        session
+        (session, response["result"].clone())
     }
 
     pub async fn rpc(&self, token: &str, session: &str, method: &str, params: Value) -> Value {

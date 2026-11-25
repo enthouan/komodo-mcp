@@ -79,6 +79,10 @@ policy file is not evidence that hosted protection is active.
 
 ## Release compatibility
 
+The [v1 MCP tool contract](contracts/README.md) records the running server’s
+public surface, profile visibility and representative responses. It includes
+the drift check and the review procedure for intentional changes.
+
 Release PRs use the same normal, SHA-guarded squash merge after checks and
 reviews pass, without an administrator bypass. A separate explicit approval
 can be required before creating the release PR; honor that checkpoint.

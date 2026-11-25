@@ -1,4 +1,8 @@
 //! Generate the website's complete built-in tool catalog offline from registered metadata.
+#[path = "support/schema_pool.rs"]
+mod schema_pool;
+use schema_pool::SchemaPool;
+
 use std::{collections::BTreeMap, env, error::Error, fs};
 
 use komodo_mcp::{
@@ -35,15 +39,8 @@ struct Entry {
 #[serde(rename_all = "camelCase")]
 struct Catalog {
     tools: BTreeMap<String, Entry>,
-    schemas: BTreeMap<String, Value>,
-    schema_definitions: BTreeMap<String, BTreeMap<String, String>>,
-    definitions: BTreeMap<String, Value>,
-}
-
-#[derive(Default)]
-struct Known {
-    schemas: BTreeMap<String, String>,
-    definitions: BTreeMap<String, String>,
+    #[serde(flatten)]
+    pool: SchemaPool,
 }
 
 // Derive minimum qualifying grant combinations from the actual runtime policy.
@@ -74,40 +71,8 @@ fn grant_sets(capability: Capability) -> Vec<Vec<&'static str>> {
         .collect()
 }
 
-// Intern repeated schemas and definitions by canonical JSON, retaining original
-// local definition names. Different scopes can use the same name for different shapes.
-fn intern_schema(
-    catalog: &mut Catalog,
-    known: &mut Known,
-    id: String,
-    mut schema: Value,
-) -> Result<String, serde_json::Error> {
-    schema.sort_all_objects();
-    let key = serde_json::to_string(&schema)?;
-    if let Some(existing) = known.schemas.get(&key) {
-        return Ok(existing.clone());
-    }
-    known.schemas.insert(key, id.clone());
-    if let Some(defs) = schema.as_object_mut().and_then(|obj| obj.remove("$defs")) {
-        let mut names = BTreeMap::new();
-        for (name, definition) in serde_json::from_value::<BTreeMap<String, Value>>(defs)? {
-            let key = serde_json::to_string(&definition)?;
-            let shared = known.definitions.entry(key).or_insert_with(|| {
-                let unique = format!("{id}/{name}");
-                catalog.definitions.insert(unique.clone(), definition);
-                unique
-            });
-            names.insert(name, shared.clone());
-        }
-        catalog.schema_definitions.insert(id.clone(), names);
-    }
-    catalog.schemas.insert(id.clone(), schema);
-    Ok(id)
-}
-
 fn build() -> Result<Catalog, Box<dyn Error>> {
     let mut catalog = Catalog::default();
-    let mut known = Known::default();
     let mut tools = KomodoServer::built_in_tools();
     tools.sort_by(|(a, _), (b, _)| a.name.cmp(&b.name));
     for (tool, capability) in tools {
@@ -134,14 +99,11 @@ fn build() -> Result<Catalog, Box<dyn Error>> {
                 return Err(format!("No registered or documented output shape for {name}").into());
             }
         };
-        let input_schema = intern_schema(
-            &mut catalog,
-            &mut known,
+        let input_schema = catalog.pool.intern(
             format!("{name}.input"),
             Value::Object(tool.input_schema.as_ref().clone()),
         )?;
-        let output_schema =
-            intern_schema(&mut catalog, &mut known, format!("{name}.output"), output)?;
+        let output_schema = catalog.pool.intern(format!("{name}.output"), output)?;
         let entry = Entry {
             description,
             grant_sets: grant_sets(capability),
@@ -190,12 +152,14 @@ fn committed_catalog_matches_the_full_runtime_registry() {
 fn expanded_schemas_equal_every_document_advertised_by_the_router() {
     let catalog = build().unwrap();
     let expand = |id: &str| {
-        let mut schema = catalog.schemas[id].clone();
-        if let Some(names) = catalog.schema_definitions.get(id) {
+        let mut schema = catalog.pool.schemas[id].clone();
+        if let Some(names) = catalog.pool.schema_definitions.get(id) {
             schema["$defs"] = Value::Object(
                 names
                     .iter()
-                    .map(|(local, shared)| (local.clone(), catalog.definitions[shared].clone()))
+                    .map(|(local, shared)| {
+                        (local.clone(), catalog.pool.definitions[shared].clone())
+                    })
                     .collect(),
             );
         }
