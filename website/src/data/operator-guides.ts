@@ -70,6 +70,14 @@ export const OPERATOR_GUIDE_GROUPS = [
     ],
   },
   {
+    label: "Release evidence",
+    guides: [
+      { slug: "v0-9-0-compatibility", label: "v0.9.0 client and service compatibility", description: "Find the package, client, transport and Core/Periphery versions used for each workflow." },
+      { slug: "v0-9-0-api-coverage", label: "v0.9.0 Komodo API coverage", description: "Look up an upstream API family to find its MCP tools, required grants and coverage limits." },
+      { slug: "v0-9-0-cli-coverage", label: "v0.9.0 Komodo CLI coverage", description: "Find the MCP equivalent of a km command and compare its inputs, output and scope." },
+    ],
+  },
+  {
     label: "Project",
     guides: [
       { slug: "container", label: "Docker Compose installation", description: "Run the multi-platform image with runtime credentials, verify the authenticated listener, and find matching source and notices." },

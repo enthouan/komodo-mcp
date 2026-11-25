@@ -711,14 +711,17 @@ enter these projections.
 
 ## Version evidence
 
-The dependency is **komodo_client 2.3.2**; the local HTTP fixtures represent
-**Komodo Core 2.3.2**. The observed remote version comes from `GetVersion`, not
-from the dependency or fixture version. Other valid SemVer responses are retained
-without a claim of compatibility. See the [fixture sources and limitations](tests/fixtures/core-2.3.2/README.md).
-Verification used synthetic, enabled non-admin fixtures with resource read
-access. **No running Core release was exercised**, because no test Core or
-credentials were configured. Compatibility beyond these wire fixtures remains
-unverified; changes to Core's HTTP 500 permission signature may require an update.
+The [v0.9.0 compatibility matrix](docs/v0-9-0-compatibility.md) identifies the
+package, client, transport and service versions for each workflow. Compare the
+MCP tools and their grants with the [Komodo API](docs/v0-9-0-api-coverage.md)
+and the [official `km` CLI](docs/v0-9-0-cli-coverage.md).
+
+The Rust dependency and synthetic HTTP fixtures target Komodo Core 2.3.2.
+The fixtures exercise scoped non-admin reads and Core's permission errors.
+Running Core instances report their version through `GetVersion`. The v0.8.0
+acceptance runs exercised Core and Periphery 2.3.2 through native stdio and
+authenticated HTTP. See the [fixture sources](tests/fixtures/core-2.3.2/README.md)
+and [v0.8.0 release acceptance](https://github.com/enthouan/komodo-mcp/issues/45#issuecomment-7145094532).
 
 No optional `komodo_client` features are enabled. Its mandatory dependencies
 enable reqwest's `json`, `stream`, `form`, `query`, and `rustls` features, plus
