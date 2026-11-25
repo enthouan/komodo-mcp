@@ -139,6 +139,8 @@ def rebuild(data, work):
             and receipt["revision"] == revision and receipt["mcp_version"] == receipt["version"] == version
             and built["target"] == TARGET and re.fullmatch(r"[a-f0-9]{64}", built["executable_sha256"]),
             "rebuilt MCP identity differs from its source")
+    packaged_digest = entry_for(data, "native", TARGET)["executable_sha256"]
+    require(built["executable_sha256"] == packaged_digest, "rebuilt executable differs from the packaged executable")
     rebuilt_name = stem(version, TARGET)
     archive = work / "rebuilt" / (rebuilt_name + ".tar.gz")
     require(built["name"] == archive.name and built["sha256"] == sha256(archive), "rebuilt archive differs")
@@ -146,7 +148,7 @@ def rebuild(data, work):
     result.update(phase="fixture_probe",rebuilt_executable_sha256=built["executable_sha256"],
                   target=built["target"],platform=native_host_platform())
     evidence.write_text(json.dumps(result))
-    probe = asyncio.run(probe_rebuilt(binary, built["executable_sha256"], version))
+    probe = asyncio.run(probe_rebuilt(binary, packaged_digest, version))
     result.update(passed=True,phase="complete",**probe)
     evidence.write_text(json.dumps(result))
 
@@ -235,9 +237,11 @@ def export(path, data, work, case, destination):
         probe = project_values(raw.get("fixture_probe", {}), {"tool":{"list_stacks"}, "returned_stacks":int, "core_inventory_reads":int})
         result["fixture_probe"] = probe
         if result["passed"]:
+            require(result.get("rebuilt_executable_sha256") == entry_for(data, "native", TARGET)["executable_sha256"],
+                    "rebuilt executable differs from the packaged executable")
             require(result.get("phase") == "complete" and result["loopback_only"] and result.get("cargo_offline") is True
                     and result.get("source_archive_sha256") == entry_for(data, "source")["sha256"]
-                    and result.get("rebuilt_executable_sha256") and result.get("rust_toolchain")
+                    and result.get("rust_toolchain")
                     and probe.get("tool") == "list_stacks" and probe.get("returned_stacks") == 3
                     and (probe.get("core_inventory_reads") or 0) > 0, "offline rebuild lacks a verified MCP fixture call")
     else:

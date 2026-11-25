@@ -112,6 +112,12 @@ class HostedRegressionTests(unittest.TestCase):
             run.assert_not_called()
 
     def test_rebuild_extracts_clean_source_and_probes_binary_from_verified_output_archive(self):
+        self.check_rebuild(matches_package=True)
+
+    def test_rebuild_rejects_a_valid_binary_that_differs_from_the_packaged_executable(self):
+        self.check_rebuild(matches_package=False)
+
+    def check_rebuild(self, *, matches_package):
         data = record()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -132,6 +138,8 @@ class HostedRegressionTests(unittest.TestCase):
             executable.write_bytes(b"unit fixture")
             executable.chmod(0o755)
             binary_digest = ci.sha256(executable)
+            data["distribution"]["files"].append({"kind":"native", "target":ci.TARGET,
+                "executable_sha256":binary_digest if matches_package else "f"*64})
 
             def build(args, *, cwd, check):
                 self.assertTrue(check)
@@ -155,6 +163,12 @@ class HostedRegressionTests(unittest.TestCase):
                     patch.object(ci.subprocess,"check_output",return_value="rustc 1.99.1 (unit)"), \
                     patch.object(ci.subprocess,"run",side_effect=build), \
                     patch.object(ci,"probe_rebuilt",return_value=probe_result) as probe:
+                if not matches_package:
+                    with self.assertRaisesRegex(ValueError,"differs from the packaged executable"):
+                        ci.rebuild(data,root)
+                    self.assertFalse(json.loads((root/"private-result.json").read_bytes())["passed"])
+                    probe.assert_not_awaited()
+                    return
                 ci.rebuild(data,root)
             extracted = root/"verified-rebuild"/native_name/"komodo-mcp"
             self.assertEqual(ci.sha256(extracted),binary_digest)
@@ -167,6 +181,10 @@ class HostedRegressionTests(unittest.TestCase):
             self.assertEqual(public["rust_toolchain"],"1.99.1")
             report = root/"private-result.json"
             partial = json.loads(report.read_bytes())
+            report.write_text(json.dumps(dict(partial, rebuilt_executable_sha256="f"*64)))
+            with self.assertRaisesRegex(ValueError,"differs from the packaged executable"):
+                ci.export(candidate,data,root,"source",root/"invalid.json")
+            self.assertFalse((root/"invalid.json").exists())
             del partial["fixture_probe"]
             report.write_text(json.dumps(partial))
             with self.assertRaisesRegex(ValueError,"verified MCP fixture call"):
