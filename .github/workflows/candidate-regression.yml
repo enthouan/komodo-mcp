@@ -68,7 +68,18 @@ jobs:
         if: matrix.case != 'http'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bubblewrap ca-certificates
+          sudo apt-get install -y --no-install-recommends apparmor bubblewrap ca-certificates
+          # Noble restricts unprivileged UID maps. Load only its packaged
+          # Bubblewrap profile; the child profile denies capabilities.
+          profiles="$RUNNER_TEMP/bwrap-profiles"
+          mkdir "$profiles"
+          (
+            cd "$profiles"
+            apt-get download apparmor-profiles
+            dpkg-deb --extract ./apparmor-profiles_*.deb extracted
+          )
+          sudo apparmor_parser --replace "$profiles/extracted/usr/share/apparmor/extra-profiles/bwrap-userns-restrict"
+          sudo grep -Fx 'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
           python3 scripts/test_candidate_native_sandbox.py --required
       - name: Acquire and compare both exact Actions artifacts with the checked-in record
         id: acquire

@@ -90,6 +90,10 @@ The stdio run requires an unprivileged Linux account, Bubblewrap at
 extracted from its native archive. Each stdio launch, including the rebuilt
 MCP probe, sees the read-only executable and public CA bundle, a private PID
 namespace and temporary space. It reaches Core on the caller's loopback network.
+On Ubuntu 24.04 the hosted job loads the distribution's restricted
+`bwrap-userns-restrict` AppArmor profile and verifies the sandbox on the
+running kernel. The profile grants Bubblewrap permission to set up user
+namespaces and denies capabilities to the programs it starts.
 The HTTP run takes the downloaded OCI archive and
 the Docker engine platform.
 
@@ -111,6 +115,15 @@ candidate-record checksum. The HTTP run checks the selected image manifest and
 configuration, hashes the executable copied from the container, and verifies
 that initialization requires a bearer token. Keep measurements in a separate
 environment while a run provisions the nested Docker daemon.
+
+Both packaged runs verify the nested daemon's Unix-only invocation, inspect
+its IPv4 and IPv6 listener tables for Docker TCP ports 2375 and 2376, and
+read its server version over the Unix socket used by Periphery. The HTTP
+fixture connects the packaged containers and Core on a dedicated ordinary
+Docker bridge, preserving access through the published loopback port.
+Before and after each launch, it checks the bridge's project and session
+labels and its exact set of active endpoints. Compose teardown verifies
+that all project networks, including this bridge, have been removed.
 
 The runner observes actual Core and Periphery versions. It lists a running
 container, pages through all cached states and inspects one stopped container

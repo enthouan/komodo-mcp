@@ -29,6 +29,8 @@ CORE_WORKLOADS = {
 WORKLOAD_RESOURCES = (*CORE_WORKLOADS, "service_users", "nested_fixture_containers",
                       "nested_deployment_containers", "outer_candidate_containers")
 REDACTION_SURFACES = ("MCP frames", "protocol errors", "process diagnostics", "scenario evidence")
+DOCKER_SOCKET = "unix:///var/run/docker.sock"
+DAEMON_COMMAND = ("dockerd", "--host=" + DOCKER_SOCKET)
 DENIAL_TOOLS = ("apply_resource_sync", "get_resource_sync_pending", "refresh_resource_sync_pending",
                 "review_resource_sync_pending")
 CLEANUP_STEPS = {"start", "outer candidate containers", "stop Periphery", "verify service users", "delete service user",
@@ -112,6 +114,50 @@ class Candidate:
         self.context = None
         self.nested_ids = []
 
+    def configure_fixture(self, config):
+        daemon = config["services"]["docker"]
+        # Passing dockerd itself suppresses this pinned image's default TCP listener.
+        daemon["command"] = list(DAEMON_COMMAND)
+        daemon["environment"]["DOCKER_HOST"] = DOCKER_SOCKET
+        if self.args.transport == "http":
+            config["networks"]["candidate"] = {
+                "driver":"bridge", "labels":dict(config["networks"]["default"]["labels"])}
+            config["services"]["core"]["networks"] = ["default", "candidate"]
+
+    def verify_docker_socket(self):
+        command = [*smoke.COMPOSE, "exec", "-T", "docker"]
+        argv = smoke.run([*command, "sh", "-ec",
+            r'''pid=$(cat /var/run/docker.pid); tr '\000' '\n' < "/proc/$pid/cmdline"''']).splitlines()
+        smoke.require(argv and Path(argv[0]).name == "dockerd" and argv[1:] == list(DAEMON_COMMAND[1:]),
+                      "nested Docker daemon did not start with only the fixture Unix listener")
+        sockets = smoke.run([*command, "sh", "-ec",
+            "cat /proc/net/tcp; if test -e /proc/net/tcp6; then cat /proc/net/tcp6; fi"]).splitlines()
+        smoke.require(any("local_address" in line for line in sockets), "nested Docker TCP listener table missing")
+        for line in sockets:
+            if "local_address" in line:
+                continue
+            fields = line.split()
+            smoke.require(len(fields) >= 4, "invalid nested Docker TCP listener table")
+            port = int(fields[1].rsplit(":", 1)[1], 16)
+            smoke.require(fields[3] != "0A" or port not in (2375, 2376), "nested Docker TCP listener is active")
+        version = nested("--host", DOCKER_SOCKET, "version", "--format", "{{.Server.Version}}")
+        smoke.require(version == smoke.REPORT["docker_version"], "nested Docker Unix-socket server version differs")
+        smoke.REPORT["dind_unix_socket_only"] = True
+
+    def verified_candidate_network(self):
+        network = smoke.PROJECT + "_candidate"
+        current = json.loads(smoke.run([*smoke.DOCKER, "network", "inspect", "--format", "{{json .}}", network]))
+        core = smoke.run([*smoke.COMPOSE, "ps", "-q", "core"])
+        labels = current["Labels"]
+        smoke.require(re.fullmatch(r"[0-9a-f]{64}", core) and current["Name"] == network and
+                      current["Driver"] == "bridge" and labels.get("komodo-mcp.test.session") == smoke.OWNER
+                      and labels.get("com.docker.compose.project") == smoke.PROJECT
+                      and labels.get("com.docker.compose.network") == "candidate"
+                      and all(owner == smoke.OWNER for owner in self.owned.values())
+                      and set(current["Containers"]) == {core, *self.owned},
+                      "candidate bridge ownership or active endpoints differ from Core and the owned candidates")
+        return network
+
     def prepare(self):
         args = self.args
         smoke.REPORT.update(package_version=self.version, source_commit=self.revision,
@@ -174,11 +220,8 @@ class Candidate:
         environment = dict(settings, KOMODO_API_KEY=credentials["key"], KOMODO_API_SECRET=credentials["secret"],
             KOMODO_ADDRESS="http://core:9120", KOMODO_TRANSPORT="http", KOMODO_HTTP_BIND="0.0.0.0:3000",
             KOMODO_HTTP_TOKENS=bearer, RUST_LOG="trace")
-        project, owner = smoke.PROJECT, smoke.OWNER
-        network = project + "_default"
-        smoke.require(smoke.run([*smoke.DOCKER, "network", "inspect", "--format",
-            '{{index .Labels "komodo-mcp.test.session"}}', network]) == owner,
-            "MCP network does not belong to this disposable fixture")
+        owner = smoke.OWNER
+        network = self.verified_candidate_network()
         # Supply private credentials through a mode-0600 file. Docker command
         # diagnostics and the retained regression record contain no environment.
         with tempfile.NamedTemporaryFile(mode="w", dir=smoke.ROOT) as env:
@@ -209,6 +252,8 @@ class Candidate:
                           "running container executable differs from matching native artifact")
             executable.unlink()
             smoke.run([*smoke.DOCKER, "start", cid])
+            self.verified_candidate_network()
+            smoke.REPORT["http_candidate_network_verified"] = True
             readiness = smoke.poll(lambda: smoke.run([*smoke.DOCKER, "exec", cid, "/usr/local/bin/komodo-mcp",
                                    "--healthcheck"]) or True, "owned HTTP MCP readiness", 60)
             expect_clean(readiness)
@@ -457,6 +502,7 @@ class Candidate:
 
     def exercise(self, context):
         self.context = context
+        self.verify_docker_socket()
         services = {}
         for service in ("core", "periphery", "docker", "mongo"):
             cid = smoke.run([*smoke.COMPOSE, "ps", "-q", service])
@@ -623,6 +669,7 @@ def main(argv=None):
     try:
         result = smoke.entry(["--docker-context", args.docker_context, "--project", args.project,
                             "--evidence", str(args.evidence)], retain_legacy=False,
+                           fixture_customizer=candidate.configure_fixture,
                            candidate_provider=candidate.prepare, exercise_extension=candidate.exercise,
                            before_cleanup=candidate.cleanup)
     finally:

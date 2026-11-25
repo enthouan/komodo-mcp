@@ -18,6 +18,102 @@ from test_disposable_core_smoke import http_server
 
 
 class CandidateTests(unittest.TestCase):
+    def test_regression_fixture_keeps_docker_on_its_socket_and_adds_only_core_to_http_bridge(self):
+        template = (reg.smoke.WORKSPACE / "tests/fixtures/disposable-core/compose.json").read_text()
+        for transport in ("stdio", "http"):
+            with self.subTest(transport=transport):
+                config = json.loads(template)
+                candidate = reg.Candidate.__new__(reg.Candidate)
+                candidate.args = SimpleNamespace(transport=transport)
+                candidate.configure_fixture(config)
+                daemon = config["services"]["docker"]
+                self.assertEqual(daemon["command"], ["dockerd", "--host=unix:///var/run/docker.sock"])
+                for service in (daemon, config["services"]["periphery"]):
+                    self.assertEqual(service["environment"]["DOCKER_HOST"], "unix:///var/run/docker.sock")
+                    self.assertIn("dind-socket:/var/run", service["volumes"])
+                attached = {name for name, service in config["services"].items() if "candidate" in service.get("networks", [])}
+                if transport == "http":
+                    self.assertEqual(attached, {"core"})
+                    self.assertEqual(config["services"]["core"]["networks"], ["default","candidate"])
+                    self.assertEqual(config["networks"]["candidate"]["labels"], config["networks"]["default"]["labels"])
+                else:
+                    self.assertFalse(attached)
+                    self.assertNotIn("candidate", config["networks"])
+
+    def test_docker_unix_read_requires_actual_daemon_command_and_no_tcp_listener(self):
+        cmd = "dockerd\n--host=unix:///var/run/docker.sock"
+        header = "sl local_address rem_address st"
+        for argv, tables, version, ok in (
+                (cmd, header, "27.5.1", True),
+                (cmd, header+"\n0: 0100007F:0947 00000000:0000 01", "27.5.1", True),
+                (cmd+"\n--host=tcp://0.0.0.0:2375", header, "27.5.1", False),
+                (cmd, header+"\n0: 00000000:0947 00000000:0000 0A", "27.5.1", False),
+                (cmd, header+"\n0: "+"0"*32+":0948 "+"0"*32+":0000 0A", "27.5.1", False),
+                (cmd, "", "27.5.1", False), (cmd, header, "99.0.0", False)):
+            with self.subTest(argv=argv, tables=tables, version=version), \
+                    patch.object(reg.smoke, "run", side_effect=[argv,tables]), \
+                    patch.object(reg, "nested", return_value=version) as nested, \
+                    patch.dict(reg.smoke.REPORT, {"docker_version":"27.5.1"}, clear=True):
+                candidate = reg.Candidate.__new__(reg.Candidate)
+                if ok:
+                    candidate.verify_docker_socket()
+                    nested.assert_called_once_with("--host", "unix:///var/run/docker.sock", "version", "--format", "{{.Server.Version}}")
+                    self.assertIs(reg.smoke.REPORT["dind_unix_socket_only"], True)
+                else:
+                    with self.assertRaises(reg.smoke.Failure):
+                        candidate.verify_docker_socket()
+                    self.assertNotIn("dind_unix_socket_only", reg.smoke.REPORT)
+
+    def test_bridge_membership_allows_concurrent_owned_peers_and_rejects_other_endpoints_or_labels(self):
+        project, owner = "komodo-mcp-smoke-test", "test-owner"
+        core, first, second, foreign = [char*64 for char in "abcd"]
+        name = project + "_candidate"
+        labels = {"komodo-mcp.test.session":owner, "com.docker.compose.project":project, "com.docker.compose.network":"candidate"}
+        candidate = reg.Candidate.__new__(reg.Candidate)
+        candidate.owned = {first:owner, second:owner}
+        for ids, overrides, ok in (
+                ([core,first,second], {}, True), ([core,first,second,foreign], {}, False),
+                ([core,first], {}, False), ([core,first,second], {"komodo-mcp.test.session":"other"}, False),
+                ([core,first,second], {"com.docker.compose.project":"other"}, False),
+                ([core,first,second], {"com.docker.compose.network":"default"}, False)):
+            network = {"Name":name, "Driver":"bridge", "Labels":dict(labels, **overrides), "Containers":dict.fromkeys(ids)}
+            with self.subTest(ids=ids, labels=overrides), patch.object(reg.smoke, "PROJECT", project), \
+                    patch.object(reg.smoke, "OWNER", owner), patch.object(reg.smoke, "run", side_effect=[json.dumps(network),core]):
+                if ok:
+                    self.assertEqual(candidate.verified_candidate_network(), name)
+                else:
+                    with self.assertRaises(reg.smoke.Failure):
+                        candidate.verified_candidate_network()
+
+    def test_compose_cleanup_observes_the_labelled_candidate_bridge_until_removed(self):
+        for residual in (False, True):
+            removed, inspected = False, []
+            def run(args, **kwargs):
+                nonlocal removed
+                if "inspect" in args:
+                    inspected.append(args[-1])
+                    return "owned"
+                if "down" in args:
+                    self.assertEqual(inspected, ["default-id","candidate-id"])
+                    removed = True
+                if "network" in args and "ls" in args:
+                    self.assertEqual(args[-1], "label=com.docker.compose.project=fixture")
+                    if not removed:
+                        return "default-id\ncandidate-id"
+                    return "candidate-id" if residual else ""
+                return ""
+            with self.subTest(residual=residual), tempfile.TemporaryDirectory() as tmp, \
+                    patch.object(reg.smoke,"ROOT",Path(tmp)), patch.object(reg.smoke,"OWNER","owned"), \
+                    patch.object(reg.smoke,"PROJECT","fixture"), patch.dict(reg.smoke.REPORT,{},clear=True), \
+                    patch.object(reg.smoke,"run",side_effect=run):
+                if residual:
+                    with self.assertRaisesRegex(reg.smoke.Failure, "resources remain"):
+                        reg.smoke.cleanup()
+                else:
+                    reg.smoke.cleanup()
+                self.assertEqual(reg.smoke.REPORT["cleanup_verified"], not residual)
+                self.assertEqual(reg.smoke.REPORT["cleanup_remaining"]["networks"], ["candidate-id"] if residual else [])
+
     def test_contract_is_the_same_frozen_blob_on_ancestor_and_package(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

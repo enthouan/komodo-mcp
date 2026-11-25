@@ -276,10 +276,14 @@ class HostedRegressionTests(unittest.TestCase):
                        "source_commit":"a"*40, "package_version":"0.8.0", "transport":case,
                        "candidate_record_sha256":ci.sha256(path), "mcp_version":"0.8.0",
                        "target":ci.PLATFORM if case == "http" else ci.TARGET, "platform":ci.PLATFORM,
-                       "native_probe_sandbox":"bubblewrap",
+                       "native_probe_sandbox":"bubblewrap", "dind_unix_socket_only":True,
                        "client":dict(ci.CLIENT_INFO,protocol=ci.PROTOCOL,python="3.12.8"),
                        "index_digest":"sha256:"+"b"*64,"platform_manifest_digest":"sha256:"+"c"*64,
                        "executable_sha256":"d"*64, "redaction_checked":list(ci.REDACTION_SURFACES)}
+                network_fields = ["dind_unix_socket_only"]
+                if case == "http":
+                    raw["http_candidate_network_verified"] = True
+                    network_fields.append("http_candidate_network_verified")
                 raw["scenarios"] = {name:{field:(True if rule is bool else 1 if rule is int
                                         else sorted(rule)[0] if isinstance(rule,set) else "f"*24)
                                     for field,rule in fields.items()} for name,fields in ci.SCENARIOS.items()}
@@ -295,7 +299,7 @@ class HostedRegressionTests(unittest.TestCase):
                             ci.export(path,record(),work,case,work/("invalid-" + field + ".json"))
                         stale[field] = 0
                 for missing in (None, "client", "platform", "target", "core_version", "periphery_version",
-                                *ci.REDACTION_SURFACES):
+                                *ci.REDACTION_SURFACES, *network_fields):
                     with self.subTest(case=case, missing=missing):
                         sample = dict(raw)
                         if missing in ci.REDACTION_SURFACES:

@@ -260,7 +260,7 @@ def export(path, data, work, case, destination):
                     and raw.get("package_version") == version and raw.get("transport") == case,
                     "live result belongs to a different packaged candidate")
         result.update(project_values(raw, {"core_version":VERSION, "periphery_version":VERSION,
-                    "docker_version":VERSION, "executable_sha256":DIGEST, "index_digest":"sha256:"+DIGEST,
+                    "docker_version":VERSION, "dind_unix_socket_only":bool, "executable_sha256":DIGEST, "index_digest":"sha256:"+DIGEST,
                     "platform_manifest_digest":"sha256:"+DIGEST, "compose_cleanup_verified":bool,
                     "workload_cleanup_verified":bool, "workload_cleanup_status":{"not_started","failed","residue","unknown","verified"},
                     "failed_workload_cleanup_step":CLEANUP_STEPS, "workload_cleanup_http_status":lambda v: type(v) is int and 400 <= v <= 599,
@@ -271,6 +271,8 @@ def export(path, data, work, case, destination):
         scans = raw.get("redaction_checked", [])
         require(known_labels(scans, REDACTION_SURFACES), "invalid redaction evidence")
         result["redaction_checked"] = [surface for surface in REDACTION_SURFACES if surface in scans]
+        if case == "http":
+            result.update(project_values(raw, {"http_candidate_network_verified":bool}))
         result["fixture_image_ids"] = project_values(raw.get("fixture_image_ids", {}),
             dict.fromkeys(["core","periphery","mongo","docker"], "sha256:"+DIGEST))
         project = remaining(raw.get("cleanup_remaining", {}), ("containers","networks","volumes"))
@@ -296,6 +298,9 @@ def export(path, data, work, case, destination):
                             for name, fields in SCENARIOS.items()),
                     "complete live evidence is missing running service versions, outcomes or verified cleanup")
             require(len(scans) == len(REDACTION_SURFACES), "missing required redaction scan")
+            require(result.get("dind_unix_socket_only") is True
+                    and (case != "http" or result.get("http_candidate_network_verified") is True),
+                    "missing verified nested Docker socket or HTTP bridge isolation")
             stale = result["scenarios"]["stale_resource_sync"]
             require(stale["preflight_refreshes"] == stale["run_sync_history_delta"] == 0
                     and stale["unchanged_server_configuration"] is True,
