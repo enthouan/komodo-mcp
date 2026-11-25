@@ -22,6 +22,7 @@ class PublicationTests(unittest.TestCase):
             cases = [
                 ("inventory.txt", "inventory.txt", "komodo-inventory-benchmark/v1"),
                 ("evidence.gz", "evidence.gz", "komodo-incident-benchmark/v1"),
+                ("live.json", "renamed-live", "komodo-live-inventory-benchmark/v1"),
                 ("manifest.gz", "renamed", "komodo-benchmark-artifacts/v1"),
             ]
             for name, staged_name, schema in cases:

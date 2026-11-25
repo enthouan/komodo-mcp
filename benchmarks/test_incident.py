@@ -166,7 +166,7 @@ class IncidentPreparedTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(count=count), tempfile.TemporaryDirectory(prefix="incident stdio ") as temp, incident.IncidentCore(count) as core:
                 home = Path(temp)
                 (home / "config.toml").write_text("")
-                for name in ("rust", "reference"):
+                for name in bench.packaged.participants(artifacts):
                     client = Client(artifacts[name]["argv"], child_env(home, core.address), home, timeout=30)
                     failed = True
                     try:
