@@ -11,6 +11,7 @@ notes: short, categorized bullets with links to the relevant pull requests.
 - Find stopped containers on one Server and inspect their state, exit code, health and restart count. ([#146](https://github.com/enthouan/komodo-mcp/pull/146))
 - Review the v1 MCP tool contract and check how an intentional change affects clients. ([#147](https://github.com/enthouan/komodo-mcp/pull/147))
 - Look up client compatibility, Komodo API coverage and official `km` command equivalents in the versioned matrices. ([#148](https://github.com/enthouan/komodo-mcp/pull/148))
+- Reproduce the packaged stdio and HTTP checks against disposable Komodo Core and verify the matching offline source rebuild. ([#149](https://github.com/enthouan/komodo-mcp/pull/149))
 
 ## v0.8.0
 
