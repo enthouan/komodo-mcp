@@ -77,3 +77,76 @@ All project containers, volumes and networks carry the invocation owner label.
 Cleanup verifies those labels before deleting this project and verifies absence
 afterwards. See the [walkthrough](../../../docs/operations-walkthrough.md) for
 the full command, evidence, observation bounds and failure cleanup behavior.
+
+## Packaged v0.9 candidate regression
+
+Run the two transport checks in distinct, unused disposable projects. Each needs
+the verified JSON candidate record, the local Docker context and Python 3.11 or
+later. The stdio run also takes the candidate executable extracted from the
+archive for the native host. The HTTP run takes the downloaded OCI archive and
+the Docker engine platform.
+
+```sh
+python3 scripts/disposable_candidate_regression.py \
+  --candidate-record "$CANDIDATE_RECORD" --transport stdio --binary "$CANDIDATE_BINARY" \
+  --docker-context "$DOCKER_CONTEXT" --project komodo-mcp-smoke-v09-stdio-01 \
+  --evidence target/regression/stdio-01.json
+
+python3 scripts/disposable_candidate_regression.py \
+  --candidate-record "$CANDIDATE_RECORD" --transport http --oci-archive "$CANDIDATE_OCI_TAR" \
+  --platform linux/arm64 --docker-context "$DOCKER_CONTEXT" --project komodo-mcp-smoke-v09-http-01 \
+  --evidence target/regression/http-01.json
+```
+
+Use `linux/amd64` when the Docker engine runs on x86-64. Both runs verify the
+package bytes, match MCP initialization to the embedded version and record the
+candidate-record checksum. The HTTP run checks the selected image manifest and
+configuration, hashes the executable copied from the container, and verifies
+that initialization requires a bearer token. Keep measurements in a separate
+environment while a run provisions the nested Docker daemon.
+
+The runner observes actual Core and Periphery versions. It lists a running
+container, pages through all cached states and inspects one stopped container
+with a seeded exit code and private health-check output. Separate scoped Core
+users exercise Read + Inspect, Read without Inspect, and execution. An editor
+previews and applies a Stack configuration change. A ResourceSync reader with
+the local operate and configuration-edit gates enabled discovers the selected
+tools, reads the owned plan and attempts to apply it. Core rejects the preflight
+`RefreshResourceSyncPending` write for lack of Execute. The runner checks that
+the attempt submitted zero `RunSync` executions, that Core's `RunSync` history
+and managed Server configuration are unchanged, and records any other updates
+on the Sync separately. A second check changes the inline source after the
+editor's review and verifies the stale-plan rejection against Core history
+and the target configuration. After a scoped deployment is acknowledged, it
+kills the MCP process, reconnects with a read-only identity, and checks the
+original update ID, final Docker state and number of deployment updates in Core.
+
+The evidence file records each completed scenario and the remaining owned
+resources after cleanup. A failed cleanup retains the fixture directory for
+local recovery. Keep this failure record private until any local paths have
+been removed for publication. A run exercises the pinned Core/Periphery 2.3.2
+fixture and the identified packaged candidate on the selected platform.
+
+
+The **Packaged candidate regression** Actions workflow runs the same checks in
+separate Ubuntu 24.04 jobs for Linux x86-64 stdio and authenticated HTTP. A
+third job extracts the candidate's Corresponding Source in a loopback-only
+network namespace and rebuilds it with the pinned musl toolchain and a fresh
+Cargo home. The archive's own MCP probe verifies a paginated inventory. A
+second probe extracts the rebuilt native archive, calls `list_stacks` over
+stdio and checks the three expected fixture rows and observed Core reads.
+Each job re-downloads both selected Actions
+artifacts and checks their complete identities against the tracked record.
+Each successful acquisition produces an allowlisted JSON evidence artifact,
+including partial results following an exercise failure. Live evidence records
+workload cleanup and Compose teardown separately. Remaining resource counts
+are zero for an observed empty inventory and null when the listing failed or
+did not run. Overall cleanup requires verified removal across all eight
+workload inventories and the project containers, networks, and volumes.
+Successful transport results include the negotiated MCP protocol, client and
+server versions, actual platform, and versions reported by Core and Periphery.
+They record the checks for fixture secrets in MCP frames, protocol errors,
+process diagnostics, and retained scenario evidence.
+The same-repository PR introducing the workflow runs these jobs when opened
+ready for review, marked ready, or updated while ready. After that PR merges,
+use **Run workflow** with the repository-relative candidate record path.

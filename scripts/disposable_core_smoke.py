@@ -1175,9 +1175,9 @@ def exercise_environment(extension=None, *, retain_legacy=True):
     SECRETS.append(jwt)
     admin = Api(address, {'authorization': jwt})
     version = admin.read('GetVersion')['version']
+    REPORT['core_version'] = version
     if version != CORE_VERSION:
         raise Failure('disposable Core version mismatch')
-    REPORT['core_version'] = version
     servers = admin.read('ListServers', {'limit': 10})
     matches = [s for s in servers if s['name'] == 'mcp-smoke-server']
     if len(matches) != 1:
@@ -1192,9 +1192,9 @@ def exercise_environment(extension=None, *, retain_legacy=True):
     alternate_server_id = identity(alternate)
     poll(lambda: admin.read('GetServerState', {'server': server_id})['status'] == 'Ok', 'private Periphery/daemon readiness')
     periphery = admin.read('GetPeripheryInformation', {'server': server_id})
+    REPORT['periphery_version'] = periphery['version']
     if periphery['version'] != CORE_VERSION:
         raise Failure('disposable Periphery version mismatch')
-    REPORT['periphery_version'] = periphery['version']
     REPORT['docker_version'] = poll(lambda: run([*COMPOSE, 'exec', '-T', 'docker', 'docker', 'version', '--format', '{{.Server.Version}}']), 'isolated Docker daemon readiness')
     REPORT['scope'] = {'server_id': server_id, 'alternate_server_id':alternate_server_id,
         'non_admin_identities': [], 'host_docker_socket_mounted': False,
@@ -1343,7 +1343,7 @@ def build_candidate():
 
 
 def entry(argv=None, *, fixture_customizer=None, exercise_extension=None, before_cleanup=None,
-          retain_legacy=True):
+          retain_legacy=True, candidate_provider=None):
     global ROOT, PROJECT, OWNER, DOCKER, COMPOSE, BINARY, EVIDENCE, RESERVED
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--docker-context',required=True,help='explicit local Unix-socket Docker context')
@@ -1373,7 +1373,7 @@ def entry(argv=None, *, fixture_customizer=None, exercise_extension=None, before
         endpoint = run([*DOCKER,'context','inspect',args.docker_context,'--format','{{.Endpoints.docker.Host}}'])
         if not endpoint.startswith('unix://'):
             raise Failure('select a local Unix-socket Docker context for loopback-only Core')
-        BINARY = build_candidate()
+        BINARY = (candidate_provider or build_candidate)()
         REPORT['phase'] = 'provisioning'
         persist()
         if fixture_customizer is None:
@@ -1406,18 +1406,23 @@ def entry(argv=None, *, fixture_customizer=None, exercise_extension=None, before
             REPORT['passed'] = False
             REPORT['evidence_error'] = type(error).__name__
         try:
+            REPORT["compose_cleanup_verified"] = False
             if RESERVED:
+                extension_cleanup_ok = True
                 if before_cleanup is not None:
                     try:
                         before_cleanup()
                     except BaseException as error:
                         result = 1
                         REPORT['passed'] = False
+                        extension_cleanup_ok = False
                         REPORT['automatic_execution_cleanup_error'] = (
                             str(error) if isinstance(error, Failure) else type(error).__name__)
                 cleanup()
+                REPORT["compose_cleanup_verified"] = REPORT["cleanup_verified"]
+                REPORT["cleanup_verified"] = REPORT["compose_cleanup_verified"] and extension_cleanup_ok
             else:
-                REPORT.update(cleanup_verified=True,cleanup_action='no resources created')
+                REPORT.update(cleanup_verified=True, compose_cleanup_verified=True, cleanup_action='no resources created')
             if REPORT['cleanup_verified']:
                 shutil.rmtree(ROOT)
                 REPORT.pop('private_cleanup_directory',None)

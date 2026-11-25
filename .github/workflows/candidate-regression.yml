@@ -1,0 +1,119 @@
+name: Packaged candidate regression
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, ready_for_review, synchronize]
+    paths:
+      - .github/workflows/candidate-regression.yml
+  workflow_dispatch:
+    inputs:
+      record:
+        description: Tracked JSON candidate record in this checkout
+        required: true
+        type: string
+        default: docs/releases/v0.9.0/candidate-record.json
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.select.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+      - id: select
+        name: Run on introduction of this workflow or manual dispatch
+        run: |
+          # PR path filters use the complete diff, including pushes that only fix
+          # a runner script while the workflow is still new relative to the base.
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch || ! -e .github/workflows/candidate-regression.yml ]]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          fi
+
+  regress:
+    needs: select
+    if: needs.select.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [stdio, http, source]
+    env:
+      CASE: ${{ matrix.case }}
+      RECORD: ${{ inputs.record || 'docs/releases/v0.9.0/candidate-record.json' }}
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Acquire and compare both exact Actions artifacts with the checked-in record
+        id: acquire
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/candidate_regression_ci.py acquire \
+            --record "$RECORD" --work "$RUNNER_TEMP/candidate" --case "$CASE"
+
+      - uses: docker/setup-docker-action@e43656e248c0bd0647d3f5c195d116aacf6fcaf4 # v4
+        if: matrix.case != 'source'
+        with:
+          context: komodo-candidate-regression
+          daemon-config: '{"features":{"containerd-snapshotter":true}}'
+      - name: Run the packaged transport in a new disposable Core and Periphery project
+        if: matrix.case != 'source'
+        run: |
+          python3 scripts/candidate_regression_ci.py exercise --case "$CASE" --record "$RECORD" \
+            --work "$RUNNER_TEMP/candidate" --docker-context komodo-candidate-regression \
+            --project "komodo-mcp-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$CASE"
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        if: matrix.case == 'source'
+        with:
+          toolchain: 1.99.1
+          targets: x86_64-unknown-linux-musl
+      - name: Install the native musl C toolchain
+        if: matrix.case == 'source'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential musl-tools cmake ninja-build perl binutils iproute2 util-linux
+      - name: Rebuild Corresponding Source without network access and exercise the rebuilt MCP
+        if: matrix.case == 'source'
+        run: |
+          toolchain_bin="$(dirname "$(rustup which --toolchain 1.99.1 rustc)")"
+          selected_python="$(command -v python3)"
+          python_lib="$("$selected_python" -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+          install -d -m 700 "$RUNNER_TEMP/candidate/rebuild-home"
+          sudo unshare --net /bin/bash -euc 'ip link set lo up; exec "$@"' offline \
+            /usr/bin/setpriv --reuid "$(id -u)" --regid "$(id -g)" --init-groups -- /usr/bin/env -i \
+            HOME="$RUNNER_TEMP/candidate/rebuild-home" PATH="$toolchain_bin:/usr/bin:/bin" \
+            LD_LIBRARY_PATH="$python_lib" CARGO_BUILD_JOBS=2 CARGO_NET_OFFLINE=true PYTHONDONTWRITEBYTECODE=1 \
+            "$selected_python" scripts/candidate_regression_ci.py exercise --case source --record "$RECORD" \
+            --work "$RUNNER_TEMP/candidate"
+
+      - name: Export allowlisted evidence, including partial results
+        id: evidence
+        if: ${{ !cancelled() && steps.acquire.outcome == 'success' }}
+        run: |
+          python3 scripts/candidate_regression_ci.py export --case "$CASE" --record "$RECORD" \
+            --work "$RUNNER_TEMP/candidate" --output "$RUNNER_TEMP/evidence/$CASE.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.evidence.outcome == 'success' }}
+        with:
+          name: candidate-regression-${{ matrix.case }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence/${{ matrix.case }}.json
+          if-no-files-found: error
+          retention-days: 30

@@ -35,7 +35,7 @@ def http_server(handler):
 
 class ScopeTests(unittest.TestCase):
     def test_evidence_write_failure_still_cleans_and_cleanup_error_cannot_report_pass(self):
-        for failed in ['evidence', 'cleanup']:
+        for failed in ['evidence', 'cleanup', 'before_cleanup']:
             with self.subTest(failed=failed), tempfile.TemporaryDirectory() as directory, \
                     contextlib.ExitStack() as stack:
                 private = Path(directory)/'private'
@@ -66,14 +66,18 @@ class ScopeTests(unittest.TestCase):
                 stack.enter_context(patch.object(smoke,'persist',side_effect=persist))
                 cleaned = stack.enter_context(patch.object(smoke,'cleanup',side_effect=cleanup))
                 evidence = Path(directory)/'evidence.json'
+                def before_cleanup():
+                    if failed == 'before_cleanup':
+                        raise smoke.Failure('synthetic workload cleanup failed')
                 result = smoke.entry(['--docker-context','synthetic-local','--project',
-                    'komodo-mcp-smoke-test','--evidence',str(evidence)])
+                    'komodo-mcp-smoke-test','--evidence',str(evidence)], before_cleanup=before_cleanup)
                 self.assertEqual(result,1)
                 cleaned.assert_called_once()
                 report = json.loads(evidence.read_text())
                 self.assertFalse(report['passed'])
                 self.assertEqual(report['cleanup_verified'],failed == 'evidence')
-                self.assertEqual(private.exists(),failed == 'cleanup')
+                self.assertEqual(report['compose_cleanup_verified'],failed != 'cleanup')
+                self.assertEqual(private.exists(),failed in ('cleanup', 'before_cleanup'))
 
     def test_rejects_external_api_and_arbitrary_project_names(self):
         for name in ['main', 'existing-core', 'komodo-mcp-smoke-', '../smoke', 'komodo-mcp-smoke-A']:
