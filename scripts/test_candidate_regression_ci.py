@@ -13,7 +13,7 @@ from distribution_archive import archive
 def record():
     return {"distribution": {"version":"0.8.0","revision":"a"*40},
             "container":{"run_id":2}, "native_run":{"run_id":1}, "oci_run":{"run_id":2},
-            "contract":{"baseline_commit":"b"*40}}
+            "contract":{"baseline_commit":"b"*40,"path":"docs/contracts/v1.json","sha256":"e"*64}}
 
 
 class HostedRegressionTests(unittest.TestCase):

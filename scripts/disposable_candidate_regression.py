@@ -3,11 +3,13 @@
 import argparse
 import asyncio
 from contextlib import asynccontextmanager
+import hashlib
 import json
 from pathlib import Path
 import platform
 import re
 import secrets
+import subprocess
 import tempfile
 
 import disposable_core_smoke as smoke
@@ -39,6 +41,27 @@ def expect_clean(value):
     encoded = json.dumps(value)
     smoke.require(all(secret not in encoded for secret in smoke.SECRETS if secret),
                   "regression output disclosed a credential or synthetic private value")
+
+
+def verify_contract_identity(record, checkout):
+    path = "docs/contracts/v1.json"
+    contract = record.get("contract")
+    if not isinstance(contract, dict):
+        raise ValueError("missing frozen contract identity")
+    baseline, revision = contract.get("baseline_commit"), record["distribution"]["revision"]
+    digest = contract.get("sha256")
+    if (contract.get("path") != path or not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)
+            or not all(isinstance(commit,str) and re.fullmatch(r"[a-f0-9]{40}", commit) for commit in (baseline, revision))):
+        raise ValueError("invalid frozen contract identity")
+    git = ["git", "-C", checkout]
+    ancestry = subprocess.run([*git,"merge-base","--is-ancestor",baseline,revision],capture_output=True)
+    if ancestry.returncode:
+        raise ValueError("contract baseline is not a known ancestor of the packaged revision")
+    for commit in {baseline, revision}:
+        blob = subprocess.run([*git,"cat-file","blob",commit+":"+path],capture_output=True)
+        if blob.returncode or hashlib.sha256(blob.stdout).hexdigest() != digest:
+            raise ValueError("frozen contract does not match the recorded bytes at both revisions")
+    return baseline
 
 
 def history(admin, kind, resource_id, operation=None):
@@ -81,8 +104,7 @@ class Candidate:
         manifest = self.record["distribution"]
         self.version, self.revision = manifest["version"], manifest["revision"]
         Packages.from_receipt(self.record, self.revision, self.version)
-        self.baseline = self.record["contract"]["baseline_commit"]
-        smoke.require(re.fullmatch(r"[a-f0-9]{40}", self.baseline), "invalid contract baseline commit")
+        self.baseline = verify_contract_identity(self.record, smoke.WORKSPACE)
         self.ref = "komodo-mcp-candidate:git-" + self.revision
         self.owns_image = False
         self.owned = {}

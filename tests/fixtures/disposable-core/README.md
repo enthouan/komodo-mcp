@@ -81,8 +81,10 @@ the full command, evidence, observation bounds and failure cleanup behavior.
 ## Packaged v0.9 candidate regression
 
 Run the two transport checks in distinct, unused disposable projects. Each needs
-the verified JSON candidate record, the local Docker context and Python 3.11 or
-later. The stdio run also takes the candidate executable extracted from the
+the verified JSON candidate record, the local Docker context, Python 3.11 or
+later, and a checkout containing the package and its contract baseline history.
+The runner verifies the frozen contract SHA-256 at both Git revisions.
+The stdio run also takes the candidate executable extracted from the
 archive for the native host. The HTTP run takes the downloaded OCI archive and
 the Docker engine platform.
 

@@ -1,7 +1,10 @@
 """Regression guardrails for packaged execution and authoritative update history."""
 import asyncio
+import hashlib
 import json
 from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -12,6 +15,37 @@ from candidate_clients import HttpMcp, NativeMcp, PROTOCOL
 
 
 class CandidateTests(unittest.TestCase):
+    def test_contract_is_the_same_frozen_blob_on_ancestor_and_package(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            config = ["git","-C",repo,"-c","user.name=Fixture","-c","user.email=fixture@example.invalid",
+                      "-c","commit.gpgsign=false"]
+            def git(*args):
+                return subprocess.check_output([*config,*args],text=True).strip()
+            git("init","--quiet")
+            target = repo/"docs/contracts/v1.json"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b'{"tools":[]}\n')
+            git("add","docs/contracts/v1.json")
+            git("commit","-qm","Store the initial fixture contract")
+            baseline = git("rev-parse","HEAD")
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            git("commit","--allow-empty","-qm","Select a package with the same contract")
+            candidate = git("rev-parse","HEAD")
+            contract = {"baseline_commit":baseline,"path":"docs/contracts/v1.json","sha256":digest}
+            def verify(revision=candidate, **changes):
+                return reg.verify_contract_identity({"distribution":{"revision":revision},
+                                                     "contract":dict(contract,**changes)},repo)
+            self.assertEqual(verify(),baseline)
+            for changes in [{"sha256":"a"*64},{"sha256":None},{"path":"other.json"},{"baseline_commit":"f"*40},
+                            {"baseline_commit":candidate,"revision":baseline}]:
+                with self.subTest(changes=changes), self.assertRaises(ValueError):
+                    verify(**changes)
+            target.write_bytes(b'{"tools":["different"]}\n')
+            git("commit","-qam","Change the candidate fixture contract")
+            with self.assertRaisesRegex(ValueError,"recorded bytes"):
+                verify(git("rev-parse","HEAD"))
+
     def test_both_transports_record_the_client_and_protocol_used_in_initialize(self):
         for peer in (NativeMcp(), HttpMcp()):
             with self.subTest(transport=type(peer).__name__):
@@ -155,7 +189,7 @@ class CandidateTests(unittest.TestCase):
             client.process = SimpleNamespace(stderr=reader)
             client.credential_bytes = (b"recognizable-marker",)
             client.disclosed = False
-            task = asyncio.create_task(client._scan_stderr())
+            task = asyncio.create_task(client._scan_output(reader))
             reader.feed_data(b"health: recognizable-")
             await asyncio.sleep(0)
             reader.feed_data(b"marker")
@@ -163,6 +197,25 @@ class CandidateTests(unittest.TestCase):
             await asyncio.wait_for(task, 1)
             return client.disclosed
         self.assertTrue(asyncio.run(run()))
+
+    def test_native_shutdown_drains_and_scans_final_stdout_through_eof(self):
+        async def run(payload):
+            client = NativeMcp()
+            client.credential_bytes = (b"fixture-private-marker",)
+            client.disclosed = False
+            client.process = await asyncio.create_subprocess_exec(sys.executable,"-c",
+                "import sys; sys.stdin.buffer.read(); sys.stdout.buffer.write(b' '*200000 + sys.argv[1].encode())",
+                payload, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            client.drain = asyncio.create_task(client._scan_output(client.process.stderr))
+            try:
+                await asyncio.wait_for(client.close(), 4)
+            finally:
+                if client.process.returncode is None:
+                    client.process.kill()
+                    await client.process.wait()
+        asyncio.run(run('{"method":"notifications/initialized"}'))
+        with self.assertRaisesRegex(reg.smoke.Failure, "output disclosed"):
+            asyncio.run(run('{"method":"notifications/message","params":{"data":"fixture-private-marker"}}'))
 
 
 if __name__ == "__main__":

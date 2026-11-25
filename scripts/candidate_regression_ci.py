@@ -11,7 +11,8 @@ import sys
 import tomllib
 
 from candidate_clients import CLIENT_INFO, PROTOCOL, NativeMcp
-from disposable_candidate_regression import CLEANUP_STEPS, DENIAL_TOOLS, REDACTION_SURFACES, WORKLOAD_RESOURCES, native_host_platform
+from disposable_candidate_regression import (CLEANUP_STEPS, DENIAL_TOOLS, REDACTION_SURFACES, WORKLOAD_RESOURCES,
+                                            native_host_platform, verify_contract_identity)
 from disposable_core_smoke import CORE_VERSION
 from distribution import sha256, stem
 from distribution_archive import extract
@@ -44,7 +45,7 @@ def record(path):
     data = json.loads(actual.read_bytes())
     revision, version = data["distribution"]["revision"], data["distribution"]["version"]
     Packages.from_receipt(data, revision, version)
-    require(re.fullmatch("[a-f0-9]{40}", data["contract"]["baseline_commit"]), "invalid contract identity")
+    verify_contract_identity(data, ROOT)
     return actual, data
 
 
@@ -221,6 +222,7 @@ def export(path, data, work, case, destination):
     requested = PLATFORM if case == "http" else TARGET
     result = {"case":case, "candidate_record_sha256":sha256(path), "version":version,
         "source_commit":data["distribution"]["revision"], "contract_baseline":data["contract"]["baseline_commit"],
+        "contract_path":data["contract"]["path"], "contract_sha256":data["contract"]["sha256"],
         "passed":raw.get("passed") is True, "evidence_available":bool(raw), "requested_target":requested}
     result.update(project_values(raw, {"target":{requested}, "platform":{PLATFORM}, "mcp_version":{version}}))
     client_fields = {"name":{CLIENT_INFO["name"]}, "version":{CLIENT_INFO["version"]}, "protocol":{PROTOCOL}, "python":VERSION}

@@ -126,7 +126,7 @@ class NativeMcp(_Client):
                 stderr=asyncio.subprocess.PIPE, limit=MAX_MCP_BYTES)
         except OSError:
             raise Failure("cannot launch verified native executable") from None
-        self.drain = asyncio.create_task(self._scan_stderr())
+        self.drain = asyncio.create_task(self._scan_output(self.process.stderr))
         try:
             await self.initialize(version)
             await self.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
@@ -140,10 +140,10 @@ class NativeMcp(_Client):
         self.process.kill()
         await self.close()
 
-    async def _scan_stderr(self):
+    async def _scan_output(self, stream):
         overlap = max(map(len, self.credential_bytes)) - 1
         tail = b""
-        while block := await self.process.stderr.read(65536):
+        while block := await stream.read(65536):
             window = tail + block
             self.disclosed |= any(secret in window for secret in self.credential_bytes)
             tail = window[-overlap:] if overlap else b""
@@ -169,15 +169,21 @@ class NativeMcp(_Client):
             return
         self.closed = True
         self.process.stdin.close()
+        async def scan_remaining_stdout():
+            async with self.lock:
+                await self._scan_output(self.process.stdout)
+        # Drain while waiting so a final notification can exceed the pipe
+        # buffer without blocking shutdown or escaping the marker check.
+        trailing = asyncio.create_task(scan_remaining_stdout())
         try:
             await asyncio.wait_for(self.process.wait(), 5)
         except TimeoutError:
             self.process.kill()
             await asyncio.wait_for(self.process.wait(), 5)
         finally:
-            await asyncio.wait_for(self.drain, 5)
+            await asyncio.wait_for(asyncio.gather(self.drain, trailing), 5)
             self.credential_bytes = ()
-        require(not self.disclosed, "native MCP stderr disclosed a credential or fixture marker")
+        require(not self.disclosed, "native MCP output disclosed a credential or fixture marker")
         require(self.process.returncode == 0 or getattr(self, "interrupted", False), "native MCP failed to shut down cleanly")
 
 
