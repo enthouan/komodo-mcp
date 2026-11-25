@@ -12,10 +12,10 @@ resource permissions, a three-tool diagnosis and recovery after a lost reply.
 The [self-hosted beta guide](docs/self-hosted-beta.md) covers a verified native
 archive and authenticated HTTP with a version-matched Compose checkout.
 
-The [inventory benchmark](benchmarks/README.md) compares the release executable
-with a pinned TypeScript stdio reference using synthetic Core fixtures. See the
-[benchmark findings](benchmarks/results/README.md) for
-provisional results and repeatable commands.
+On Intel macOS, the benchmark compares the selected native komodo-mcp package
+with independent Rust and TypeScript reference servers. It covers synthetic
+inventory and incident triage, plus a seven-Stack inventory against a disposable
+Core. See the [measurements and reproduction instructions](benchmarks/results/README.md).
 
 A Rust [Model Context Protocol](https://modelcontextprotocol.io/) server for
 Komodo, using the official [rmcp 3.11.0 SDK](https://docs.rs/rmcp/3.11.0/rmcp/).
@@ -718,10 +718,11 @@ and the [official `km` CLI](docs/v0-9-0-cli-coverage.md).
 
 The Rust dependency and synthetic HTTP fixtures target Komodo Core 2.3.2.
 The fixtures exercise scoped non-admin reads and Core's permission errors.
-Running Core instances report their version through `GetVersion`. The v0.8.0
-acceptance runs exercised Core and Periphery 2.3.2 through native stdio and
-authenticated HTTP. See the [fixture sources](tests/fixtures/core-2.3.2/README.md)
-and [v0.8.0 release acceptance](https://github.com/enthouan/komodo-mcp/issues/45#issuecomment-7145094532).
+Running Core instances report their version through `GetVersion`. On Linux
+x86-64, the packaged v0.9 milestone candidate completed container diagnostics,
+configuration preview/apply and interrupted Deployment recovery against Core
+and Periphery 2.3.2 over native stdio and authenticated Streamable HTTP.
+[Disposable regression evidence](docs/releases/v0.9.0/disposable-regression.md)
 
 No optional `komodo_client` features are enabled. Its mandatory dependencies
 enable reqwest's `json`, `stream`, `form`, `query`, and `rustls` features, plus
