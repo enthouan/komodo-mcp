@@ -16,6 +16,7 @@ import uuid
 from pathlib import Path
 
 from core import Core, KEY, ROOT, SECRET, digest
+import packaged
 from stdio import Client, PROTOCOL, child_env
 
 FORMAT = "komodo-incident-benchmark/v1"
@@ -152,6 +153,18 @@ def require(condition, message):
 
 async def workflow(client, implementation, page_size, expected, verify=True):
     """Read equivalent target/service/failed-stage/log evidence through stdio."""
+    if implementation == "rust_reference":
+        from rust_reference import Reader
+        reader = Reader(client)
+        start = time.perf_counter_ns()
+        async with asyncio.timeout(client.timeout):
+            observed = await reader.diagnose(page_size, expected["visible_stacks"])
+        elapsed = (time.perf_counter_ns() - start) / 1e6
+        if verify:
+            require(observed == expected, "Rust reference incident oracle mismatch")
+        return {"elapsed_ms": elapsed, "mcp_calls": reader.calls, "response_bytes": reader.response_bytes,
+                "observed": observed, "equivalence": {"sha256": digest(observed), "verified": True} if verify else None,
+                "additional_evidence": {"limits": "Typed Core reads via komodo_read; no fleet-wide probes or alerts."}}
     calls, response_bytes = 0, 0
 
     async def call(name, arguments):
@@ -318,7 +331,7 @@ async def compare(args, report, artifacts):
 
         try:
             for batch in range(args.repetitions):
-                order = ["rust", "reference"] if batch % 2 == 0 else ["reference", "rust"]
+                order = packaged.order(artifacts, batch)
                 report["execution_order"].append(order)
                 for name in order:
                     output = report["implementations"][name]
@@ -445,6 +458,9 @@ def validate(report):
     require(bench.number(rust["bytes"], True) and all(hash_value(v) for v in
             (rust["sha256"], rust["source_sha256"], rust["cargo_lock_sha256"], reference["package_lock_sha256"],
              reference["node_sha256"], reference["build_sha256"], reference["dependencies_sha256"])), "missing artifact hashes")
+    if "candidate" in rust or "rust_reference" in report["artifacts"]:
+        packaged.validate_artifacts(report["artifacts"])
+        packaged.check_versions(report)
     fields(report["definitions"], "warm concurrency response_bytes core_requests rss percentiles limits")
     fields(report["workload"], "name protocol concurrency rust reference equivalence environment")
     controls = report["controls"]
@@ -465,9 +481,9 @@ def validate(report):
         require(hash_value(report["fixture"].get(key)), "missing fixture hash")
     require(report["artifacts"]["reference"]["revision"] == bench.REFERENCE_REV
             and report["artifacts"]["reference"]["repository"] == bench.REFERENCE_URL, "incorrect reference pin")
-    require(set(report["implementations"]) == {"rust", "reference"}, "comparison requires both implementations")
+    require(set(report["implementations"]) == set(packaged.participants(report["artifacts"])), "comparison requires both implementations")
     repetitions = controls["repetitions"]
-    require(report["execution_order"] == [["rust", "reference"] if b % 2 == 0 else ["reference", "rust"]
+    require(report["execution_order"] == [packaged.order(report["artifacts"], b)
                                          for b in range(repetitions)], "incorrect execution order")
     for name, data in report["implementations"].items():
         require(len(data["warm_sessions"]) == repetitions and {x["batch"] for x in data["warm_sessions"]} == set(range(repetitions))
@@ -546,7 +562,10 @@ def run(args):
                   "percentiles": "nearest rank, retained unfiltered samples; pooled group/caller distributions plus per-batch group summaries; no retries",
                   "limits": "Synthetic loopback only; simulated permission checks; no Core database, Docker, real rollout, production performance, or full functional equivalence claim. Small samples prove correctness, not stable performance."},
               "execution_order": [], "implementations": {n: {"warm_sessions": [], "warmup": [], "warm": [], "memory": [], "processes": []}
-                                                            for n in ("rust", "reference")}, "core_requests": [], "errors": []}
+                                                            for n in packaged.participants(artifacts)}, "core_requests": [], "errors": []}
+    if "rust_reference" in artifacts:
+        report["workload"]["rust_reference"] = ["komodo_read ListStacks (all pages)", "ListAllStackServices",
+                                                  "ListUpdates", "GetUpdate", "GetStackLog"]
     try:
         asyncio.run(compare(args, report, artifacts))
         report["status"] = "complete"

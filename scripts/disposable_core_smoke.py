@@ -1343,7 +1343,7 @@ def build_candidate():
 
 
 def entry(argv=None, *, fixture_customizer=None, exercise_extension=None, before_cleanup=None,
-          retain_legacy=True):
+          retain_legacy=True, candidate_provider=None):
     global ROOT, PROJECT, OWNER, DOCKER, COMPOSE, BINARY, EVIDENCE, RESERVED
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--docker-context',required=True,help='explicit local Unix-socket Docker context')
@@ -1373,7 +1373,7 @@ def entry(argv=None, *, fixture_customizer=None, exercise_extension=None, before
         endpoint = run([*DOCKER,'context','inspect',args.docker_context,'--format','{{.Endpoints.docker.Host}}'])
         if not endpoint.startswith('unix://'):
             raise Failure('select a local Unix-socket Docker context for loopback-only Core')
-        BINARY = build_candidate()
+        BINARY = (candidate_provider or build_candidate)()
         REPORT['phase'] = 'provisioning'
         persist()
         if fixture_customizer is None:

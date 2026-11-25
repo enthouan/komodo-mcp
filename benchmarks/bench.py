@@ -25,6 +25,7 @@ import time
 import uuid
 from pathlib import Path
 
+import packaged
 from core import Core, KEY, ROOT, SECRET, digest, encoded
 from stdio import Client, PROTOCOL, child_env, project, verify
 
@@ -106,6 +107,10 @@ def prepare(args):
                        **(overrides or {})}
         subprocess.run(argv, cwd=cwd, env=environment, check=True, timeout=900)
 
+    selection = [args.candidate_binary, args.candidate_record, args.candidate_target, args.rust_reference_dir]
+    if any(selection) and not all(selection):
+        raise ValueError("packaged preparation requires the executable, target, shared candidate record and Rust reference dir")
+    packaged_candidate = packaged.candidate(args) if all(selection) else None
     if not reference.exists():
         execute(["git", "clone", "--no-checkout", REFERENCE_URL, str(reference)], ROOT)
         execute(["git", "checkout", "--detach", REFERENCE_REV], reference)
@@ -122,15 +127,15 @@ def prepare(args):
     target = next(line.removeprefix("host: ") for line in rust_version.splitlines() if line.startswith("host: "))
     # Explicit target/output location prevents an inherited CARGO_TARGET_DIR or
     # CARGO_BUILD_TARGET from making us attribute an older binary to this build.
-    execute([cargo, "build", "--locked", "--release", "--bin", "komodo-mcp",
-             "--target", target, "--target-dir", str(ROOT / "target")], ROOT, {"RUSTC": rustc})
-    binary = ROOT / "target" / target / "release/komodo-mcp"
-    if not binary.is_file() or not os.access(binary, os.X_OK):
-        raise ValueError(f"missing release executable: {binary}")
-    manifest = {
-        "format": "komodo-benchmark-artifacts/v1", "prepared_at": now(),
-        "commands": commands,
-        "rust": {"argv": [str(binary)], "sha256": sha(binary), "bytes": binary.stat().st_size,
+    if packaged_candidate is not None:
+        rust = packaged_candidate
+    else:
+        execute([cargo, "build", "--locked", "--release", "--bin", "komodo-mcp",
+                 "--target", target, "--target-dir", str(ROOT / "target")], ROOT, {"RUSTC": rustc})
+        binary = ROOT / "target" / target / "release/komodo-mcp"
+        if not binary.is_file() or not os.access(binary, os.X_OK):
+            raise ValueError(f"missing release executable: {binary}")
+        rust = {"argv": [str(binary)], "sha256": sha(binary), "bytes": binary.stat().st_size,
                  "repository": git_state(ROOT), "source_sha256": source_sha(),
                  "cargo_lock_sha256": sha(ROOT / "Cargo.lock"),
                  "rustc": rust_version, "cargo": command([cargo, "--version"]),
@@ -139,7 +144,10 @@ def prepare(args):
                  "build_environment": {k: os.environ.get(k) for k in
                                        ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_TARGET",
                                         "CARGO_PROFILE_RELEASE_OPT_LEVEL", "CARGO_PROFILE_RELEASE_STRIP",
-                                        "CARGO_PROFILE_RELEASE_LTO", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER")}},
+                                        "CARGO_PROFILE_RELEASE_LTO", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER")}}
+    manifest = {
+        "format": "komodo-benchmark-artifacts/v1", "prepared_at": now(),
+        "commands": commands, "rust": rust,
         "reference": {"repository": REFERENCE_URL, "release": "1.5.0", "revision": REFERENCE_REV,
                       "directory": str(reference), "node": node, "node_version": version,
                       "node_sha256": sha(node), "npm_version": command([npm, "--version"]),
@@ -148,6 +156,15 @@ def prepare(args):
                       "dependencies_sha256": tree_sha(reference / "node_modules"),
                       "argv": [node, str(reference / "build/index.js")]},
     }
+    if packaged_candidate is not None:
+        def regular_file_bytes(directory):
+            return sum(p.stat().st_size for p in directory.rglob("*") if not p.is_symlink() and p.is_file())
+
+        manifest["reference"].update(build_bytes=regular_file_bytes(reference / "build"),
+                                     dependencies_bytes=regular_file_bytes(reference / "node_modules"),
+                                     node_bytes=Path(node).stat().st_size)
+        manifest["rust_reference"] = packaged.build_reference(args.rust_reference_dir, target, executable(Path(sysroot) / "bin/cargo"), rustc,
+                                                              execute, command, git_state)
     write_json(args.artifacts, manifest)
     print(f"Prepared {args.artifacts}. Preparation is outside all timers.")
 
@@ -177,6 +194,8 @@ def preflight(path):
         raise ValueError("reference runtime/locked artifacts changed; run prepare again")
     if rust["argv"] != [str(binary)] or reference["argv"] != [reference["node"], str(directory / "build/index.js")]:
         raise ValueError("artifact launch arguments differ from the prepared direct executables")
+    if "candidate" in rust or "rust_reference" in artifacts:
+        packaged.preflight(artifacts, git_state)
     return artifacts
 
 
@@ -200,6 +219,7 @@ def host_info(note):
     info = {"os": platform.platform(), "system": platform.system(), "architecture": platform.machine(),
             "logical_cpus": os.cpu_count(), "python": sys.version,
             "virtualization_note": note, "cpu": None, "memory_bytes": None}
+    info["load_average"] = list(os.getloadavg())
     if sys.platform == "darwin":
         info.update(cpu=command(["sysctl", "-n", "machdep.cpu.brand_string"]),
                     memory_bytes=int(command(["sysctl", "-n", "hw.memsize"])))
@@ -348,7 +368,7 @@ async def compare(args, report, artifacts):
 
         try:
             for batch in range(args.repetitions):
-                order = ["rust", "reference"] if batch % 2 == 0 else ["reference", "rust"]
+                order = packaged.order(artifacts, batch)
                 report["execution_order"].append(order)
                 for implementation in order:
                     argv = artifacts[implementation]["argv"]
@@ -404,6 +424,7 @@ async def compare(args, report, artifacts):
                                   and x["batch"] == sample["batch"] and x["sample"] == sample["sample"]
                                   and x["phase"] == ("startup" if phase == "cold" else phase)]
                         sample["core_requests"] = len(events)
+                        sample["core_response_bytes"] = sum(x["response_body_bytes"] for x in events)
                         sample["core_operations"] = {op: sum(x["operation"] == op for x in events)
                                                      for op in sorted({x["operation"] for x in events})}
 
@@ -435,6 +456,9 @@ def number(value, positive=False):
 
 
 def validate(report):
+    if report.get("format") == "komodo-live-inventory-benchmark/v1":
+        import live_inventory
+        return live_inventory.validate(report)
     if report.get("format") == "komodo-incident-benchmark/v1":
         import incident
         return incident.validate(report)
@@ -468,6 +492,9 @@ def validate(report):
     require(number(rust["bytes"], True) and all(isinstance(v, str) and re.fullmatch(r"[0-9a-f]{64}", v)
             for v in (rust["sha256"], reference["package_lock_sha256"], reference["build_sha256"],
                       reference["dependencies_sha256"], reference["node_sha256"])), "missing artifact identities")
+    if "candidate" in rust or "rust_reference" in report["artifacts"]:
+        packaged.validate_artifacts(report["artifacts"])
+        packaged.check_versions(report)
     fields(report["definitions"], "startup warm response_bytes percentiles direct_core fixture_service rss")
     fields(report["workload"], "name protocol rust_tool reference_tool arguments concurrency logging environment")
     require(report["workload"]["protocol"] == PROTOCOL and report["workload"]["concurrency"] == 1, "unsupported workload")
@@ -478,9 +505,9 @@ def validate(report):
             and type(controls["warmup"]) is int and controls["warmup"] >= 0, "invalid fixture/workload controls")
     repetitions, samples, cold = [controls[k] for k in ("repetitions", "samples", "cold_samples")]
     require(all(type(x) is int and x > 0 for x in (repetitions, samples, cold)), "invalid sample controls")
-    require(report["execution_order"] == [["rust", "reference"] if b % 2 == 0 else ["reference", "rust"]
+    require(report["execution_order"] == [packaged.order(report["artifacts"], b)
                                          for b in range(repetitions)], "invalid execution order")
-    require(set(report["implementations"]) == {"rust", "reference"}, "comparison requires both implementations")
+    require(set(report["implementations"]) == set(packaged.participants(report["artifacts"])), "comparison requires both implementations")
     expected = fixture["expected"]
     require(fixture["visible_stacks"] == len(expected), "invalid fixture resource count")
     oracle = verify(project(expected), expected)
@@ -501,6 +528,9 @@ def validate(report):
                           and x["batch"] == sample["batch"] and x["sample"] == sample["sample"]
                           and x["phase"] == ("startup" if phase == "cold" else phase)]
                 require(sample["core_requests"] == len(events), "Core accounting mismatch")
+                if "core_response_bytes" in sample or "candidate" in rust:
+                    require(sample["core_response_bytes"] == sum(e["response_body_bytes"] for e in events),
+                            "Core response byte count differs from measured events")
                 require(sample["core_operations"] == {op: sum(x["operation"] == op for x in events)
                                                        for op in {x["operation"] for x in events}}, "operation count mismatch")
                 if phase == "cold":
@@ -570,8 +600,10 @@ def run(args):
               },
               "execution_order": [], "implementations": {name: {
                   "cold": [], "warm_sessions": [], "warmup": [], "warm": [], "memory": [], "processes": []}
-                  for name in ("rust", "reference")},
+                  for name in packaged.participants(artifacts)},
               "direct_core": [], "direct_version": [], "core_requests": [], "errors": []}
+    if "rust_reference" in artifacts:
+        report["workload"]["rust_reference_tool"] = "komodo_read ListStacks (explicit Core page and limit)"
     try:
         asyncio.run(compare(args, report, artifacts))
         report["status"] = "complete"
@@ -588,13 +620,17 @@ def run(args):
 
 
 def print_summary(report):
+    if report.get("format") == "komodo-live-inventory-benchmark/v1":
+        validate(report)
+        print(json.dumps(report["summary"], indent=2))
+        return
     if report.get("format") == "komodo-incident-benchmark/v1":
         import incident
         return incident.print_summary(report)
     validate(report)
     print(f"Run {report['run_id']} — {report['fixture']['visible_stacks']} stacks; provisional synthetic results")
     print("implementation | startup p50/p95 ms | inventory p50/p95 ms | response bytes p50 | Core calls p50 | idle/peak MiB")
-    for name in ("rust", "reference"):
+    for name in report["implementations"]:
         data = report["summary"][name]
         print(f"{name} | {data['cold_ms']['p50']:.3f}/{data['cold_ms']['p95']:.3f} | "
               f"{data['warm_ms']['p50']:.3f}/{data['warm_ms']['p95']:.3f} | "
@@ -608,6 +644,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="action", required=True)
     prep = subs.add_parser("prepare", help="download/install/build before measurements")
+    prep.add_argument("--candidate-binary", type=Path)
+    prep.add_argument("--candidate-record", type=Path)
+    prep.add_argument("--candidate-target")
+    prep.add_argument("--rust-reference-dir", type=Path)
     prep.add_argument("--reference-dir", type=Path, required=True)
     prep.add_argument("--node", default="node")
     prep.add_argument("--npm", default="npm")
