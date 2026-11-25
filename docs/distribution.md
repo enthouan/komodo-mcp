@@ -16,7 +16,7 @@ On Linux, HTTPS connections to Core use the machine's trust configuration. Suppl
 For a GitHub Release that lists binary assets, obtain the executable archive and `SHA256SUMS` from that release. For a candidate, take both files from the same Native distribution workflow artifact. Earlier source-only releases provide the tagged project source. Use a separate, empty directory for these downloads. Replace the example version and target with the release version and the exact target for your machine.
 
 ```sh
-version=0.8.0
+version=0.9.0
 target=x86_64-unknown-linux-musl
 archive="komodo-mcp-v$version-$target.tar.gz"
 (

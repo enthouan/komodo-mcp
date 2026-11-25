@@ -1,6 +1,6 @@
 # Self-hosted beta installation
 
-These instructions use the [v0.8.0 release](https://github.com/enthouan/komodo-mcp/releases/tag/v0.8.0). Pick an enabled Core
+These instructions use the [v0.9.0 release](https://github.com/enthouan/komodo-mcp/releases/tag/v0.9.0). Pick an enabled Core
 account scoped to the resources this instance should see.
 
 ## Native stdio
@@ -9,14 +9,14 @@ Choose the archive for the machine that launches the MCP client. Both macOS
 archives require macOS 15 or later. See [native binaries and matching source](distribution.md)
 for platform requirements and the source rebuild instructions.
 
-| System | CPU | v0.8.0 archive |
+| System | CPU | v0.9.0 archive |
 | --- | --- | --- |
-| macOS | Apple silicon | [komodo-mcp-v0.8.0-aarch64-apple-darwin.tar.gz](https://github.com/enthouan/komodo-mcp/releases/download/v0.8.0/komodo-mcp-v0.8.0-aarch64-apple-darwin.tar.gz) |
-| macOS | Intel | [komodo-mcp-v0.8.0-x86_64-apple-darwin.tar.gz](https://github.com/enthouan/komodo-mcp/releases/download/v0.8.0/komodo-mcp-v0.8.0-x86_64-apple-darwin.tar.gz) |
-| Linux | arm64 | [komodo-mcp-v0.8.0-aarch64-unknown-linux-musl.tar.gz](https://github.com/enthouan/komodo-mcp/releases/download/v0.8.0/komodo-mcp-v0.8.0-aarch64-unknown-linux-musl.tar.gz) |
-| Linux | amd64 | [komodo-mcp-v0.8.0-x86_64-unknown-linux-musl.tar.gz](https://github.com/enthouan/komodo-mcp/releases/download/v0.8.0/komodo-mcp-v0.8.0-x86_64-unknown-linux-musl.tar.gz) |
+| macOS | Apple silicon | [komodo-mcp-v0.9.0-aarch64-apple-darwin.tar.gz](https://github.com/enthouan/komodo-mcp/releases/download/v0.9.0/komodo-mcp-v0.9.0-aarch64-apple-darwin.tar.gz) |
+| macOS | Intel | [komodo-mcp-v0.9.0-x86_64-apple-darwin.tar.gz](https://github.com/enthouan/komodo-mcp/releases/download/v0.9.0/komodo-mcp-v0.9.0-x86_64-apple-darwin.tar.gz) |
+| Linux | arm64 | [komodo-mcp-v0.9.0-aarch64-unknown-linux-musl.tar.gz](https://github.com/enthouan/komodo-mcp/releases/download/v0.9.0/komodo-mcp-v0.9.0-aarch64-unknown-linux-musl.tar.gz) |
+| Linux | amd64 | [komodo-mcp-v0.9.0-x86_64-unknown-linux-musl.tar.gz](https://github.com/enthouan/komodo-mcp/releases/download/v0.9.0/komodo-mcp-v0.9.0-x86_64-unknown-linux-musl.tar.gz) |
 
-Download the archive and [SHA256SUMS](https://github.com/enthouan/komodo-mcp/releases/download/v0.8.0/SHA256SUMS) into a new directory on the machine that will run the MCP server. The following commands select the matching archive, verify it and print the executable path.
+Download the archive and [SHA256SUMS](https://github.com/enthouan/komodo-mcp/releases/download/v0.9.0/SHA256SUMS) into a new directory on the machine that will run the MCP server. The following commands select the matching archive, verify it and print the executable path.
 
 ```sh
 (
@@ -28,7 +28,7 @@ case "$(uname -s)-$(uname -m)" in
   Linux-x86_64) target=x86_64-unknown-linux-musl ;;
   *) echo "Choose a supported platform from the table." >&2; exit 1 ;;
 esac
-archive="komodo-mcp-v0.8.0-$target.tar.gz"
+archive="komodo-mcp-v0.9.0-$target.tar.gz"
 awk -v name="$archive" '$2 == name { print; n++ } END { if (n != 1) exit 1 }' SHA256SUMS > "$archive.sha256"
 if command -v sha256sum >/dev/null; then
   sha256sum -c "$archive.sha256"
@@ -46,7 +46,7 @@ printf '%s\n' "$executable"
 
 Configure the MCP client's **stdio** server command with the absolute path
 printed by the last command. Each archive includes the license and third-party
-notices. The [matching Corresponding Source](https://github.com/enthouan/komodo-mcp/releases/download/v0.8.0/komodo-mcp-v0.8.0-source.tar.gz), [license](https://github.com/enthouan/komodo-mcp/releases/download/v0.8.0/LICENSE), and [third-party notices](https://github.com/enthouan/komodo-mcp/releases/download/v0.8.0/THIRD-PARTY-NOTICES) accompany the native downloads and container image.
+notices. The [matching Corresponding Source](https://github.com/enthouan/komodo-mcp/releases/download/v0.9.0/komodo-mcp-v0.9.0-source.tar.gz), [license](https://github.com/enthouan/komodo-mcp/releases/download/v0.9.0/LICENSE), and [third-party notices](https://github.com/enthouan/komodo-mcp/releases/download/v0.9.0/THIRD-PARTY-NOTICES) accompany the native downloads and container image.
 Set the environment of that launch using these entries.
 
 ```text
@@ -64,10 +64,10 @@ back. Reload the server in the client whenever you change the path or settings.
 
 ## Docker Compose
 
-Download the [versioned Compose file](https://raw.githubusercontent.com/enthouan/komodo-mcp/v0.8.0/compose.yaml) into a new, operator-owned directory. It uses the [published container image](https://github.com/users/enthouan/packages/container/package/komodo-mcp).
+Download the [versioned Compose file](https://raw.githubusercontent.com/enthouan/komodo-mcp/v0.9.0/compose.yaml) into a new, operator-owned directory. It uses the [published container image](https://github.com/users/enthouan/packages/container/package/komodo-mcp).
 
 ```sh
-curl --fail --show-error --location --output compose.yaml https://raw.githubusercontent.com/enthouan/komodo-mcp/v0.8.0/compose.yaml
+curl --fail --show-error --location --output compose.yaml https://raw.githubusercontent.com/enthouan/komodo-mcp/v0.9.0/compose.yaml
 (umask 077 && touch .env) && chmod 600 .env
 ```
 
@@ -88,10 +88,10 @@ KOMODO_ENABLED_TOOLS=list_stacks,get_stack,stack_diagnose
 
 Use a Core address reachable **from the container**. Give each client its own
 cryptographically random token (at least 32 random bytes) and retain the
-matching value in its secret store. For a verified digest pin, set
-`KOMODO_MCP_IMAGE` to the exact image reference from the release evidence,
-including its `@sha256:` digest. The Compose file selects the matching image
-tag `ghcr.io/enthouan/komodo-mcp:v0.8.0` by default. Use `KOMODO_HTTP_PORT` to choose a different host port.
+matching value in its secret store. To pin the image by digest, copy the
+`KOMODO_MCP_IMAGE` setting from [Docker Compose installation](container.md).
+The Compose file selects the matching image
+tag `ghcr.io/enthouan/komodo-mcp:v0.9.0` by default. Use `KOMODO_HTTP_PORT` to choose a different host port.
 
 ```sh
 docker compose --env-file .env config --quiet

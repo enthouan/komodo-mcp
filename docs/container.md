@@ -1,12 +1,17 @@
 # Run Komodo MCP with Docker Compose
 
-Use the root `compose.yaml` from the release you are installing. It targets
-Linux amd64 and arm64. Until an image is published, load the verified
+Use the [v0.9.0 Compose file](https://raw.githubusercontent.com/enthouan/komodo-mcp/v0.9.0/compose.yaml)
+on Linux amd64 or arm64. Set `KOMODO_MCP_IMAGE` in your Compose environment
+to pin the verified multi-platform image.
+
+```text
+KOMODO_MCP_IMAGE=ghcr.io/enthouan/komodo-mcp:v0.9.0@sha256:0dac5c0d80dd463c8d4eed87a8538606f2059988eb90862f8404177016ab3b21
+```
+
+To rehearse an unpublished candidate, load the verified
 `candidate.oci.tar` from a Container distribution run and set
 `KOMODO_MCP_IMAGE=komodo-mcp-candidate:git-<full revision>`. The candidate
-reports the Cargo version at that revision. After publication, pin the release
-image with the index digest in its receipt, for example
-`ghcr.io/enthouan/komodo-mcp:v0.8.0@sha256:<index digest>`.
+reports the Cargo version at that revision.
 
 Supply these settings in the process environment or a private env file:
 

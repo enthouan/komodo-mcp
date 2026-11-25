@@ -1,6 +1,6 @@
 # komodo-mcp
 
-Download the [v0.8.0 release files](https://github.com/enthouan/komodo-mcp/releases/tag/v0.8.0) and their [Corresponding Source archive](https://github.com/enthouan/komodo-mcp/releases/download/v0.8.0/komodo-mcp-v0.8.0-source.tar.gz).
+Download the [v0.9.0 release files](https://github.com/enthouan/komodo-mcp/releases/tag/v0.9.0) and their [Corresponding Source archive](https://github.com/enthouan/komodo-mcp/releases/download/v0.9.0/komodo-mcp-v0.9.0-source.tar.gz).
 
 [Repository maintenance](docs/maintenance.md) documents dependency updates,
 required checks, main protection, and release compatibility.
