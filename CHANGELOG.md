@@ -10,7 +10,7 @@ notes: short, categorized bullets with links to the relevant pull requests.
 - Install the self-hosted beta from the website with verified native downloads and a versioned Compose configuration. ([#140](https://github.com/enthouan/komodo-mcp/pull/140))
 - Find stopped containers on one Server and inspect their state, exit code, health and restart count. ([#146](https://github.com/enthouan/komodo-mcp/pull/146))
 - Review the v1 MCP tool contract and check how an intentional change affects clients. ([#147](https://github.com/enthouan/komodo-mcp/pull/147))
-- Look up client compatibility, Komodo API coverage and official `km` command equivalents in the versioned matrices. ([#148](https://github.com/enthouan/komodo-mcp/pull/148))
+- Look up tested clients, packages and live Core workflows alongside Komodo API coverage and official `km` command equivalents. ([#148](https://github.com/enthouan/komodo-mcp/pull/148), [#151](https://github.com/enthouan/komodo-mcp/pull/151))
 - Reproduce the packaged stdio and HTTP checks against disposable Komodo Core and verify the matching offline source rebuild. ([#149](https://github.com/enthouan/komodo-mcp/pull/149))
 - Compare packaged startup, memory and read latency with pinned Rust and TypeScript references using the published benchmark samples. ([#150](https://github.com/enthouan/komodo-mcp/pull/150))
 
