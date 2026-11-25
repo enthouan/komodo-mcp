@@ -1,6 +1,7 @@
 """Regression guardrails for packaged execution and authoritative update history."""
 import asyncio
 import hashlib
+from http.server import BaseHTTPRequestHandler
 import json
 from pathlib import Path
 import subprocess
@@ -11,7 +12,9 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import disposable_candidate_regression as reg
+import candidate_clients
 from candidate_clients import HttpMcp, NativeMcp, PROTOCOL
+from test_disposable_core_smoke import http_server
 
 
 class CandidateTests(unittest.TestCase):
@@ -73,6 +76,80 @@ class CandidateTests(unittest.TestCase):
                 with self.assertRaisesRegex(reg.smoke.Failure, "differs"):
                     candidate.prepare()
                 platform.assert_not_called()
+
+    def test_http_rejects_markers_in_response_headers_and_status_before_using_the_session(self):
+        marker = "private-fixture-credential"
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers["Content-Length"]))
+                self.send_response_only(status, reason)
+                for key, value in headers:
+                    self.send_header(key, value)
+                self.end_headers()
+                self.wfile.write(b'{"jsonrpc":"2.0","id":1,"result":{}}')
+            def log_message(self, *args):
+                pass
+
+        peer = HttpMcp()
+        with http_server(Handler) as root, patch.object(candidate_clients,"SECRETS",[marker]):
+            peer.host, peer.port = "127.0.0.1", int(root.rsplit(":",1)[1])
+            peer.bearer, peer.session = "x"*40, None
+            for status, reason, headers in [
+                (200,"OK",[("Mcp-Session-Id",marker)]),
+                (401,"Unauthorized",[("WWW-Authenticate","Bearer "+marker)]),
+                (200,marker,[]), (200,"OK",[("X-"+marker,"x")])]:
+                with self.subTest(status=status,reason=reason), self.assertRaisesRegex(reg.smoke.Failure,"disclosed") as error:
+                    asyncio.run(peer.exchange({"method":"initialize","id":1}))
+                self.assertIsNone(peer.session)
+                self.assertNotIn(marker,str(error.exception))
+            status, reason, headers = 200, "OK", [("X-One","a"*34000),("X-Two","b"*34000)]
+            with self.assertRaisesRegex(reg.smoke.Failure,"headers exceeded"):
+                asyncio.run(peer.exchange({"method":"initialize","id":1}))
+
+    def test_wrong_bearer_is_registered_before_the_denial_and_remains_a_diagnostic_marker(self):
+        marker = "incorrect-fixture-bearer-" + "a"*32
+        registered = []
+        async def probe(method, frame, token):
+            if token == marker:
+                self.assertIn(token,registered)
+                raise reg.smoke.Failure("synthetic end of denial probe")
+            return 401, None, None, "Bearer", b""
+        self.assertIs(candidate_clients.SECRETS, reg.smoke.SECRETS)
+        with patch.object(candidate_clients, "SECRETS", registered), \
+                patch.object(candidate_clients.secrets, "token_urlsafe", return_value=marker), \
+                patch.object(HttpMcp, "_request", side_effect=probe):
+            with self.assertRaisesRegex(reg.smoke.Failure,"synthetic end"):
+                asyncio.run(HttpMcp.start(endpoint="http://127.0.0.1:23456/mcp", bearer="x"*40, version="0.8.0"))
+        self.assertIn(marker,registered)
+
+    def test_http_container_final_diagnostics_include_shutdown_and_interrupted_processes(self):
+        marker, cid, owner = "late-private-marker", "c"*64, "owned-session"
+        for already_stopped in (False,True):
+            with self.subTest(already_stopped=already_stopped):
+                candidate = reg.Candidate.__new__(reg.Candidate)
+                candidate.owned = {cid:owner}
+                stopped = already_stopped
+                commands = []
+                def run(args):
+                    nonlocal stopped
+                    commands.append(args[1])
+                    if args[1] == "inspect":
+                        if ".State.Health" in args[-2]:
+                            return "[]"
+                        return str(not stopped).lower() if args[-2] == "{{.State.Running}}" else owner
+                    if args[1] == "stop":
+                        stopped = True
+                    if args[1] == "logs":
+                        return marker if stopped else ""
+                    return ""
+                with patch.object(reg.smoke,"run",side_effect=run), patch.object(reg.smoke,"DOCKER",["docker"]), \
+                        patch.object(reg.smoke,"OWNER",owner), patch.object(reg.smoke,"SECRETS",[marker]):
+                    with self.assertRaises(reg.smoke.Failure) as error:
+                        candidate.drop_container(cid)
+                self.assertNotIn(marker,str(error.exception))
+                self.assertEqual(commands[-2:], ["logs","rm"])
+                self.assertEqual(commands.count("stop"), int(not already_stopped))
+                self.assertEqual(candidate.owned,{})
 
     def test_running_image_comparison_covers_platform_and_configuration(self):
         candidate = reg.Candidate.__new__(reg.Candidate)
@@ -140,6 +217,72 @@ class CandidateTests(unittest.TestCase):
                 candidate.connect.assert_called_once_with("reader",KOMODO_ALLOW_OPERATE="true",
                     KOMODO_ALLOW_CONFIGURATION_EDIT="true",KOMODO_ENABLED_TOOLS=",".join(reg.DENIAL_TOOLS))
 
+    def test_paged_inventory_requires_one_exact_seeded_identity_per_page(self):
+        server, running, stopped = "1"*24, "a"*64, "b"*64
+        def row(cid, state, server_id=server):
+            return {"identity":{"server_id":server_id,"container_id":cid}, "state":state}
+        active, exited = row(running, "running"), row(stopped, "exited")
+        for first, second, message in (
+                ([], [active, exited], "exactly one container"),
+                ([active, exited], [], "exactly one container"),
+                ([row("c"*64, "running")], [exited], "differ from Docker"),
+                ([row(running, "running", "2"*24)], [exited], "differ from Docker"),
+                ([active], [row(stopped, "running")], "differ from Docker"),
+                ([exited], [active], None)):
+            with self.subTest(first=first, second=second):
+                candidate = reg.Candidate.__new__(reg.Candidate)
+                candidate.context = {"server_id":server, "provisioner":Mock()}
+                candidate.context["provisioner"].read.return_value = [{"id":stopped, "state":"exited"}]
+                candidate.outcome = {}
+                peer = AsyncMock()
+                peer.rpc.return_value = {"tools":[{"name":"list_containers"}, {"name":"get_container"}]}
+                default = {"source":"core_cache", "data":{"items":[active], "next_page":None}}
+                peer.tool.side_effect = [default, {"data":{"items":first, "next_page":1}},
+                    {"data":{"items":second, "next_page":None}},
+                    {"source":"fresh_inspect", "data":dict(exited, exit_code=17, health_status="unhealthy", restart_count=0)},
+                    default]
+                candidate.connect = MagicMock()
+                candidate.connect.return_value.__aenter__.return_value = peer
+                with patch.dict(reg.smoke.REPORT, {"scope":{"stack_id":"3"*24}}), patch.object(reg.sync, "raw_error", AsyncMock()):
+                    run = candidate.exercise_containers(running, stopped, "unhealthy", 0)
+                    if message:
+                        with self.assertRaisesRegex(reg.smoke.Failure, message):
+                            asyncio.run(run)
+                        self.assertNotIn("container_workflow", candidate.outcome)
+                    else:
+                        asyncio.run(run)
+                        self.assertEqual(candidate.outcome["container_workflow"]["pages"], 2)
+
+    def test_inline_staleness_requires_rejection_before_any_preflight_refresh(self):
+        for refreshes in (0, 1):
+            with self.subTest(refreshes=refreshes):
+                candidate = reg.Candidate.__new__(reg.Candidate)
+                admin = Mock()
+                candidate.context = {"provisioner":admin, "alternate_server_id":"2"*24,
+                                     "users":[{"id":str(i)*24} for i in range(1,4)]}
+                candidate.outcome = {}
+                admin.write.return_value = {"id":"3"*24}
+                before = {"config":{"auto_pull":False}}
+                admin.read.side_effect = [before, before, {"config":{"auto_pull":True}}, {"config":{}}, {"config":{}}]
+                peer = AsyncMock()
+                peer.tool.side_effect = [{"writes_submitted":0, "preview_id":"review"},
+                    {"writes_submitted":1, "outcome":"saved"}, {},
+                    {"outcome":"not_submitted", "review_consumed":True, "run_sync_requests_submitted":0,
+                     "rejection":{"kind":"stale_preview"}, "preflight":{"refresh_requests_submitted":refreshes}}]
+                candidate.connect = MagicMock()
+                candidate.connect.return_value.__aenter__.return_value = peer
+                candidate.exercise_denied_apply = AsyncMock()
+                review = AsyncMock(return_value={"review_reference":"review", "apply_binding":"binding"})
+                with patch.dict(reg.smoke.REPORT, {"scope":{"stack_id":"1"*24}}), \
+                        patch.object(reg, "history", return_value={}), patch.object(reg.sync, "review", review):
+                    if refreshes:
+                        with self.assertRaisesRegex(reg.smoke.Failure, "submitted a preflight refresh"):
+                            asyncio.run(candidate.exercise_configuration())
+                        self.assertNotIn("stale_resource_sync", candidate.outcome)
+                    else:
+                        asyncio.run(candidate.exercise_configuration())
+                        self.assertEqual(candidate.outcome["stale_resource_sync"]["preflight_refreshes"], 0)
+
     def test_core_cleanup_failure_still_observes_unknown_and_remaining_resources(self):
         candidate = reg.Candidate.__new__(reg.Candidate)
         admin = Mock()
@@ -198,6 +341,28 @@ class CandidateTests(unittest.TestCase):
             return client.disclosed
         self.assertTrue(asyncio.run(run()))
 
+    def test_both_transports_scan_escaped_values_keys_notifications_and_errors(self):
+        marker = b"private"
+        notification = br'{"jsonrpc":"2.0","method":"notifications/message","params":{"\u0070rivate":"fixture"}}'
+        error = br'{"jsonrpc":"2.0","id":1,"error":{"code":-1,"message":"\u0070rivate"}}'
+        reply = b'{"jsonrpc":"2.0","id":1,"result":{}}'
+        for body in (notification,error):
+            with self.subTest(body=body):
+                self.assertNotIn(marker,body)
+                for media, payload in (("application/json",body),
+                                       ("text/event-stream",b"data: "+reply+b"\n\ndata: "+body+b"\n\n")):
+                    with self.assertRaisesRegex(reg.smoke.Failure,"disclosed"):
+                        candidate_clients._http_frames(media,payload,(marker,))
+                async def read_native():
+                    peer = NativeMcp()
+                    peer.credential_bytes = (marker,)
+                    peer.send = AsyncMock()
+                    peer.process = SimpleNamespace(stdout=asyncio.StreamReader())
+                    peer.process.stdout.feed_data(body+b"\n"+reply+b"\n")
+                    await peer.exchange({"id":1})
+                with self.assertRaisesRegex(reg.smoke.Failure,"disclosed"):
+                    asyncio.run(read_native())
+
     def test_native_shutdown_drains_and_scans_final_stdout_through_eof(self):
         async def run(payload):
             client = NativeMcp()
@@ -205,7 +370,8 @@ class CandidateTests(unittest.TestCase):
             client.disclosed = False
             client.process = await asyncio.create_subprocess_exec(sys.executable,"-c",
                 "import sys; sys.stdin.buffer.read(); sys.stdout.buffer.write(b' '*200000 + sys.argv[1].encode())",
-                payload, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                payload, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE, limit=reg.smoke.MAX_MCP_BYTES)
             client.drain = asyncio.create_task(client._scan_output(client.process.stderr))
             try:
                 await asyncio.wait_for(client.close(), 4)
@@ -216,6 +382,8 @@ class CandidateTests(unittest.TestCase):
         asyncio.run(run('{"method":"notifications/initialized"}'))
         with self.assertRaisesRegex(reg.smoke.Failure, "output disclosed"):
             asyncio.run(run('{"method":"notifications/message","params":{"data":"fixture-private-marker"}}'))
+        with self.assertRaisesRegex(reg.smoke.Failure, "output disclosed"):
+            asyncio.run(run(r'{"method":"notifications/message","params":{"data":"fixture-\u0070rivate-marker"}}'))
 
 
 if __name__ == "__main__":

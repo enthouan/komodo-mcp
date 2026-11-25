@@ -164,6 +164,7 @@ class HostedRegressionTests(unittest.TestCase):
                     selected.symlink_to(root/"external")
 
             probe_result = {"mcp_version":version,"client":dict(ci.CLIENT_INFO,protocol=ci.PROTOCOL,python="3.12.8"),
+                            "native_probe_sandbox":"bubblewrap",
                             "fixture_probe":{"tool":"list_stacks","returned_stacks":3,"core_inventory_reads":1}}
             with patch.object(ci.socket,"if_nameindex",return_value=[(1,"lo")]), \
                     patch.dict(ci.os.environ,CARGO_NET_OFFLINE="true"), patch.object(ci.os,"geteuid",return_value=1001), \
@@ -221,7 +222,8 @@ class HostedRegressionTests(unittest.TestCase):
                 ro = [v for v in args if v.startswith("type=bind,") and v.endswith(",readonly")]
                 expected = [(source,"/inputs/unpacked"),(source_tar,"/inputs/source.tar.gz"),
                             (toolchain,"/opt/pinned-toolchain"),(Path(ci.candidate_source_sandbox.__file__).resolve(),"/verify.py"),
-                            (Path("/usr"),"/usr"),(Path("/etc/alternatives"),"/etc/alternatives")]
+                            (Path("/usr"),"/usr"),(Path("/etc/alternatives"),"/etc/alternatives"),
+                            (Path("/etc/ssl/certs/ca-certificates.crt"),"/etc/ssl/certs/ca-certificates.crt")]
                 self.assertCountEqual(ro,[f"type=bind,src={src},dst={dst},readonly" for src,dst in expected])
                 for flag in ("--read-only","--network=none","--cap-drop=ALL","--security-opt=no-new-privileges","--rm"):
                     self.assertIn(flag, args)
@@ -274,6 +276,7 @@ class HostedRegressionTests(unittest.TestCase):
                        "source_commit":"a"*40, "package_version":"0.8.0", "transport":case,
                        "candidate_record_sha256":ci.sha256(path), "mcp_version":"0.8.0",
                        "target":ci.PLATFORM if case == "http" else ci.TARGET, "platform":ci.PLATFORM,
+                       "native_probe_sandbox":"bubblewrap",
                        "client":dict(ci.CLIENT_INFO,protocol=ci.PROTOCOL,python="3.12.8"),
                        "index_digest":"sha256:"+"b"*64,"platform_manifest_digest":"sha256:"+"c"*64,
                        "executable_sha256":"d"*64, "redaction_checked":list(ci.REDACTION_SURFACES)}
@@ -282,6 +285,15 @@ class HostedRegressionTests(unittest.TestCase):
                                     for field,rule in fields.items()} for name,fields in ci.SCENARIOS.items()}
                 raw["scenarios"]["read_only_operation"].update(discovered_tools=list(ci.DENIAL_TOOLS),
                     other_target_updates=[],run_sync_requests_submitted=0,core_run_sync_history_delta=0)
+                stale = raw["scenarios"]["stale_resource_sync"]
+                stale.update(preflight_refreshes=0, run_sync_history_delta=0)
+                for field in ("preflight_refreshes", "run_sync_history_delta"):
+                    with self.subTest(case=case, stale_field=field):
+                        stale[field] = 1
+                        (work/"private-result.json").write_text(json.dumps(raw))
+                        with self.assertRaisesRegex(ValueError, "stale inline source"):
+                            ci.export(path,record(),work,case,work/("invalid-" + field + ".json"))
+                        stale[field] = 0
                 for missing in (None, "client", "platform", "target", "core_version", "periphery_version",
                                 *ci.REDACTION_SURFACES):
                     with self.subTest(case=case, missing=missing):

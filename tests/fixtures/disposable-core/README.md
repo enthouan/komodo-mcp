@@ -84,8 +84,13 @@ Run the two transport checks in distinct, unused disposable projects. Each needs
 the verified JSON candidate record, the local Docker context, Python 3.11 or
 later, and a checkout containing the package and its contract baseline history.
 The runner verifies the frozen contract SHA-256 at both Git revisions.
-The stdio run also takes the candidate executable extracted from the
-archive for the native host. The HTTP run takes the downloaded OCI archive and
+The stdio run requires an unprivileged Linux account, Bubblewrap at
+`/usr/bin/bwrap` with working user namespaces, a system CA bundle at
+`/etc/ssl/certs/ca-certificates.crt`, and the matching static Linux executable
+extracted from its native archive. Each stdio launch, including the rebuilt
+MCP probe, sees the read-only executable and public CA bundle, a private PID
+namespace and temporary space. It reaches Core on the caller's loopback network.
+The HTTP run takes the downloaded OCI archive and
 the Docker engine platform.
 
 ```sh
@@ -154,7 +159,11 @@ workload inventories and the project containers, networks, and volumes.
 Successful transport results include the negotiated MCP protocol, client and
 server versions, actual platform, and versions reported by Core and Periphery.
 They record the checks for fixture secrets in MCP frames, protocol errors,
-process diagnostics, and retained scenario evidence.
+process diagnostics, and retained scenario evidence. The HTTP checks cover
+response status text, headers and bodies, including rejected bearer probes.
+The fixture scans each candidate container's final logs and retained health
+diagnostics after the process exits. JSON response and notification contents
+are checked after decoding on both transports.
 The same-repository PR introducing the workflow runs these jobs when opened
 ready for review, marked ready, or updated while ready. After that PR merges,
 use **Run workflow** with the repository-relative candidate record path.

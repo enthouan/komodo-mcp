@@ -11,6 +11,7 @@ import re
 import secrets
 import socket
 import stat
+import sys
 import threading
 
 from disposable_core_smoke import Failure, MAX_MCP_BYTES, Mcp, SECRETS, require
@@ -19,6 +20,20 @@ from disposable_core_smoke import Failure, MAX_MCP_BYTES, Mcp, SECRETS, require
 PROTOCOL = "2025-11-25"
 CLIENT_INFO = {"name": "komodo-mcp-disposable-candidate", "version": "1"}
 RPC_TIMEOUT = 35
+MAX_HTTP_HEADERS = 64 * 1024
+PUBLIC_CA = "/etc/ssl/certs/ca-certificates.crt"
+
+
+def native_probe_command(binary):
+    require(sys.platform == "linux" and os.geteuid() != 0 and Path("/usr/bin/bwrap").is_file(),
+            "packaged stdio checks require an unprivileged Linux account with Bubblewrap")
+    require(Path(PUBLIC_CA).is_file(), "packaged stdio checks require the public system CA bundle")
+    # Keep the caller's network namespace for its loopback Core, including the
+    # isolated source job. The verifier's filesystem and processes stay outside.
+    return ["/usr/bin/bwrap", "--die-with-parent", "--new-session", "--unshare-user", "--unshare-pid",
+            "--unshare-ipc", "--cap-drop", "ALL", "--ro-bind", str(binary), "/candidate",
+            "--ro-bind", PUBLIC_CA, PUBLIC_CA, "--dev", "/dev", "--tmpfs", "/tmp", "--chdir", "/tmp",
+            "--remount-ro", "/", "--", "/candidate"]
 
 def _loopback(value, path):
     """Only canonical literal loopback URLs with an explicit port and exact path."""
@@ -73,6 +88,22 @@ def _init_params():
             "clientInfo": dict(CLIENT_INFO)}
 
 
+def _contains_decoded_marker(frame, markers):
+    pending = [frame]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, str):
+            encoded = item.encode("utf-8", "surrogatepass")
+            if any(marker in encoded for marker in markers):
+                return True
+        elif isinstance(item, dict):
+            pending.extend(item)
+            pending.extend(item.values())
+        elif isinstance(item, list):
+            pending.extend(item)
+    return False
+
+
 class _Client(Mcp):
     """Same rpc/tool/context contract as the existing disposable smoke client."""
 
@@ -122,7 +153,7 @@ class NativeMcp(_Client):
         self.disclosed = False
         try:
             self.process = await asyncio.create_subprocess_exec(
-                str(binary), env=env, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+                *native_probe_command(binary), env=env, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE, limit=MAX_MCP_BYTES)
         except OSError:
             raise Failure("cannot launch verified native executable") from None
@@ -158,6 +189,8 @@ class NativeMcp(_Client):
                     require(all(secret not in line for secret in self.credential_bytes),
                             "native MCP reply disclosed a credential")
                     reply = json.loads(line)
+                    require(not _contains_decoded_marker(reply, self.credential_bytes),
+                            "native MCP reply disclosed a credential")
                     if isinstance(reply, dict) and reply.get("jsonrpc") == "2.0" and "method" in reply and "id" not in reply:
                         continue
                     return reply
@@ -171,7 +204,13 @@ class NativeMcp(_Client):
         self.process.stdin.close()
         async def scan_remaining_stdout():
             async with self.lock:
-                await self._scan_output(self.process.stdout)
+                while line := await self.process.stdout.readline():
+                    self.disclosed |= any(marker in line for marker in self.credential_bytes)
+                    if not self.disclosed:
+                        try:
+                            self.disclosed |= _contains_decoded_marker(json.loads(line), self.credential_bytes)
+                        except (ValueError, RecursionError):
+                            raise Failure("invalid trailing MCP frame") from None
         # Drain while waiting so a final notification can exceed the pipe
         # buffer without blocking shutdown or escaping the marker check.
         trailing = asyncio.create_task(scan_remaining_stdout())
@@ -187,24 +226,22 @@ class NativeMcp(_Client):
         require(self.process.returncode == 0 or getattr(self, "interrupted", False), "native MCP failed to shut down cleanly")
 
 
-def _parse_reply(content_type, payload, wanted):
+def _http_frames(content_type, payload, markers):
+    frames = []
     try:
-        if content_type == "application/json":
-            return json.loads(payload)
-        require(content_type == "text/event-stream", "unexpected MCP response content type")
-        blocks = payload.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n").split("\n\n")
-        for block in blocks:
-            data = [s[5:].removeprefix(" ") for s in block.split("\n") if s.startswith("data:")]
-            if not data or not "".join(data).strip():
-                continue
-            frame = json.loads("\n".join(data))
-            require(isinstance(frame, dict), "malformed SSE MCP frame")
-            if frame.get("id") == wanted:
-                return frame
-            require("id" not in frame and "method" in frame, "unexpected SSE response identity")
+        if content_type == "application/json" and payload:
+            frames.append(json.loads(payload))
+        elif content_type == "text/event-stream":
+            blocks = payload.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n").split("\n\n")
+            for block in blocks:
+                data = [s[5:].removeprefix(" ") for s in block.split("\n") if s.startswith("data:")]
+                if data and "".join(data).strip():
+                    frames.append(json.loads("\n".join(data)))
     except (ValueError, RecursionError):
         raise Failure("invalid MCP response encoding") from None
-    raise Failure("missing MCP response in event stream")
+    require(not any(_contains_decoded_marker(frame, markers) for frame in frames),
+            "HTTP MCP response disclosed a fixture credential or marker")
+    return frames
 
 
 class HttpMcp(_Client):
@@ -220,7 +257,9 @@ class HttpMcp(_Client):
         self.bearer, self.session = bearer, None
         try:
             probe = {"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": _init_params()}
-            for token in (None, secrets.token_urlsafe(32)):
+            invalid_bearer = secrets.token_urlsafe(32)
+            SECRETS.append(invalid_bearer)
+            for token in (None, invalid_bearer):
                 status, _, issued, challenge, _ = await self._request("POST", probe, token)
                 require(status == 401 and issued is None and challenge == "Bearer",
                         "HTTP MCP did not reject the unauthenticated request")
@@ -263,12 +302,19 @@ class HttpMcp(_Client):
             timer.start()
             connection.request(method, "/mcp", body=body, headers=headers)
             with connection.getresponse() as response:
+                fields = response.getheaders()
+                require(len(response.reason) + sum(len(key) + len(value) + 4 for key, value in fields) <= MAX_HTTP_HEADERS,
+                        "HTTP MCP response headers exceeded fixture size limit")
+                metadata = (response.reason + "\r\n" + "".join(f"{key}: {value}\r\n" for key, value in fields)).encode("latin-1")
                 data = response.read(MAX_MCP_BYTES + 1)
                 require(len(data) <= MAX_MCP_BYTES, "HTTP MCP response exceeded fixture size limit")
-                require(not any(value.encode() in data for value in SECRETS if value),
+                markers = tuple(value.encode() for value in SECRETS if value)
+                require(not any(marker in metadata or marker in data for marker in markers),
                         "HTTP MCP response disclosed a fixture credential or marker")
-                return (response.status, response.headers.get_content_type(),
-                        response.getheader("Mcp-Session-Id"), response.getheader("WWW-Authenticate"), data)
+                content_type = response.headers.get_content_type()
+                frames = _http_frames(content_type, data, markers)
+                return (response.status, content_type, response.getheader("Mcp-Session-Id"),
+                        response.getheader("WWW-Authenticate"), frames)
         except (ValueError, OSError, http.client.HTTPException):
             raise Failure("bounded loopback MCP HTTP request failed") from None
         finally:
@@ -278,15 +324,24 @@ class HttpMcp(_Client):
             connection.close()
 
     async def exchange(self, frame):
-        status, media_type, session, _, data = await self._request("POST", frame, self.bearer)
+        status, media_type, session, _, frames = await self._request("POST", frame, self.bearer)
         require(status == 200, "unexpected authenticated MCP HTTP status")
+        require(media_type in ("application/json", "text/event-stream"), "unexpected MCP response content type")
+        matches = []
+        for reply in frames:
+            require(isinstance(reply, dict), "malformed HTTP MCP frame")
+            if reply.get("id") == frame["id"]:
+                matches.append(reply)
+            else:
+                require("id" not in reply and "method" in reply, "unexpected HTTP MCP response identity")
+        require(len(matches) == 1, "missing or duplicate response in HTTP MCP frames")
         if frame["method"] == "initialize":
             require(isinstance(session, str) and re.fullmatch(r"[!-~]{1,256}", session) and "," not in session,
                     "invalid HTTP MCP session")
             self.session = session
         else:
             require(session is None or session == self.session, "MCP session identity changed")
-        return _parse_reply(media_type, data, frame["id"])
+        return matches[0]
 
     async def close(self):
         if self.closed:

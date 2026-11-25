@@ -104,7 +104,7 @@ async def probe_rebuilt(binary, digest, version):
                 "rebuilt probe issued an unexpected Core request")
         reads = sum(e["operation"] == "ListStacks" for e in core.events)
         require(reads > 0, "rebuilt inventory call did not reach Core")
-        return {"mcp_version":client.version, "client":client.client_info,
+        return {"mcp_version":client.version, "client":client.client_info, "native_probe_sandbox":"bubblewrap",
                 "fixture_probe":{"tool":"list_stacks", "returned_stacks":len(rows), "core_inventory_reads":reads}}
 
 
@@ -232,6 +232,10 @@ def export(path, data, work, case, destination):
         "contract_path":data["contract"]["path"], "contract_sha256":data["contract"]["sha256"],
         "passed":raw.get("passed") is True, "evidence_available":bool(raw), "requested_target":requested}
     result.update(project_values(raw, {"target":{requested}, "platform":{PLATFORM}, "mcp_version":{version}}))
+    if case in ("stdio", "source"):
+        result.update(project_values(raw, {"native_probe_sandbox":{"bubblewrap"}}))
+        if result["passed"]:
+            require(result.get("native_probe_sandbox") == "bubblewrap", "successful native probe lacks sandbox evidence")
     client_fields = {"name":{CLIENT_INFO["name"]}, "version":{CLIENT_INFO["version"]}, "protocol":{PROTOCOL}, "python":VERSION}
     result["client"] = project_values(raw.get("client", {}), client_fields)
     if case == "source":
@@ -292,6 +296,10 @@ def export(path, data, work, case, destination):
                             for name, fields in SCENARIOS.items()),
                     "complete live evidence is missing running service versions, outcomes or verified cleanup")
             require(len(scans) == len(REDACTION_SURFACES), "missing required redaction scan")
+            stale = result["scenarios"]["stale_resource_sync"]
+            require(stale["preflight_refreshes"] == stale["run_sync_history_delta"] == 0
+                    and stale["unchanged_server_configuration"] is True,
+                    "stale inline source requires zero preflight refreshes and zero RunSync submissions")
             denied = result["scenarios"]["read_only_operation"]
             require(all(denied[field] is True for field in
                         ("local_operate","local_configuration_edit","visible_sync_read","target_unchanged"))

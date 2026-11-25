@@ -31,6 +31,7 @@ def run(source, archive, output, toolchain, revision, target):
                     "--env", "PATH=/opt/pinned-toolchain/bin:/usr/bin:/bin", "--env", "CARGO_NET_OFFLINE=true",
                     "--env", "CARGO_BUILD_JOBS=2", "--env", "PYTHONDONTWRITEBYTECODE=1"]
             mounts = [(Path("/usr"), "/usr", True), (Path("/etc/alternatives"), "/etc/alternatives", True),
+                      (Path("/etc/ssl/certs/ca-certificates.crt"), "/etc/ssl/certs/ca-certificates.crt", True),
                       (toolchain, "/opt/pinned-toolchain", True), (source, "/inputs/unpacked", True),
                       (archive, "/inputs/source.tar.gz", True), (Path(__file__).resolve(), "/verify.py", True),
                       (scratch, "/tmp", False), (output, "/output", False)]
@@ -56,7 +57,8 @@ def inside(revision, target, hidden_paths):
             or [name for _, name in socket.if_nameindex()] != ["lo"]
             or any(Path(p).exists() for p in [*hidden_paths, "/var/run/docker.sock"])
             or any(not os.statvfs(p).f_flag & os.ST_RDONLY for p in
-                   ("/", "/usr", "/opt/pinned-toolchain", "/inputs/unpacked", "/inputs/source.tar.gz", "/verify.py"))
+                   ("/", "/usr", "/etc/ssl/certs/ca-certificates.crt", "/opt/pinned-toolchain",
+                    "/inputs/unpacked", "/inputs/source.tar.gz", "/verify.py"))
             or any(Path("/output").iterdir())):
         raise ValueError("source build sandbox does not match the required isolation")
     os.execv("/usr/bin/python3", ["/usr/bin/python3", "/inputs/unpacked/scripts/distribution_build.py",

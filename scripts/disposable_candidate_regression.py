@@ -166,7 +166,7 @@ class Candidate:
             async with await NativeMcp.start(binary=self.args.binary,
                     executable_sha256=smoke.REPORT["executable_sha256"], version=self.version,
                     address=self.context["address"], credentials=credentials, environment=settings) as client:
-                smoke.REPORT.update(mcp_version=client.version, client=client.client_info)
+                smoke.REPORT.update(mcp_version=client.version, client=client.client_info, native_probe_sandbox="bubblewrap")
                 yield client
             return
         bearer = secrets.token_urlsafe(36)
@@ -209,8 +209,9 @@ class Candidate:
                           "running container executable differs from matching native artifact")
             executable.unlink()
             smoke.run([*smoke.DOCKER, "start", cid])
-            smoke.poll(lambda: smoke.run([*smoke.DOCKER, "exec", cid, "/usr/local/bin/komodo-mcp",
-                                          "--healthcheck"]) or True, "owned HTTP MCP readiness", 60)
+            readiness = smoke.poll(lambda: smoke.run([*smoke.DOCKER, "exec", cid, "/usr/local/bin/komodo-mcp",
+                                   "--healthcheck"]) or True, "owned HTTP MCP readiness", 60)
+            expect_clean(readiness)
             mapping = smoke.run([*smoke.DOCKER, "port", cid, "3000/tcp"])
             smoke.require(re.fullmatch(r"127\.0\.0\.1:\d+", mapping), "unexpected HTTP MCP binding")
             async with await HttpMcp.start(endpoint=f"http://{mapping}/mcp", bearer=bearer,
@@ -234,6 +235,15 @@ class Candidate:
                            '{{index .Config.Labels "komodo-mcp.test.session"}}', cid])
         smoke.require(owner == smoke.OWNER == self.owned[cid], "fixture MCP container owner changed")
         try:
+            running = [*smoke.DOCKER, "inspect", "--format", "{{.State.Running}}", cid]
+            state = smoke.run(running)
+            if state == "true":
+                smoke.run([*smoke.DOCKER, "stop", "--time", "5", cid])
+                state = smoke.run(running)
+            smoke.require(state == "false", "fixture MCP kept running before its final diagnostic scan")
+            health = smoke.run([*smoke.DOCKER, "inspect", "--format",
+                                "{{if .State.Health}}{{json .State.Health.Log}}{{else}}[]{{end}}", cid])
+            expect_clean(json.loads(health))
             expect_clean(smoke.run([*smoke.DOCKER, "logs", cid]))
         finally:
             smoke.run([*smoke.DOCKER, "rm", "--force", cid])
@@ -294,23 +304,20 @@ class Candidate:
                           "read-only capability discovery differed")
             page = await peer.tool("list_containers", {"target":target})
             rows = page["data"]["items"]
-            smoke.require([r["identity"]["container_id"] for r in rows] == [running]
+            smoke.require(len(rows) == 1 and rows[0]["identity"] == {"server_id":target["id"],"container_id":running}
+                          and rows[0]["state"] == "running" and page["data"]["next_page"] is None
                           and page["source"] == "core_cache", "unexpected running inventory")
-            rows, page_number = [], 0
-            while True:
+            rows = []
+            for page_number, next_page in ((0, 1), (1, None)):
                 page = await peer.tool("list_containers", {"target":target, "include_stopped":True,
                                                           "page_size":1, "page":page_number})
+                smoke.require(len(page["data"]["items"]) == 1 and page["data"]["next_page"] == next_page,
+                              "expected exactly one container on each of two pages")
                 rows.extend(page["data"]["items"])
-                if page["data"]["next_page"] is None:
-                    break
-                smoke.require(page["data"]["next_page"] == page_number+1 < 4, "unexpected next page")
-                page_number += 1
-            stopped_rows = [r for r in rows if r["state"] == "exited"]
-            smoke.require(len(rows) == 2 and len(stopped_rows) == 1 and page_number == 1,
-                          "expected two one-container pages")
-            selected = stopped_rows[0]["identity"]
-            smoke.require(selected == {"server_id":target["id"],"container_id":stopped},
-                          "MCP and Docker container identities differ")
+            observed = {(row["identity"]["server_id"], row["identity"]["container_id"], row["state"]) for row in rows}
+            smoke.require(observed == {(target["id"], running, "running"), (target["id"], stopped, "exited")},
+                          "paged MCP container identities or states differ from Docker")
+            selected = next(row["identity"] for row in rows if row["state"] == "exited")
             detail = await peer.tool("get_container", {"identity":selected})
             smoke.require(detail["source"] == "fresh_inspect" and detail["data"]["state"] == "exited"
                           and detail["data"]["exit_code"] == 17 and detail["data"]["identity"] == selected
@@ -376,6 +383,8 @@ class Candidate:
                           and attempt["run_sync_requests_submitted"] == 0
                           and attempt["rejection"]["kind"] == "stale_preview",
                           "changed inline source did not invalidate the reviewed plan")
+            smoke.require(attempt["preflight"]["refresh_requests_submitted"] == 0,
+                          "stale inline source submitted a preflight refresh")
         smoke.require(before == history(admin, "ResourceSync", rid, "RunSync")
                       and admin.read("GetServer", {"server":ctx["alternate_server_id"]})["config"] == untouched,
                       "stale review changed Core history or target configuration")
