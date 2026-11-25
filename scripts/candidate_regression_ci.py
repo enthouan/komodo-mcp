@@ -6,11 +6,13 @@ import os
 from pathlib import Path
 import re
 import socket
+import stat
 import subprocess
 import sys
 import tomllib
 
 from candidate_clients import CLIENT_INFO, PROTOCOL, NativeMcp
+import candidate_source_sandbox
 from disposable_candidate_regression import (CLEANUP_STEPS, DENIAL_TOOLS, REDACTION_SURFACES, WORKLOAD_RESOURCES,
                                             native_host_platform, verify_contract_identity)
 from disposable_core_smoke import CORE_VERSION
@@ -130,10 +132,12 @@ def rebuild(data, work):
     # Execute the documented procedure shipped in the candidate. Its fresh Cargo
     # home and target directory, --frozen build and extracted-binary rmcp probe
     # are the same ones used by Native distribution.
-    subprocess.run([sys.executable, source / "scripts/distribution_build.py",
-                    "--source", source, "--source-archive", original, "--target", TARGET,
-                    "--revision", revision, "--output", work / "rebuilt"], cwd=source, check=True)
-    receipt = json.loads((work / "rebuilt" / (TARGET + ".json")).read_bytes())
+    sysroot = Path(subprocess.check_output(["rustc", "--print", "sysroot"], text=True).strip()).resolve(strict=True)
+    candidate_source_sandbox.run(source, original, work / "rebuilt", sysroot, revision, TARGET)
+    receipt_path = work / "rebuilt" / (TARGET + ".json")
+    require(stat.S_ISREG(receipt_path.lstat().st_mode) and receipt_path.stat().st_size <= 1024 * 1024,
+            "invalid isolated build receipt")
+    receipt = json.loads(receipt_path.read_bytes())
     built = receipt["file"]
     require(receipt["native"] is True and receipt["source_sha256"] == source_obj["sha256"]
             and receipt["revision"] == revision and receipt["mcp_version"] == receipt["version"] == version
@@ -143,9 +147,10 @@ def rebuild(data, work):
     require(built["executable_sha256"] == packaged_digest, "rebuilt executable differs from the packaged executable")
     rebuilt_name = stem(version, TARGET)
     archive = work / "rebuilt" / (rebuilt_name + ".tar.gz")
-    require(built["name"] == archive.name and built["sha256"] == sha256(archive), "rebuilt archive differs")
+    require(stat.S_ISREG(archive.lstat().st_mode) and built["name"] == archive.name
+            and built["sha256"] == sha256(archive), "rebuilt archive differs")
     binary = extract(archive, work / "verified-rebuild", rebuilt_name) / "komodo-mcp"
-    result.update(phase="fixture_probe",rebuilt_executable_sha256=built["executable_sha256"],
+    result.update(phase="fixture_probe",isolated_source_build=True,rebuilt_executable_sha256=built["executable_sha256"],
                   target=built["target"],platform=native_host_platform())
     evidence.write_text(json.dumps(result))
     probe = asyncio.run(probe_rebuilt(binary, packaged_digest, version))
@@ -231,7 +236,7 @@ def export(path, data, work, case, destination):
     result["client"] = project_values(raw.get("client", {}), client_fields)
     if case == "source":
         result.update(project_values(raw, {"rebuilt_executable_sha256":DIGEST, "source_archive_sha256":DIGEST,
-                                          "cargo_offline":bool, "rust_toolchain":VERSION,
+                                          "cargo_offline":bool, "isolated_source_build":bool, "rust_toolchain":VERSION,
                                           "phase":{"verify_source","rebuild","fixture_probe","complete"}}))
         result["loopback_only"] = raw.get("network_interfaces") == ["lo"]
         probe = project_values(raw.get("fixture_probe", {}), {"tool":{"list_stacks"}, "returned_stacks":int, "core_inventory_reads":int})
@@ -241,7 +246,7 @@ def export(path, data, work, case, destination):
                     "rebuilt executable differs from the packaged executable")
             require(result.get("phase") == "complete" and result["loopback_only"] and result.get("cargo_offline") is True
                     and result.get("source_archive_sha256") == entry_for(data, "source")["sha256"]
-                    and result.get("rust_toolchain")
+                    and result.get("rust_toolchain") and result.get("isolated_source_build") is True
                     and probe.get("tool") == "list_stacks" and probe.get("returned_stacks") == 3
                     and (probe.get("core_inventory_reads") or 0) > 0, "offline rebuild lacks a verified MCP fixture call")
     else:

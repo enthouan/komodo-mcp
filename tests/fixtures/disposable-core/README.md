@@ -133,9 +133,15 @@ fixture and the identified packaged candidate on the selected platform.
 The **Packaged candidate regression** Actions workflow runs the same checks in
 separate Ubuntu 24.04 jobs for Linux x86-64 stdio and authenticated HTTP. A
 third job extracts the candidate's Corresponding Source in a loopback-only
-network namespace and rebuilds it with the pinned musl toolchain and a fresh
-Cargo home. The archive's own MCP probe verifies a paginated inventory. A
-second probe extracts the rebuilt native archive, calls `list_stacks` over
+network namespace. The source-provided build runs as an unprivileged user
+in a network-disabled container with a read-only root. It receives the source
+archive, its extracted tree, the pinned Rust and system toolchains, fresh
+scratch space and an empty output directory. A trusted entry point checks
+the mounts and verifies that the other downloaded packages, checkout and
+Docker socket are inaccessible. The shipped build uses a fresh Cargo home
+and runs its MCP inventory probe. After the container exits, the outer job
+verifies the native executable digest against the distribution manifest,
+extracts the rebuilt native archive, calls `list_stacks` over
 stdio and checks the three expected fixture rows and observed Core reads.
 Each job re-downloads both selected Actions
 artifacts and checks their complete identities against the tracked record.

@@ -117,7 +117,12 @@ class HostedRegressionTests(unittest.TestCase):
     def test_rebuild_rejects_a_valid_binary_that_differs_from_the_packaged_executable(self):
         self.check_rebuild(matches_package=False)
 
-    def check_rebuild(self, *, matches_package):
+    def test_rebuild_rejects_symlinked_output_files(self):
+        for link in ("receipt", "archive"):
+            with self.subTest(link=link):
+                self.check_rebuild(matches_package=True, link=link)
+
+    def check_rebuild(self, *, matches_package, link=None):
         data = record()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -141,28 +146,36 @@ class HostedRegressionTests(unittest.TestCase):
             data["distribution"]["files"].append({"kind":"native", "target":ci.TARGET,
                 "executable_sha256":binary_digest if matches_package else "f"*64})
 
-            def build(args, *, cwd, check):
-                self.assertTrue(check)
-                self.assertEqual(args[:2], [ci.sys.executable, cwd/"scripts/distribution_build.py"])
-                self.assertEqual(cwd, root/"offline-source"/source_name)
-                self.assertEqual((cwd/"rust-toolchain.toml").read_bytes(),(seed/"rust-toolchain.toml").read_bytes())
-                out = root/"rebuilt"
+            def build(source, source_archive, out, sysroot, revision, target):
+                self.assertEqual((source, source_archive, out, sysroot, revision, target),
+                                 (root/"offline-source"/source_name, original, root/"rebuilt", root.resolve(), "a"*40, ci.TARGET))
+                self.assertEqual((source/"rust-toolchain.toml").read_bytes(),(seed/"rust-toolchain.toml").read_bytes())
                 out.mkdir()
                 tar = out/(native_name+".tar.gz")
                 archive(rebuilt,tar)
                 receipt = {"native":True,"revision":"a"*40,"source_sha256":source_digest,"mcp_version":version,
                            "version":version,"file":{"name":tar.name,"sha256":ci.sha256(tar),
                                                     "target":ci.TARGET,"executable_sha256":binary_digest}}
-                (out/(ci.TARGET+".json")).write_text(json.dumps(receipt))
+                receipt_path = out/(ci.TARGET+".json")
+                receipt_path.write_text(json.dumps(receipt))
+                if link:
+                    selected = receipt_path if link == "receipt" else tar
+                    selected.rename(root/"external")
+                    selected.symlink_to(root/"external")
 
             probe_result = {"mcp_version":version,"client":dict(ci.CLIENT_INFO,protocol=ci.PROTOCOL,python="3.12.8"),
                             "fixture_probe":{"tool":"list_stacks","returned_stacks":3,"core_inventory_reads":1}}
             with patch.object(ci.socket,"if_nameindex",return_value=[(1,"lo")]), \
                     patch.dict(ci.os.environ,CARGO_NET_OFFLINE="true"), patch.object(ci.os,"geteuid",return_value=1001), \
                     patch.object(ci,"native_host_platform",return_value=ci.PLATFORM), \
-                    patch.object(ci.subprocess,"check_output",return_value="rustc 1.99.1 (unit)"), \
-                    patch.object(ci.subprocess,"run",side_effect=build), \
+                    patch.object(ci.subprocess,"check_output",side_effect=["rustc 1.99.1 (unit)", str(root)]), \
+                    patch.object(ci.candidate_source_sandbox,"run",side_effect=build), \
                     patch.object(ci,"probe_rebuilt",return_value=probe_result) as probe:
+                if link:
+                    with self.assertRaisesRegex(ValueError,"invalid isolated build receipt|rebuilt archive differs"):
+                        ci.rebuild(data,root)
+                    probe.assert_not_awaited()
+                    return
                 if not matches_package:
                     with self.assertRaisesRegex(ValueError,"differs from the packaged executable"):
                         ci.rebuild(data,root)
@@ -179,8 +192,12 @@ class HostedRegressionTests(unittest.TestCase):
             public = json.loads((root/"public.json").read_bytes())
             self.assertEqual(public["fixture_probe"],probe_result["fixture_probe"])
             self.assertEqual(public["rust_toolchain"],"1.99.1")
+            self.assertTrue(public["isolated_source_build"])
             report = root/"private-result.json"
             partial = json.loads(report.read_bytes())
+            report.write_text(json.dumps(dict(partial, isolated_source_build=False)))
+            with self.assertRaisesRegex(ValueError,"verified MCP fixture call"):
+                ci.export(candidate,data,root,"source",root/"invalid.json")
             report.write_text(json.dumps(dict(partial, rebuilt_executable_sha256="f"*64)))
             with self.assertRaisesRegex(ValueError,"differs from the packaged executable"):
                 ci.export(candidate,data,root,"source",root/"invalid.json")
@@ -189,6 +206,31 @@ class HostedRegressionTests(unittest.TestCase):
             report.write_text(json.dumps(partial))
             with self.assertRaisesRegex(ValueError,"verified MCP fixture call"):
                 ci.export(candidate,data,root,"source",root/"invalid.json")
+
+    def test_source_build_exposes_only_its_inputs_and_empty_writable_directories(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(ci.subprocess, "run") as execute:
+            root = Path(tmp)
+            source, source_tar, toolchain = root/"source", root/"native"/"source.tar.gz", root/"toolchain"
+            output = root/"output"
+            def check(args, **kwargs):
+                if "run" not in args:
+                    return
+                self.assertEqual(list(output.iterdir()), [])
+                rw = [v for v in args if v.startswith("type=bind,") and not v.endswith(",readonly")]
+                self.assertEqual(sorted(v.split("dst=")[1] for v in rw), ["/output","/tmp"])
+                ro = [v for v in args if v.startswith("type=bind,") and v.endswith(",readonly")]
+                expected = [(source,"/inputs/unpacked"),(source_tar,"/inputs/source.tar.gz"),
+                            (toolchain,"/opt/pinned-toolchain"),(Path(ci.candidate_source_sandbox.__file__).resolve(),"/verify.py"),
+                            (Path("/usr"),"/usr"),(Path("/etc/alternatives"),"/etc/alternatives")]
+                self.assertCountEqual(ro,[f"type=bind,src={src},dst={dst},readonly" for src,dst in expected])
+                for flag in ("--read-only","--network=none","--cap-drop=ALL","--security-opt=no-new-privileges","--rm"):
+                    self.assertIn(flag, args)
+                self.assertEqual(args[args.index("--user")+1], f"{ci.os.getuid()}:{ci.os.getgid()}")
+                return SimpleNamespace(returncode=0)
+            execute.side_effect = check
+            ci.candidate_source_sandbox.run(source, source_tar, output, toolchain, "a"*40, ci.TARGET)
+            self.assertEqual([call.args[0][3:5] for call in execute.call_args_list],
+                             [["import","-"],["run","--rm"],["image","rm"]])
 
     def test_rebuilt_fixture_requires_exact_inventory_and_an_observed_core_read(self):
         core = MagicMock()
