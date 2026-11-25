@@ -88,3 +88,17 @@ The comparison exits nonzero and identifies the JSON pointer
 The diff shows the original and observed booleans. For hosted CI evidence,
 commit the temporary annotation and catalog together, link the failed `check`
 run, then restore those two changes to obtain a green comparison.
+
+## Hosted drift demonstration
+
+The [required CI check](https://github.com/enthouan/komodo-mcp/actions/runs/45535493657/job/138940951094) rejected a real change to
+`list_containers` at [`0eea9e97302b`](https://github.com/enthouan/komodo-mcp/commit/0eea9e97302b418e6154c2d32c610f803b918769).
+It compared the updated advertisement and generated catalog with the frozen file.
+
+```text
+v1 contract drift: /application/discovery/tools/list_containers/annotations/idempotentHint: true -> false
+```
+
+The [contract PR](https://github.com/enthouan/komodo-mcp/pull/147) restores
+the original annotation. Container discovery and inspection were already present
+in [the reviewed server](https://github.com/enthouan/komodo-mcp/commit/d823a02fefc241033e652917b448e84d5a83397f).
