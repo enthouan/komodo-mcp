@@ -5,6 +5,10 @@ notes: short, categorized bullets with links to the relevant pull requests.
 
 ## Unreleased
 
+### Added
+
+- Check supported platform, Core, and client combinations and follow the rehearsed native or Compose upgrade and rollback from v0.9.0. ([#156](https://github.com/enthouan/komodo-mcp/pull/156), [#158](https://github.com/enthouan/komodo-mcp/pull/158))
+
 ### Changed
 
 - Install the published v0.9.0 baseline from version-matched native downloads and a verified GHCR image pin. ([#154](https://github.com/enthouan/komodo-mcp/pull/154))
