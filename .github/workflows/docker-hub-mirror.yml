@@ -1,0 +1,96 @@
+name: Docker Hub mirror
+
+on:
+  pull_request:
+    paths:
+      - '.github/actions/setup-regctl/**'
+      - '.github/workflows/docker-hub-mirror.yml'
+      - 'scripts/*mirror*.py'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag from the primary verification
+        type: string
+        required: true
+      revision:
+        description: Full release commit
+        type: string
+        required: true
+      digest:
+        description: Independently verified GHCR index digest
+        type: string
+        required: true
+      tag_object:
+        description: Original annotated release tag object from the primary verification
+        type: string
+        required: true
+      publish:
+        description: Request the protected writer after the read-only preview
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  attestations: read
+
+env:
+  MIRROR_TAG: ${{ inputs.tag }}
+  MIRROR_REVISION: ${{ inputs.revision }}
+  MIRROR_DIGEST: ${{ inputs.digest }}
+
+jobs:
+  fixtures:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-regctl
+      - run: python3 -m unittest discover -s scripts -p 'test_dockerhub_mirror.py' -v
+
+  preview:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'enthouan/komodo-mcp' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      tag_object: ${{ steps.read.outputs.tag_object }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-regctl
+      - id: read
+        env:
+          TAG_OBJECT: ${{ inputs.tag_object }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/dockerhub_mirror.py preview \
+            --tag "$MIRROR_TAG" --revision "$MIRROR_REVISION" --digest "$MIRROR_DIGEST" --tag-object "$TAG_OBJECT"
+
+  mirror:
+    needs: preview
+    if: inputs.publish && github.ref == 'refs/heads/main' && github.repository == 'enthouan/komodo-mcp'
+    environment: dockerhub
+    concurrency:
+      group: dockerhub-komodo-mcp-writer
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-regctl
+      - name: Recheck release identity and reconcile Docker Hub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          PREVIEW_TAG_OBJECT: ${{ needs.preview.outputs.tag_object }}
+        run: |
+          python3 scripts/dockerhub_mirror.py write --tag "$MIRROR_TAG" --revision "$MIRROR_REVISION" \
+            --digest "$MIRROR_DIGEST" --tag-object "$PREVIEW_TAG_OBJECT"

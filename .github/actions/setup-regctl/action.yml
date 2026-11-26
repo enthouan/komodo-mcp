@@ -1,0 +1,16 @@
+name: Install regctl
+description: Install the checked Linux amd64 registry client
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+        test "$(uname -sm)" = "Linux x86_64"
+        destination="$(mktemp -d "$RUNNER_TEMP/regctl.XXXXXX")"
+        curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+          --connect-timeout 15 --max-time 120 \
+          https://github.com/regclient/regclient/releases/download/v0.11.7/regctl-linux-amd64 -o "$destination/regctl"
+        echo "3737fbbdd791e04e7a831640b681f3397a376498e80e2ad9b1b2d27296f239bc  $destination/regctl" | sha256sum --check --strict
+        chmod 700 "$destination/regctl"
+        echo "$destination" >> "$GITHUB_PATH"
