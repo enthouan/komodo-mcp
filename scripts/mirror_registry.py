@@ -137,6 +137,7 @@ def graph(reader, identifier, version, revision):
     seen = {}
     blobs = set()
     refs = {}
+    subjects = {}
     by_digest = {value: key for key, value in platforms.items()}
 
     def walk(raw, key):
@@ -145,6 +146,8 @@ def graph(reader, identifier, version, revision):
         check(len(seen) < 512, "oversized mirror graph")
         seen[key] = len(raw)
         node = json.loads(raw)
+        if "subject" in node:
+            subjects[key] = descriptor(node["subject"], MAX_MANIFEST)
         children = []
         if node["mediaType"] == INDEX:
             children.extend(node["manifests"])
@@ -159,7 +162,7 @@ def graph(reader, identifier, version, revision):
                         verify_config(json.loads(data), version, revision, by_digest[key])
                     blobs.add(blob_key)
         attachments = reader.referrers(key)
-        refs[key] = sorted(item["digest"] for item in attachments)
+        refs[key] = {item["digest"] for item in attachments}
         for desc in children + attachments:
             child, size = descriptor(desc, MAX_MANIFEST)
             if child in seen:
@@ -170,4 +173,13 @@ def graph(reader, identifier, version, revision):
             walk(data, child)
 
     walk(roots, identifier)
-    return {"index_digest": identifier, "platforms": platforms, "referrers": refs, "blob_count": len(blobs)}
+    # Some registries additionally advertise in-index attestations through the referrers API.
+    # The manifest bytes establish the subject relationship in both representations.
+    for parent, attachments in refs.items():
+        for child in attachments:
+            check(subjects.get(child) == (parent, seen[parent]), "referrers API points at the wrong subject")
+    for child, (parent, size) in subjects.items():
+        check(seen.get(parent) == size, "artifact subject is outside the verified graph")
+        refs[parent].add(child)
+    return {"index_digest": identifier, "platforms": platforms,
+            "referrers": {key: sorted(values) for key, values in refs.items()}, "blob_count": len(blobs)}
