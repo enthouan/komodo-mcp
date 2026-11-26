@@ -13,7 +13,7 @@ test("homepage presents the Komodo hero, actions, and independence statement", a
   const github = page.locator(".hero [data-github-action]");
   await expect(github).toHaveAccessibleName("View on GitHub");
   await expect(github).toHaveAttribute("href", REPOSITORY_URL);
-  await expect(page.locator("main")).toContainText("not an official Komodo product");
+  await expect(page.locator("footer")).toContainText("not an official Komodo product");
   await expect(page.locator("main")).toContainText("List the stacks I can access in Komodo");
   await expect(page.locator("header [data-repository-navigation]:visible")).toHaveAccessibleName(
     "komodo-mcp source repository, 1.2K stars",
@@ -52,7 +52,7 @@ test("mobile menu opens with the keyboard and reaches documentation", async ({ p
   await expect(link).toBeVisible();
   await link.click();
   await expect(page).toHaveURL(/\/getting-started\/stdio\/$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Native stdio");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Build from source");
 });
 
 test("theme selection persists and applies the green palette", async ({ page }) => {

@@ -38,7 +38,7 @@ function makeScrollableTablesKeyboardAccessible() {
   };
 }
 
-const operatorGuideSidebar = OPERATOR_GUIDE_GROUPS.filter(({ label }) => label !== "Project").map(
+const operatorGuideSidebar = OPERATOR_GUIDE_GROUPS.filter(({ label }) => label !== "Project" && label !== "Support and upgrades").map(
   ({ label, guides }) => ({
     label,
     collapsed: true,
@@ -97,7 +97,8 @@ export default defineConfig({
             { slug: "getting-started/komodo-credentials", label: "Komodo Core credentials" },
             { slug: "getting-started/clients", label: "Set up your MCP client" },
             { slug: "getting-started/compatibility", label: "Compatibility" },
-            { slug: "getting-started/stdio", label: "Native stdio" },
+            { slug: "docs/stable-support", label: "Stable support policy" },
+            { slug: "docs/upgrade-v1", label: "Upgrade and rollback" },
           ],
         },
         {
@@ -118,6 +119,7 @@ export default defineConfig({
             { slug: "reference", label: "Overview" },
             { slug: "reference/configuration", label: "Configuration" },
             { slug: "reference/tools", label: "Tool reference" },
+            { slug: "getting-started/stdio", label: "Build from source" },
             { slug: "reference/contributing", label: "Contributing" },
             { slug: "reference/reporting-issues", label: "Reporting issues and support" },
             { slug: "docs/maintenance", label: "Repository maintenance" },

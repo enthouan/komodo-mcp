@@ -34,9 +34,10 @@ test("keyboard users can skip to content and see focus", async ({ page }) => {
 
 test("installation choices are named and keyboard navigable", async ({ page }) => {
   await gotoLoaded(page, "/getting-started/");
-  const tabs = page.locator("[data-install-methods]").getByRole("tab");
-  await tabs.first().focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(tabs.nth(1)).toHaveText("Docker Compose");
-  await expect(tabs.nth(1)).toBeFocused();
+  const native = page.locator('main p a[href="#native-stdio"]').first();
+  await native.focus();
+  await page.keyboard.press("Tab");
+  await expect(page.locator('main p a[href="#docker-compose"]').first()).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#docker-compose$/);
 });

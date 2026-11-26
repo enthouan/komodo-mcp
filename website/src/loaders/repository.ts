@@ -61,7 +61,7 @@ export function repositoryGuidesLoader(): Loader {
   };
 }
 
-/** Loads README sections that website pages render verbatim. */
+/** Loads repository sections that website pages render verbatim. */
 export function repositorySectionsLoader(): Loader {
   return {
     name: "komodo-mcp-repository-sections",

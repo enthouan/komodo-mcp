@@ -62,7 +62,7 @@ authorize a substitute action or establish that execution will succeed.
 
 Discover and inspect with `list_stacks` / `get_stack` or `list_deployments` /
 `get_deployment` first. Prefer the returned stable ID. ID/name resolution follows
-the [inventory contract](../README.md#inventory-tools): exactly one selector,
+the [inventory contract](reference/tools.md#inventory-tools): exactly one selector,
 case-sensitive literal names, bounded ambiguity handling and stable-ID execution.
 The name is not a wildcard/pattern. Missing, invisible, ambiguous or inconsistent
 targets do not execute.

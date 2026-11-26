@@ -26,7 +26,7 @@ Keep the env file readable only by its owner. The Compose service forwards
 values at runtime. Anyone with Docker administrator access can inspect them.
 Use `KOMODO_ENABLED_TOOLS=list_stacks,get_stack,stack_diagnose` for a three-tool
 triage client. Configure `KOMODO_HTTP_ALLOWED_ORIGINS` with exact origins when
-using a browser client. See [HTTP transport](../README.md#authenticated-streamable-http) for authentication and
+using a browser client. See [HTTP transport](reference/runtime.md#authenticated-streamable-http) for authentication and
 client configuration.
 
 With the settings exported, run the following in the directory containing

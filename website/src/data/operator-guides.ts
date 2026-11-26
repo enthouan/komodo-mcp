@@ -18,7 +18,6 @@ export const OPERATOR_GUIDE_GROUPS = [
   {
     label: "Inspect and diagnose",
     guides: [
-      { slug: "self-hosted-beta", label: "Self-hosted beta installation", description: "Verify a native archive and run stdio, or start authenticated HTTP with the version-matched Compose file." },
       { slug: "operator-quickstart", label: "First read, stack diagnosis and recovery", description: "Scope a Core account, connect a client, diagnose a Stack by its returned ID, and recover an interrupted staging operation." },
       { slug: "mock-stdio", label: "Interactive stdio walkthrough", description: "Run the synthetic mock Core, generate an MCP Inspector configuration, and troubleshoot startup with safe diagnostics." },
       { slug: "diagnostics", label: "Diagnostic tools", description: "Fleet health, incident history, bounded workload logs, and evidence-backed stack diagnosis." },
@@ -87,6 +86,7 @@ export const OPERATOR_GUIDE_GROUPS = [
   {
     label: "Project",
     guides: [
+      { slug: "self-hosted-beta", label: "Installation guide", description: "Follow the current native stdio or Docker Compose installation instructions." },
       { slug: "container", label: "Docker Compose installation", description: "Run the multi-platform image with runtime credentials, verify the authenticated listener, and find matching source and notices." },
       { slug: "distribution", label: "Native binaries and matching source", description: "Verify a native archive, check its platform requirements, and rebuild from the bundled source and dependencies." },
       { slug: "stable-verification", label: "Verify a stable release", description: "Check native archives and image digests against signed provenance and inspect their bills of materials." },

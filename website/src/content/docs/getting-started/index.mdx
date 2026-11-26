@@ -1,41 +1,141 @@
 ---
 title: Install and run
-description: Connect an MCP client through native stdio or authenticated Docker Compose HTTP, then verify the installation by listing your stacks.
+description: Set up native stdio or Docker Compose with authenticated HTTP and verify your first read from Komodo Core.
 ---
 
-import { CardGrid, Code, LinkCard } from '@astrojs/starlight/components';
-import InstallMethods from '../../../components/InstallMethods.astro';
-import { INSTALLATION_SOURCE_URL } from '../../../data/install.js';
+import CandidateDownload from '../../../components/CandidateDownload.astro';
+import { previewCandidate } from '../../../data/installation-preview.js';
+import { Code } from '@astrojs/starlight/components';
+import { CHECKSUMS_URL, COMPOSE_URL, INSTALLATION_SOURCE_URL, LICENSE_URL, NATIVE_DOWNLOADS, NOTICES_URL, RELEASE_IMAGE } from '../../../data/install.js';
+import { INSTALLATION_RELEASE_TAG } from '../../../data/publication.js';
 import { RELEASE_TAG, RELEASE_URL } from '../../../data/project.js';
+import { REPOSITORY_URL } from '../../../data/repository.js';
 
-komodo-mcp is a single Rust executable. Your MCP client can launch it over stdio or connect to a persistent HTTP service. Each instance calls your Komodo Core API with one API key and secret.
+You need access to a running Komodo Core and a scoped account with Read on a Stack you recognize. Create an API key for that account and keep its secret in your credential store. [Prepare Core credentials](/getting-started/komodo-credentials/)
 
-## Choose an installation path
+Choose [native stdio](#native-stdio) if your client can launch a process on this machine. Choose [Docker Compose](#docker-compose) for a persistent Streamable HTTP endpoint. Both routes use the same three read-only tools.
 
-Use native stdio when your MCP client launches a process. Choose Docker Compose for a persistent endpoint that authenticates each MCP request with a bearer token.
+{previewCandidate && <p><strong>v1.0.0 installation preview.</strong> The packaged candidate at <code>{previewCandidate.revision}</code> reports <code>{previewCandidate.version}</code>. The <a href="https://komodo-mcp.com/getting-started/">live guide</a> serves the verified public release.</p>}
 
-<InstallMethods />
+## Native stdio
 
-## Connect and read your stacks
+Use 64-bit Linux or macOS 15 or later on the machine that launches your MCP client. For releases starting with v1.0.0, [verify the signed native provenance and SBOM](/docs/stable-verification/#verify-a-native-download) before extracting the archive.
 
-Choose a [Core identity](/getting-started/komodo-credentials/) with Read access to the Stacks you want to inspect. Set its address, API key, and secret in the server environment. For HTTP, configure a separate inbound bearer token and put it in your MCP client. The [installation guide](/docs/self-hosted-beta/) has commands for each path.
+{previewCandidate ? <CandidateDownload kind="native" /> : <>
+  <p>Download the archive for the client host and <a href={CHECKSUMS_URL}>SHA256SUMS</a> from the same release into a new directory.</p>
+  <ul>{NATIVE_DOWNLOADS.map(({label, href}) => <li><a href={href}>{label}</a></li>)}</ul>
+</>}
 
-After initialization, run `tools/list`. Call `list_stacks` with `{}`. To investigate a Stack, copy its returned ID into `get_stack` and `stack_diagnose`. The [three-tool triage walkthrough](/docs/operator-quickstart/#discover-and-diagnose-with-three-tools) includes the expected discovery results and the arguments for each read.
+<Code lang="sh" title="Verify the archive and print the server command" code={`(
+  set -eu
+  case "$(uname -s)-$(uname -m)" in
+    Darwin-arm64) target=aarch64-apple-darwin ;;
+    Darwin-x86_64) target=x86_64-apple-darwin ;;
+    Linux-aarch64|Linux-arm64) target=aarch64-unknown-linux-musl ;;
+    Linux-x86_64) target=x86_64-unknown-linux-musl ;;
+    *) exit 1 ;;
+  esac
+  archive="komodo-mcp-v${previewCandidate?.version ?? INSTALLATION_RELEASE_TAG.slice(1)}-$target.tar.gz"
+  awk -v f="$archive" '$2 == f {print; n++} END {if (n != 1) exit 1}' SHA256SUMS > "$archive.sha256"
+  if command -v sha256sum >/dev/null; then sha256sum -c "$archive.sha256"; else shasum -a 256 -c "$archive.sha256"; fi
+  mkdir extracted
+  tar -xzf "$archive" -C extracted
+  executable="$PWD/extracted/\${archive%.tar.gz}/komodo-mcp"
+  test -x "$executable"
+  printf '%s\\n' "$executable"
+)`} />
 
-To verify the three-tool restriction in a client that supports direct calls, request the read-only `list_deployments` tool with `{}`. This instance should reject the call as an unknown tool.
+Configure the client to launch the printed absolute path with no arguments. Give the child process the Core address, key and secret through your client's private environment. Select `list_stacks,get_stack,stack_diagnose` and set all four optional grants to `false`. For example, this Claude Code project entry reads the three Core variables from the environment that launches the client. Replace the command path before starting a session.
 
-Set `KOMODO_ENABLED_TOOLS=list_stacks,get_stack,stack_diagnose` before starting either transport to use the three-tool triage configuration. To keep your usual tool set except image history, leave `KOMODO_ENABLED_TOOLS` unset, set `KOMODO_DISABLED_TOOLS=get_image_history` in the server environment, and restart. [Configuration reference](/reference/configuration/#select-individual-tools)
+```json title=".mcp.json"
+{
+  "mcpServers": {
+    "komodo": {
+      "type": "stdio",
+      "command": "/absolute/path/from/the/previous/command/komodo-mcp",
+      "args": [],
+      "env": {
+        "KOMODO_TRANSPORT": "stdio",
+        "KOMODO_ADDRESS": "${KOMODO_ADDRESS}",
+        "KOMODO_API_KEY": "${KOMODO_API_KEY}",
+        "KOMODO_API_SECRET": "${KOMODO_API_SECRET}",
+        "KOMODO_ENABLED_TOOLS": "list_stacks,get_stack,stack_diagnose",
+        "KOMODO_ALLOW_OPERATE": "false",
+        "KOMODO_ALLOW_CONFIGURATION_EDIT": "false",
+        "KOMODO_ALLOW_PRUNE": "false",
+        "KOMODO_ALLOW_TERMINAL": "false"
+      }
+    }
+  }
+}
+```
 
-## Release and source
+Keep any inherited tool denylist consistent with the selected tools. Approve the server in the client, reconnect, and [verify discovery and your first read](#verify-your-first-read). [Other stdio client configurations](/getting-started/clients/)
 
-The beta downloads include checksums and <a href={INSTALLATION_SOURCE_URL}>matching Corresponding Source</a>. To build the current published <a href={RELEASE_URL}>{RELEASE_TAG} release</a> from its Git tag, use the pinned Rust toolchain. See the [native stdio source-build guide](/getting-started/stdio/).
+## Docker Compose
 
-<Code lang="sh" title="Build a tagged release" code={`git clone https://github.com/enthouan/komodo-mcp.git
-cd komodo-mcp
-git checkout ${RELEASE_TAG}
-cargo build --locked --release --bin komodo-mcp`} />
+Use Docker with Compose v2 and Linux containers on amd64 or arm64. Work in a new private deployment directory. The host publishes the endpoint on loopback. For releases starting with v1.0.0, [verify the image digest, SBOM and signing workflow](/docs/stable-verification/#verify-the-container-and-its-sbom).
 
-<CardGrid>
-  <LinkCard title="Native stdio" description="Synthetic demo, real-Core launch, startup probe, and diagnostics." href="/getting-started/stdio/" />
-  <LinkCard title="Troubleshooting" description="Separate build, client, Core authentication, permission, reachability, and timeout problems." href="/guides/troubleshooting/" />
-</CardGrid>
+{previewCandidate ? <CandidateDownload kind="container" /> : <>
+  <p>Download the <a href={COMPOSE_URL}>versioned Compose file</a> for the published image.</p>
+  <Code lang="sh" title="Get the Compose file" code={`curl --fail --show-error --location --output compose.yaml ${COMPOSE_URL}`} />
+</>}
+
+```sh title="Prepare the private environment file"
+(umask 077 && touch .env) && chmod 600 .env
+```
+
+In the private `.env` file, enter your Core credentials and an independently generated inbound token (at least 32 random bytes). Put the same token in your HTTP client's credential store. The Core address must be reachable from inside the container. Use a shell with no conflicting exported Komodo settings.
+
+<Code lang="text" title=".env" code={`KOMODO_ADDRESS=https://core.example.test
+KOMODO_API_KEY=<scoped Core key>
+KOMODO_API_SECRET=<scoped Core secret>
+KOMODO_HTTP_TOKENS=<inbound MCP client token>
+KOMODO_MCP_IMAGE=${previewCandidate ? `komodo-mcp-candidate:git-${previewCandidate.revision}` : RELEASE_IMAGE}
+KOMODO_ENABLED_TOOLS=list_stacks,get_stack,stack_diagnose
+KOMODO_ALLOW_OPERATE=false
+KOMODO_ALLOW_CONFIGURATION_EDIT=false
+KOMODO_ALLOW_PRUNE=false
+KOMODO_ALLOW_TERMINAL=false`} />
+
+```sh title="Start and check the listener"
+docker compose --env-file .env config --quiet &&
+  docker compose --env-file .env up -d --wait komodo-mcp
+docker compose --env-file .env ps komodo-mcp
+```
+
+Once the service is healthy, add a **Streamable HTTP** server in your MCP client. Set the URL to `http://127.0.0.1:3000/mcp` and send `Authorization: Bearer <inbound MCP client token>` on every request. Keep the Core credentials in the server environment. For a remote connection use a trusted HTTPS reverse proxy. [GHCR package](https://github.com/users/enthouan/packages/container/package/komodo-mcp) · [Digest pin, private CA and health check](/docs/container/)
+
+For example, make the client token available as `KOMODO_MCP_BEARER` in the shell that launches Claude Code. Add this project entry to `.mcp.json`. For a browser client, configure its exact origin in `KOMODO_HTTP_ALLOWED_ORIGINS` on the server. [Client configuration syntax](https://code.claude.com/docs/en/mcp#environment-variable-expansion-in-mcpjson) · [HTTP settings](/reference/configuration/#authenticated-streamable-http)
+
+```json title=".mcp.json"
+{
+  "mcpServers": {
+    "komodo": {
+      "type": "http",
+      "url": "http://127.0.0.1:3000/mcp",
+      "headers": {"Authorization": "Bearer ${KOMODO_MCP_BEARER}"}
+    }
+  }
+}
+```
+
+Connect with the bearer and [verify discovery and your first read](#verify-your-first-read).
+
+## Verify your first read
+
+1. Open a fresh session. Check the initialization response for `serverInfo.name` equal to `komodo-mcp` and version <code>{previewCandidate?.version ?? INSTALLATION_RELEASE_TAG.slice(1)}</code>.
+2. Run `tools/list`. Expect exactly `get_stack`, `list_stacks` and `stack_diagnose`.
+3. Call `list_stacks` with the arguments below. A successful response contains up to one Stack in `result.structuredContent.items`. Check its ID or name against the inventory visible to the account. If you expected a Stack and the result is empty, check the account's Core Read grants.
+
+```json title="tools/call parameters"
+{"name":"list_stacks","arguments":{"page":0,"page_size":1}}
+```
+
+See the [tool catalog](/reference/tools/), [troubleshooting](/guides/troubleshooting/), [support policy](/docs/stable-support/) and [upgrade and rollback guide](/docs/upgrade-v1/).
+
+## Release files
+
+{previewCandidate ? <p>The <a href={`${REPOSITORY_URL}/actions/runs/${previewCandidate.nativeRun}`}>candidate native distribution</a> includes its matching Corresponding Source archive, <code>LICENSE</code> and <code>THIRD-PARTY-NOTICES</code>. The native and container distribution runs also carry their signed provenance and SBOMs.</p> : <p><a href={RELEASE_URL}>{RELEASE_TAG} release</a> · <a href={INSTALLATION_SOURCE_URL}>Matching Corresponding Source</a> · <a href={LICENSE_URL}>License</a> · <a href={NOTICES_URL}>Third-party notices</a>.</p>}
+
+For a source build, follow the [native build instructions](/getting-started/stdio/#build-and-launch).

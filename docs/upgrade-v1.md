@@ -16,7 +16,7 @@ Start with the **published v0.9.0** installation and an MCP client that can show
    cmp "/absolute/path/from/v0.9.0-archive/komodo-mcp" "/absolute/path/from/client/komodo-mcp"
    ```
 
-2. Get `komodo-mcp-v1.0.0-<target>.tar.gz` and the verification records from the stable release. Use the target matching the machine that launches the server. Verify the archive checksum, provenance, source revision and build identity against the release evidence. Extract into a **new version-specific directory**. Keep the old path available. Record the new absolute executable path and archive digest.
+2. Get `komodo-mcp-v1.0.0-<target>.tar.gz` and the verification records from the stable release. Use the target matching the machine that launches the server. Follow the [stable verification commands](stable-verification.md#verify-a-native-download) to check the archive checksum, provenance, source revision and build identity. Extract into a **new version-specific directory**. Keep the old path available. Record the new absolute executable path and archive digest.
 3. Stop the MCP server in your client. Change just the executable path in the saved stdio entry to the new one and relaunch. Keep the same arguments, environment and credential references. Run the connection checks below with expected version `1.0.0`.
 4. **Roll back** by stopping the server, restoring the saved client entry with its original v0.9.0 path and environment, and relaunching. Repeat the executable comparison and connection checks. Require the original artifact, `0.9.0`, the original discovery and the same scoped read.
 
@@ -40,7 +40,7 @@ Use the same deployment directory, Compose project, override files and private e
    docker pull "$previous" && test "$(docker image inspect --format '{{.Id}}' "$previous")" = "$image_id"
    ```
 
-2. From the verified v1.0.0 release evidence, copy the **GHCR index digest**. In the private env file set `KOMODO_MCP_IMAGE=ghcr.io/enthouan/komodo-mcp@sha256:<verified-index-hex>`, replacing the placeholder. Keep the same service definition, credentials, mounts and port. Validate the effective pin and recreate just the MCP service.
+2. Use the [container verification commands](stable-verification.md#verify-the-container-and-its-sbom) and record the verified v1.0.0 **GHCR index digest**. In the private env file set `KOMODO_MCP_IMAGE=ghcr.io/enthouan/komodo-mcp@sha256:<verified-index-hex>`, replacing the placeholder. Keep the same service definition, credentials, mounts and port. Validate the effective pin and recreate just the MCP service.
 
    ```sh
    docker compose --env-file .env config --images

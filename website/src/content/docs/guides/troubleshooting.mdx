@@ -23,7 +23,7 @@ Start with the server's stderr. The executable writes only safe diagnostics ther
 | --- | --- |
 | `cargo build` reports an unsupported or missing toolchain | Install the pinned Rust toolchain from `rust-toolchain.toml` (rustup selects it automatically) or run `asdf install`. |
 | `--locked` fails because `Cargo.lock` needs updating | Do not drop `--locked`. Check out a clean release tag or `main`; local edits to `Cargo.toml` require a reviewed lockfile change. |
-| Client reports `ENOENT`, “command not found”, or exits immediately | The configured path is wrong or relative. Use the executable path printed by the [native archive installation](/docs/self-hosted-beta/#native-stdio). For a source build, use the absolute path to `target/release/komodo-mcp` and rebuild it if `cargo clean` removed it. |
+| Client reports `ENOENT`, “command not found”, or exits immediately | The configured path is wrong or relative. Use the executable path printed by the [native archive installation](/getting-started/#native-stdio). For a source build, use the absolute path to `target/release/komodo-mcp` and rebuild it if `cargo clean` removed it. |
 
 ## Client connection and discovery
 

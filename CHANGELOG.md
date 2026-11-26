@@ -8,6 +8,8 @@ notes: short, categorized bullets with links to the relevant pull requests.
 ### Added
 
 - Check supported platform, Core, and client combinations and follow the rehearsed native or Compose upgrade and rollback from v0.9.0. ([#156](https://github.com/enthouan/komodo-mcp/pull/156), [#158](https://github.com/enthouan/komodo-mcp/pull/158))
+- Verify stable native packages and the multi-platform GHCR image against signed provenance and inspect their software bills of materials. ([#159](https://github.com/enthouan/komodo-mcp/pull/159))
+- Preview Docker Hub mirror changes from a verified GHCR digest and recover a partial copy through the protected writer. ([#157](https://github.com/enthouan/komodo-mcp/pull/157))
 
 ### Changed
 

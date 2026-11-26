@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { CLIENT_SETUPS, EXECUTABLE_PLACEHOLDER, VERIFY_PROMPT } from "../../src/data/clients.js";
 import { CAPABILITY_VARIABLES, CONFIGURATION_VARIABLES } from "../../src/data/configuration.js";
 import { checkPagesPublication, INSTALLATION_RELEASE_TAG } from "../../src/data/publication.js";
-import { INSTALL_METHODS, RELEASE_IMAGE } from "../../src/data/install.js";
+import { CHECKSUMS_URL, COMPOSE_URL, INSTALLATION_SOURCE_URL, LICENSE_URL, NATIVE_DOWNLOADS, NOTICES_URL, RELEASE_IMAGE } from "../../src/data/install.js";
+import { installationCandidate } from "../../src/data/installation-preview.js";
 import { OPERATOR_GUIDES } from "../../src/data/operator-guides.js";
 import {
   KOMODO_CLIENT_VERSION,
@@ -16,7 +17,7 @@ import {
 import { REPOSITORY_SECTIONS } from "../../src/data/repository-sections.js";
 import { extractSection, rewriteRepositoryLinks } from "../../src/loaders/repository-markdown.js";
 import { PUBLIC_ROUTES, TOOL_CATALOG } from "../support/site.js";
-import { anchorHrefs, findByAttribute, normalizedVisibleText, readRoute, repositoryRoot } from "./html.js";
+import { anchorHrefs, normalizedVisibleText, readRoute, repositoryRoot } from "./html.js";
 
 const repo = (path: string) => readFile(new URL(path, `file://${repositoryRoot}`), "utf8");
 
@@ -67,32 +68,26 @@ describe("configuration accuracy", () => {
 });
 
 describe("installation and client accuracy", () => {
-  it("offers both paths, equivalent matching source, and release metadata", () => {
-    expect(INSTALL_METHODS.map(({ key }) => key)).toEqual(["binary", "docker"]);
-    const [native, compose] = INSTALL_METHODS;
-    for (const method of INSTALL_METHODS) {
-      const links = new Map(method.links.map(({ label, href }) => [label, href]));
-      const release = `https://github.com/enthouan/komodo-mcp/releases/download/${INSTALLATION_RELEASE_TAG}`;
-      expect(links.get("Matching Corresponding Source")).toBe(`${release}/komodo-mcp-${INSTALLATION_RELEASE_TAG}-source.tar.gz`);
-      expect(links.get("License")).toBe(`${release}/LICENSE`);
-      expect(links.get("Third-party notices")).toBe(`${release}/THIRD-PARTY-NOTICES`);
-      expect(links.get("SHA-256 checksums")).toBe(`${release}/SHA256SUMS`);
-    }
-    const download = `https://github.com/enthouan/komodo-mcp/releases/download/${INSTALLATION_RELEASE_TAG}/`;
+  it("serves version-matched packages, checksums, Compose, legal files and source from the guide", async () => {
+    const guide = await readRoute("/getting-started/");
+    const links = anchorHrefs(guide.document);
+    const base = `https://github.com/enthouan/komodo-mcp/releases/download/${INSTALLATION_RELEASE_TAG}`;
     const targets = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "x86_64-apple-darwin", "aarch64-apple-darwin"];
+    expect(NATIVE_DOWNLOADS).toHaveLength(targets.length);
     for (const target of targets) {
-      expect(native.links.map(({ href }) => href)).toContain(`${download}komodo-mcp-${INSTALLATION_RELEASE_TAG}-${target}.tar.gz`);
+      expect(links).toContain(`${base}/komodo-mcp-${INSTALLATION_RELEASE_TAG}-${target}.tar.gz`);
     }
-    expect(compose.links.some(({ href }) => href.endsWith(`/${INSTALLATION_RELEASE_TAG}/compose.yaml`))).toBe(true);
-    expect(RELEASE_IMAGE).toBe(`ghcr.io/enthouan/komodo-mcp:${INSTALLATION_RELEASE_TAG}`);
-  });
-
-  it("links the Compose installer and canonical guide to the public GitHub package", async () => {
-    const packageUrl = "https://github.com/users/enthouan/packages/container/package/komodo-mcp";
-    for (const route of ["/", "/getting-started/", "/docs/self-hosted-beta/"]) {
-      const { document } = await readRoute(route);
-      expect(anchorHrefs(document), route).toContain(packageUrl);
+    for (const href of [CHECKSUMS_URL, COMPOSE_URL, INSTALLATION_SOURCE_URL, LICENSE_URL, NOTICES_URL]) {
+      expect(links).toContain(href);
     }
+    expect(COMPOSE_URL).toContain(`/${INSTALLATION_RELEASE_TAG}/compose.yaml`);
+    expect(INSTALLATION_SOURCE_URL).toBe(`${base}/komodo-mcp-${INSTALLATION_RELEASE_TAG}-source.tar.gz`);
+    expect(normalizedVisibleText(guide.document)).toContain(`KOMODO_MCP_IMAGE=${RELEASE_IMAGE}`);
+    if (INSTALLATION_RELEASE_TAG === RELEASE_TAG) {
+      expect(RELEASE_IMAGE).toMatch(/@sha256:[0-9a-f]{64}$/);
+      expect(await repo("docs/container.md")).toContain(`KOMODO_MCP_IMAGE=${RELEASE_IMAGE}`);
+    }
+    expect(links).toContain("https://github.com/users/enthouan/packages/container/package/komodo-mcp");
   });
 
   it("allows installation previews and requires verified publication on the production branch", () => {
@@ -104,10 +99,20 @@ describe("installation and client accuracy", () => {
     expect(() => checkPagesPublication({ CF_PAGES: "1" })).toThrow("deployment branch");
   });
 
+  it("exposes rehearsal packages only on the documentation review deployment", () => {
+    expect(installationCandidate({})).toBeUndefined();
+    expect(installationCandidate({ CF_PAGES: "1", CF_PAGES_BRANCH: "main" })).toBeUndefined();
+    expect(installationCandidate({ CF_PAGES: "1", CF_PAGES_BRANCH: "antoine/unrelated" })).toBeUndefined();
+    const build = installationCandidate({ CF_PAGES: "1", CF_PAGES_BRANCH: "antoine/stable-operator-docs" });
+    expect(build?.revision).toMatch(/^[0-9a-f]{40}$/);
+    expect(build?.checksumsSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(build?.archiveSha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
   it("uses the pinned toolchain and the locked release build", async () => {
     expect((await repo("rust-toolchain.toml")).includes(`channel = "${RUST_TOOLCHAIN}"`)).toBe(true);
     expect(await repo(".tool-versions")).toContain(`rust ${RUST_TOOLCHAIN}`);
-    expect(normalizedVisibleText((await readRoute("/getting-started/")).document)).toContain("cargo build --locked --release --bin komodo-mcp");
+    expect(normalizedVisibleText((await readRoute("/getting-started/stdio/")).document)).toContain("cargo build --locked --release --bin komodo-mcp");
     expect(await repo(".github/workflows/ci.yml")).toContain("cargo build --locked --release --bin komodo-mcp");
   });
 
@@ -210,14 +215,13 @@ describe("canonical documentation sources", () => {
     });
   });
 
-  it("finds every embedded README section and rewrites its links", async () => {
-    const readme = await repo("README.md");
+  it("finds every embedded repository section and rewrites its links", async () => {
     for (const section of REPOSITORY_SECTIONS) {
-      const extracted = extractSection(readme, section.heading, "README.md", {
+      const extracted = extractSection(await repo(section.file), section.heading, section.file, {
         stopAtSubheading: "stopAtSubheading" in section && section.stopAtSubheading,
       });
       expect(extracted.length).toBeGreaterThan(50);
-      const rewritten = rewriteRepositoryLinks(extracted, "README.md", repositoryRoot);
+      const rewritten = rewriteRepositoryLinks(extracted, section.file, repositoryRoot);
       expect(rewritten).not.toMatch(/\]\((?!https?:|\/|#)/);
     }
   });
@@ -263,26 +267,23 @@ describe("visitor-facing output", () => {
   it("introduces komodo-mcp as independent and makes stacks the first read", async () => {
     const text = normalizedVisibleText((await readRoute("/")).document);
     expect(text).toContain("not an official Komodo product");
-    expect(text).toContain("independent, self-hosted Rust Model Context Protocol (MCP) server for Komodo");
-    expect(text).toMatch(/Start by listing your stacks[\s\S]*Diagnose a failed stack/);
+    expect(text).toContain("Komodo Core instance you can access");
+    expect(text).toContain("Start by listing your stacks");
     expect(text).toContain("stack_diagnose");
   });
 
-  it("links directly from the landing and installation pages to both guides", async () => {
-    for (const route of ["/", "/getting-started/"]) {
-      const { document } = await readRoute(route);
-      const [methods] = findByAttribute(document, "div", "data-install-methods");
-      expect(methods, route).toBeDefined();
-      const hrefs = anchorHrefs(methods!);
-      for (const method of INSTALL_METHODS) {
-        expect(hrefs, route).toContain(method.guide);
-        for (const { href } of method.links) expect(hrefs, route).toContain(href);
-      }
+  it("takes GitHub readers and homepage visitors to the same complete guide", async () => {
+    expect(await repo("README.md")).toContain("https://komodo-mcp.com/getting-started/");
+    const home = anchorHrefs((await readRoute("/")).document);
+    expect(home).toContain("/getting-started/");
+    for (const anchor of ["native-stdio", "docker-compose"]) {
+      expect(home).toContain(`/getting-started/#${anchor}`);
     }
-    const guide = await readRoute("/docs/self-hosted-beta/");
-    const guideLinks = anchorHrefs(guide.document);
-    for (const method of INSTALL_METHODS) {
-      for (const { href } of method.links) expect(guideLinks).toContain(href);
-    }
+    const page = normalizedVisibleText((await readRoute("/getting-started/")).document);
+    expect(page).toContain("tools/list");
+    expect(page).toContain("list_stacks");
+    expect(page).toContain("Authorization: Bearer");
+    expect(page).toContain("up -d --wait komodo-mcp");
+    expect(page).toContain("SHA256SUMS");
   });
 });

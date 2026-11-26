@@ -15,9 +15,9 @@ komodo-mcp executable, and nothing in this directory ships with it. The `"privat
 | --- | --- |
 | `astro.config.mjs` | Static output, canonical origin, Starlight shell, sidebar, metadata |
 | `src/content/docs/` | Website-authored pages (MDX) |
-| `src/loaders/` | Content loaders that render the repository's `docs/*.md` and README sections |
+| `src/loaders/` | Content loaders that render repository guides and selected reference sections |
 | `src/data/` | Typed presentation data: publication and repository metadata, project facts, configuration, clients, install paths, guide map |
-| `src/components/` | Footer, GitHub link, client and install tabs, code-block enhancements, repository sections |
+| `src/components/` | Footer, GitHub link, client tabs, code-block enhancements, repository sections |
 | `src/styles/custom.css` | Theme tokens (Starlight accent variables plus `--komodo-mcp-*`) |
 | `src/pages/` | `llms.txt`, `robots.txt`, and generated client icon CSS |
 | `public/` | Favicon/mark, request-flow diagram, social card, Cloudflare `_headers` |
@@ -27,15 +27,14 @@ komodo-mcp executable, and nothing in this directory ships with it. The `"privat
 
 ## Content sources
 
-The repository README and `docs/*.md` are the canonical documentation. The site renders them at
-build time instead of keeping copies:
+The getting-started guide lives in `src/content/docs/getting-started/index.mdx`. The README and repository guides supply the reference material rendered alongside it:
 
 - Every file in `docs/` becomes `/docs/<name>/`. `src/data/operator-guides.ts` holds only its
   sidebar label, group, and description; a contract fails if a guide is added, removed, or renamed
   without updating it.
-- Selected README sections listed in `src/data/repository-sections.ts` are rendered verbatim on
+- Selected repository reference and README sections listed in `src/data/repository-sections.ts` are rendered verbatim on
   website pages. The build fails if a listed heading disappears.
-- Relative links are rewritten: published guides become site routes, README anchors embedded on the
+- Relative links are rewritten: published guides become site routes, source anchors embedded on the
   site become page anchors, and any other repository path becomes a GitHub URL on `main`. A link to a
   missing repository path fails the build.
 - Package and dependency versions, the toolchain, and the license come from `Cargo.toml` and `rust-toolchain.toml`.
@@ -179,12 +178,11 @@ PLAYWRIGHT_BASE_URL=https://komodo-mcp.com pnpm --dir website exec \
   playwright test --config playwright.config.ts tests/browser/privacy.spec.ts
 ```
 
-### Launch prerequisites
+### Stable installation links
 
-Issue #44 tracks the public launch. Preparing the project and previews can happen early, but the
-production launch also needs the repository to be public (so GitHub, release, source, and license links
-work without authentication), the operator guides and privacy disclosures from #43, and the
-published install paths from #40–#42. Issue #45 then verifies the production site and published beta.
+Keep the production install tag on the verified public release. The documentation review branch uses the packaged revision and distribution runs selected in `src/data/installation-preview.ts` for the native and Compose walkthroughs. Its candidate commands appear only on that Pages preview. The production branch still runs the publication check before building.
+
+After #51 verifies the release, advance both tags in `src/data/publication.ts`, add the verified GHCR index digest to `src/data/install.ts`, and update the pin in `docs/container.md` at the repository root. Verify the live downloads, Corresponding Source, signed evidence and GHCR image. Add Docker Hub installation links after the independent #153 mirror check. Record the final guide and public acceptance results on #52.
 
 ### Deployment troubleshooting
 
