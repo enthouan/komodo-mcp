@@ -30,7 +30,7 @@ def tar_bytes(files, modes=None):
     return output.getvalue()
 
 
-def build_fixture(root, *, ca=TEST_CA, missing=None, modes=None):
+def build_fixture(root, *, ca=TEST_CA, missing=None, modes=None, attached=False, wrong_subject=False):
     blobs = {}
 
     def descriptor(value, media):
@@ -99,6 +99,19 @@ def build_fixture(root, *, ca=TEST_CA, missing=None, modes=None):
                 "executable_sha256": platforms[platform]["executable_sha256"],
             }
         )
+    if attached:
+        for child in list(children):
+            subject = child["digest"] if not wrong_subject else "sha256:" + "f" * 64
+            attestation = descriptor({"schemaVersion": 2, "mediaType": oci.MANIFEST,
+                "artifactType": oci.ATTESTATION,
+                "subject": {key: child[key] for key in ("mediaType", "size", "digest")},
+                "config": descriptor(b"{}", oci.EMPTY_CONFIG),
+                "layers": [descriptor({"predicateType": "https://slsa.dev/provenance/v1",
+                                       "subject": [{"digest": {"sha256": subject[7:]}}]},
+                                      "application/vnd.in-toto+json")]}, oci.MANIFEST)
+            children.append(dict(attestation, platform={"os": "unknown", "architecture": "unknown"},
+                annotations={"vnd.docker.reference.type": "attestation-manifest",
+                             "vnd.docker.reference.digest": child["digest"]}))
     index = descriptor(
         {
             "schemaVersion": 2,
@@ -167,6 +180,25 @@ class CandidateChecks(unittest.TestCase):
         self.distribution["files"][1]["executable_sha256"] = "0" * 64
         with self.assertRaisesRegex(ValueError, "executable bytes"):
             self.load()
+
+    def test_attached_buildkit_statements_must_match_each_platform(self):
+        build_fixture(self.root, attached=True)
+        self.load()
+        build_fixture(self.root, attached=True, wrong_subject=True)
+        with self.assertRaisesRegex(ValueError, "provenance differs"):
+            self.load()
+
+    def test_attestation_config_and_subject_are_distinct_from_runtime_descriptors(self):
+        platform = {"digest": "sha256:" + "a" * 64, "size": 150, "mediaType": oci.MANIFEST}
+        config = {"digest": oci.describe(b"{}"), "size": 2, "mediaType": oci.EMPTY_CONFIG}
+        manifest = {"schemaVersion": 2, "mediaType": oci.MANIFEST, "config": config,
+                    "subject": platform, "artifactType": oci.ATTESTATION}
+        oci.check_attestation_manifest(manifest, platform)
+        for change in ({"subject": platform | {"digest": "sha256:" + "b" * 64}}, {"artifactType": "other"},
+                       {"config": config | {"mediaType": oci.CONFIG}},
+                       {"config": config | {"digest": oci.describe(b"[]")}}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                oci.check_attestation_manifest(manifest | change, platform)
 
     def test_scratch_payload_is_accessible_to_the_numeric_runtime_user(self):
         for name, mode, error in [
@@ -300,6 +332,7 @@ class CandidateChecks(unittest.TestCase):
                 self.assertEqual(network.call_count, 2)
 
     def test_independent_wire_readback_after_digest_staging(self):
+        self.receipt, self.distribution = build_fixture(self.root, attached=True)
         blobs, manifests, writes = {}, {}, []
         missing = b'{"errors":[{"code":"MANIFEST_UNKNOWN"}]}'
         next_upload = 0
@@ -358,9 +391,9 @@ class CandidateChecks(unittest.TestCase):
             blobs.clear()
             with self.assertRaisesRegex(ValueError, "blob unavailable"):
                 oci.read_published(receipt=self.receipt, anonymous=True)
-            self.assertEqual(
-                writes, [p["manifest_digest"] for p in self.receipt["platforms"].values()] + ["v" + VERSION]
-            )
+            index = json.loads(manifests["v" + VERSION])
+            self.assertEqual(len(index["manifests"]), 4)
+            self.assertEqual(writes, [d["digest"] for d in index["manifests"]] + ["v" + VERSION])
 
 
 class NativeInputChecks(unittest.TestCase):

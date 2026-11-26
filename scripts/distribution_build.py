@@ -146,21 +146,31 @@ def build(source, output, target, *, revision=None, source_archive=None):
             env["MACOSX_DEPLOYMENT_TARGET"] = "15.0"
         flags = ["--frozen","--release","--features","distribution","--target",target]
         runtime = {}
+        build_command = ["cargo", "build", *flags, "--bin", "komodo-mcp", "--message-format=json-render-diagnostics"]
         if target.endswith("-musl"):
             target_libdir = subprocess.check_output(["rustc","--print","target-libdir","--target",target],text=True).strip()
             link_map = tmp/"komodo-mcp.map"
-            subprocess.run(["cargo","rustc",*flags,"--bin","komodo-mcp","--","-C","link-self-contained=yes",
-                            "-C",f"link-arg=-Wl,-Map={link_map}"],cwd=source,env=env,check=True)
+            build_command[1] = "rustc"
+            build_command.extend(["--", "-C", "link-self-contained=yes", "-C", f"link-arg=-Wl,-Map={link_map}"])
+        events = subprocess.check_output(build_command, cwd=source, env=env, text=True)
+        compiled = set()
+        for line in events.splitlines():
+            message = json.loads(line)
+            if message.get("reason") == "compiler-artifact":
+                package = Path(message["manifest_path"]).resolve().parent
+                if package != source:
+                    require(package.parent == source / "vendor", "unexpected non-vendored build input")
+                    compiled.add(package.name)
+        require(compiled, "missing binary build input inventory")
+        if target.endswith("-musl"):
             runtime = musl_inputs(link_map,target_libdir)
-            subprocess.run(["cargo","build",*flags,"--example","release_version"],cwd=source,env=env,check=True)
-        else:
-            subprocess.run(["cargo","build",*flags,"--bin","komodo-mcp","--example","release_version"],
-                           cwd=source,env=env,check=True)
+        subprocess.run(["cargo","build",*flags,"--example","release_version"],cwd=source,env=env,check=True)
         require(not any((cargo_home/name).exists() for name in ("registry/index","registry/src","registry/cache","git/db")),
                 "offline rebuild populated a dependency cache")
         release = build_dir/target/"release"
         bundle = tmp / stem(version,target)
         bundle.mkdir()
+        (bundle/"BUILD-INPUTS.json").write_text(json.dumps(sorted(compiled))+"\n")
         binary = bundle / "komodo-mcp"
         shutil.copyfile(release/"komodo-mcp", binary)
         binary.chmod(0o755)
