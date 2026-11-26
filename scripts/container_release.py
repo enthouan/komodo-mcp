@@ -19,6 +19,8 @@ IMAGE = "ghcr.io/" + REPOSITORY
 INDEX = "application/vnd.oci.image.index.v1+json"
 MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 CONFIG = "application/vnd.oci.image.config.v1+json"
+EMPTY_CONFIG = "application/vnd.oci.empty.v1+json"
+ATTESTATION = "application/vnd.docker.attestation.manifest.v1+json"
 LAYER = "application/vnd.oci.image.layer.v1.tar"
 TARGETS = {"linux/amd64": "x86_64-unknown-linux-musl", "linux/arm64": "aarch64-unknown-linux-musl"}
 CA_SHA = "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285"
@@ -225,6 +227,17 @@ def index_children(index, *, require_attestations=False):
     return result, attestations
 
 
+def check_attestation_manifest(manifest, platform):
+    """BuildKit OCI artifacts bind an empty config and a subject descriptor to a runtime manifest."""
+    subject = {k: platform[k] for k in ("digest", "size", "mediaType")}
+    check(manifest.get("schemaVersion") == 2 and manifest.get("mediaType") == MANIFEST
+          and manifest.get("artifactType") == ATTESTATION and manifest.get("subject") == subject,
+          "attached BuildKit artifact type or subject differs from its platform manifest")
+    config = manifest["config"]
+    check(config["mediaType"] == EMPTY_CONFIG and config["size"] == 2 and config["digest"] == describe(b"{}"),
+          "attached BuildKit artifact must use the OCI empty JSON config")
+
+
 def verify_config(config, version, revision, platform):
     expected = {
         "org.opencontainers.image.version": version,
@@ -289,9 +302,13 @@ def inspect_archive(path, *, version, revision, expected_files=None, expected_le
         )
         outputs = {}
         platforms, attestations = index_children(index, require_attestations=not version.startswith("0."))
-        for subject, desc in attestations.items():
-            attestation = json.loads(blob(desc, MANIFEST, 2**20))
-            blob(attestation["config"], CONFIG, 2**20)
+        for platform in platforms.values():
+            subject = platform["digest"]
+            if subject not in attestations:
+                continue
+            attestation = json.loads(blob(attestations[subject], MANIFEST, 2**20))
+            check_attestation_manifest(attestation, platform)
+            blob(attestation["config"], EMPTY_CONFIG, 2**20)
             layers = attestation["layers"]
             check(len(layers) == 1, "expected one BuildKit provenance layer")
             statement = json.loads(blob(layers[0], "application/vnd.in-toto+json", 2**20))
@@ -512,7 +529,7 @@ def assemble(args):
                 "--annotation",
                 "index:org.opencontainers.image.description=" + listing(version),
                 "--output",
-                f"type=oci,name={ref},dest={archive}",
+                f"type=oci,oci-artifact=true,name={ref},dest={archive}",
                 str(context),
             ],
             check=True,

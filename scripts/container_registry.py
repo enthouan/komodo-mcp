@@ -14,6 +14,7 @@ from container_release import (
     MAX_LAYER,
     REPOSITORY,
     check,
+    check_attestation_manifest,
     content,
     describe,
     digest,
@@ -126,12 +127,15 @@ def state(receipt, auth, *, allow_absent):
     for platform, desc in platforms.items():
         check(desc["digest"] == receipt["platforms"][platform]["manifest_digest"], "GHCR platform manifest differs")
     configs = {d["digest"]: receipt["platforms"][p]["config_digest"] for p, d in platforms.items()}
+    attestation_subjects = {attestations[d["digest"]]["digest"]: d for d in platforms.values()
+                            if d["digest"] in attestations}
     for desc in [*platforms.values(), *attestations.values()]:
         child = read_manifest(desc["digest"], auth, MANIFEST, desc["digest"])
-        check(child.get("mediaType") == MANIFEST and child["config"]["mediaType"] == CONFIG,
-              "unexpected GHCR manifest or config")
-        if desc["digest"] in configs:
-            check(child["config"]["digest"] == configs[desc["digest"]], "GHCR platform config differs")
+        if desc["digest"] in attestation_subjects:
+            check_attestation_manifest(child, attestation_subjects[desc["digest"]])
+        else:
+            check(child.get("mediaType") == MANIFEST and child["config"]["mediaType"] == CONFIG
+                  and child["config"]["digest"] == configs[desc["digest"]], "GHCR platform config differs")
         check(
             isinstance(child["layers"], list) and 0 < len(child["layers"]) <= 32, "invalid GHCR layer count"
         )
