@@ -70,6 +70,13 @@ export const OPERATOR_GUIDE_GROUPS = [
     ],
   },
   {
+    label: "Support and upgrades",
+    guides: [
+      { slug: "stable-support", label: "Stable support policy", description: "Check your platform, Core version, MCP client and transport against the tested stable contract." },
+      { slug: "upgrade-v1", label: "Upgrade and rollback", description: "Move a published v0.9.0 installation to v1.0.0, check its identity and access, and restore the previous package." },
+    ],
+  },
+  {
     label: "Release evidence",
     guides: [
       { slug: "v0-9-0-compatibility", label: "v0.9.0 client and service compatibility", description: "Find the package, client, transport and Core/Periphery versions used for each workflow." },
