@@ -13,7 +13,7 @@ including its prereleases, publication also requires the complete native and
 Corresponding Source distribution and the matching two-platform GHCR image.
 The authoritative publisher is
 `python3 scripts/release.py publish`; there is no automatic release workflow.
-CI cannot publish releases or registry tags. On trusted main builds its isolated signing jobs can obtain a short-lived OIDC identity for Sigstore. Do not introduce a second publisher. Run
+Candidate CI cannot publish GitHub Releases or GHCR tags. On trusted main builds its isolated signing jobs can obtain a short-lived OIDC identity for Sigstore. Do not introduce a second publisher. Run
 one authorized publication sequence at a time.
 
 Honor the user's existing authorization for the exact release:

@@ -21,7 +21,8 @@ can be recovered on its own. The first production copy is for v1.0.0.
 
 Run the publisher's receipt-based verification first. Record its release tag, full commit,
 verified GHCR index digest and two platform digests on the release issue. Set `version` and
-`revision` from that record. Keep the original publication receipt for every recovery.
+`revision` from that record. Keep the original publication receipt for every recovery. The maintainer’s GitHub CLI session needs
+Actions write access to dispatch the workflow.
 
 ```sh
 python3 scripts/release.py mirror --version "$version" --commit "$revision" \

@@ -240,13 +240,13 @@ class LayoutReader(registry.Reader):
 
 @unittest.skipUnless(shutil.which("regctl"), "pinned regctl exercised by Docker Hub mirror fixtures job")
 class RecursiveCopy(unittest.TestCase):
-    def test_copy_two_platforms_and_attached_referrers_then_detect_corrupted_blob(self):
+    def test_copy_embedded_and_external_attestations_then_detect_corrupt_blob(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             args = argparse.Namespace(tag="v1.0.0", revision=fixture.REVISION, digest=DIGEST, tag_object=None)
             m = mirror.Mirror(args, root)
             with patch.object(fixture, "VERSION", m.version):
-                receipt, _ = fixture.build_fixture(root)
+                receipt, _ = fixture.build_fixture(root, attached=True)
             m.identifier = receipt["index_digest"]
             source, hub = (LayoutReader(root / role, m.env["anonymous"]) for role in ("source", "hub"))
             with tarfile.open(root / fixture.oci.ARCHIVE) as archive:
@@ -261,7 +261,7 @@ class RecursiveCopy(unittest.TestCase):
             after = registry.graph(hub, m.identifier, m.version, m.revision)
             mirror.equivalent(before, after)
             self.assertEqual(set(after["platforms"]), {"linux/amd64", "linux/arm64"})
-            self.assertEqual(sum(map(len, after["referrers"].values())), 2)
+            self.assertEqual(sum(map(len, after["referrers"].values())), 4)
             config = receipt["platforms"]["linux/amd64"]["config_digest"]
             (hub.path / "blobs" / "sha256" / config[7:]).write_bytes(b"corrupt")
             with self.assertRaisesRegex(ValueError, "blob identity"):
