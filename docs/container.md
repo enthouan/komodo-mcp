@@ -80,3 +80,6 @@ Use one authorized publisher per version. GHCR's standard manifest PUT has no
 atomic create-if-absent guarantee across independent publishers. A private
 package or a registry access failure requires a successful anonymous
 verification before the release is complete.
+
+Maintainers can prepare and recover the secondary registry using the
+[Docker Hub mirror runbook](releases/docker-hub-mirror.md).
