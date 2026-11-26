@@ -121,6 +121,16 @@ jobs:
       - name: Verify complete native candidate and its checksum manifest
         run: |
           python3 scripts/distribution_prepare.py assemble --source "$RUNNER_TEMP/source" --native "$RUNNER_TEMP/native" --output "$RUNNER_TEMP/bundle" --revision "$REVISION" --version "$VERSION" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
+      - name: Generate the build inventory and provenance subjects
+        run: |
+          python3 scripts/stable_evidence.py prepare --scope native --native "$RUNNER_TEMP/bundle" \
+            --output "$RUNNER_TEMP/evidence"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: evidence-input-native-${{ env.REVISION }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: komodo-mcp-distribution-${{ env.REVISION }}
@@ -129,3 +139,19 @@ jobs:
           compression-level: 0
           overwrite: true
           retention-days: 30
+
+  attest:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: assemble
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/sign-distribution
+        with:
+          scope: native

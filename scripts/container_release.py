@@ -191,29 +191,38 @@ def describe(data):
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
-def validate_platforms(index):
+def index_children(index, *, require_attestations=False):
     check(
         index.get("schemaVersion") == 2
         and index.get("mediaType") == INDEX
         and isinstance(index.get("manifests"), list)
-        and len(index["manifests"]) == 2,
+        and len(index["manifests"]) in (2, 4),
         "expected a two-platform OCI image index",
     )
-    result = {}
+    result, attestations = {}, {}
     for desc in index["manifests"]:
         p = desc["platform"]
         platform = p["os"] + "/" + p["architecture"]
         check(
-            platform in TARGETS
-            and platform not in result
-            and desc["mediaType"] == MANIFEST
+            desc["mediaType"] == MANIFEST
             and digest(desc["digest"])
             and type(desc["size"]) is int
             and desc["size"] > 0,
             "invalid or duplicate OCI platform descriptor",
         )
-        result[platform] = desc
-    return result
+        if platform == "unknown/unknown":
+            annotations = desc.get("annotations", {})
+            subject = annotations.get("vnd.docker.reference.digest")
+            check(annotations.get("vnd.docker.reference.type") == "attestation-manifest" and digest(subject)
+                  and subject not in attestations, "invalid attached attestation descriptor")
+            attestations[subject] = desc
+        else:
+            check(platform in TARGETS and platform not in result, "unexpected or duplicate OCI platform")
+            result[platform] = desc
+    check(set(result) == set(TARGETS), "missing OCI runtime platform")
+    if require_attestations or attestations:
+        check(set(attestations) == {d["digest"] for d in result.values()}, "missing platform attestation")
+    return result, attestations
 
 
 def verify_config(config, version, revision, platform):
@@ -279,7 +288,17 @@ def inspect_archive(path, *, version, revision, expected_files=None, expected_le
             "OCI index lacks matching source URL",
         )
         outputs = {}
-        for platform, desc in validate_platforms(index).items():
+        platforms, attestations = index_children(index, require_attestations=not version.startswith("0."))
+        for subject, desc in attestations.items():
+            attestation = json.loads(blob(desc, MANIFEST, 2**20))
+            blob(attestation["config"], CONFIG, 2**20)
+            layers = attestation["layers"]
+            check(len(layers) == 1, "expected one BuildKit provenance layer")
+            statement = json.loads(blob(layers[0], "application/vnd.in-toto+json", 2**20))
+            check(statement["predicateType"] in ("https://slsa.dev/provenance/v0.2", "https://slsa.dev/provenance/v1")
+                  and any(s["digest"].get("sha256") == subject[7:] for s in statement["subject"]),
+                  "attached BuildKit provenance differs from its platform manifest")
+        for platform, desc in platforms.items():
             manifest = json.loads(blob(desc, MANIFEST, 2**20))
             check(
                 manifest.get("schemaVersion") == 2 and manifest.get("mediaType") == MANIFEST,
@@ -483,7 +502,7 @@ def assemble(args):
                 "build",
                 "--platform",
                 ",".join(TARGETS),
-                "--provenance=false",
+                "--provenance=mode=min",
                 "--build-arg",
                 "VERSION=" + version,
                 "--build-arg",

@@ -18,7 +18,7 @@ from container_release import (
     describe,
     digest,
     tar_members,
-    validate_platforms,
+    index_children,
 )
 
 HOST = "https://ghcr.io"
@@ -122,16 +122,16 @@ def state(receipt, auth, *, allow_absent):
     if index is None:
         return None
     verified_blobs = set()
-    for platform, desc in validate_platforms(index).items():
-        expected = receipt["platforms"][platform]
-        check(desc["digest"] == expected["manifest_digest"], "GHCR platform manifest differs")
-        child = read_manifest(desc["digest"], auth, MANIFEST, expected["manifest_digest"])
-        check(
-            child.get("mediaType") == MANIFEST
-            and child["config"]["mediaType"] == CONFIG
-            and child["config"]["digest"] == expected["config_digest"],
-            "GHCR platform config differs",
-        )
+    platforms, attestations = index_children(index, require_attestations=not receipt["version"].startswith("0."))
+    for platform, desc in platforms.items():
+        check(desc["digest"] == receipt["platforms"][platform]["manifest_digest"], "GHCR platform manifest differs")
+    configs = {d["digest"]: receipt["platforms"][p]["config_digest"] for p, d in platforms.items()}
+    for desc in [*platforms.values(), *attestations.values()]:
+        child = read_manifest(desc["digest"], auth, MANIFEST, desc["digest"])
+        check(child.get("mediaType") == MANIFEST and child["config"]["mediaType"] == CONFIG,
+              "unexpected GHCR manifest or config")
+        if desc["digest"] in configs:
+            check(child["config"]["digest"] == configs[desc["digest"]], "GHCR platform config differs")
         check(
             isinstance(child["layers"], list) and 0 < len(child["layers"]) <= 32, "invalid GHCR layer count"
         )
@@ -223,11 +223,10 @@ def stage(candidate, receipt, auth):
 
         raw_index = blob(receipt["index_digest"], LIMIT)
         uploaded = set()
-        for platform, desc in validate_platforms(json.loads(raw_index)).items():
-            check(
-                desc["digest"] == receipt["platforms"][platform]["manifest_digest"],
-                "candidate platform changed before staging",
-            )
+        platforms, attestations = index_children(json.loads(raw_index), require_attestations=not receipt["version"].startswith("0."))
+        for platform, desc in platforms.items():
+            check(desc["digest"] == receipt["platforms"][platform]["manifest_digest"], "candidate platform changed before staging")
+        for desc in [*platforms.values(), *attestations.values()]:
             raw = blob(desc["digest"], LIMIT)
             manifest = json.loads(raw)
             for entry in [manifest["config"], *manifest["layers"]]:
