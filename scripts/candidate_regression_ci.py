@@ -64,6 +64,8 @@ def acquire(data, work, case):
     downloaded = Packages.download(GitHub(), work, revision, version,
                                    data["native_run"]["run_id"], data["oci_run"]["run_id"])
     expected = {key:data[key] for key in PACKAGE_FIELDS}
+    if "stable_evidence" in data:
+        expected["stable_evidence"] = data["stable_evidence"]
     require(downloaded.identity == expected, "downloaded candidate identity differs from the shared record")
     if case == "http":
         return

@@ -19,6 +19,8 @@ IMAGE = "ghcr.io/" + REPOSITORY
 INDEX = "application/vnd.oci.image.index.v1+json"
 MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 CONFIG = "application/vnd.oci.image.config.v1+json"
+EMPTY_CONFIG = "application/vnd.oci.empty.v1+json"
+ATTESTATION = "application/vnd.docker.attestation.manifest.v1+json"
 LAYER = "application/vnd.oci.image.layer.v1.tar"
 TARGETS = {"linux/amd64": "x86_64-unknown-linux-musl", "linux/arm64": "aarch64-unknown-linux-musl"}
 CA_SHA = "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285"
@@ -191,29 +193,49 @@ def describe(data):
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
-def validate_platforms(index):
+def index_children(index, *, require_attestations=False):
     check(
         index.get("schemaVersion") == 2
         and index.get("mediaType") == INDEX
         and isinstance(index.get("manifests"), list)
-        and len(index["manifests"]) == 2,
+        and len(index["manifests"]) in (2, 4),
         "expected a two-platform OCI image index",
     )
-    result = {}
+    result, attestations = {}, {}
     for desc in index["manifests"]:
         p = desc["platform"]
         platform = p["os"] + "/" + p["architecture"]
         check(
-            platform in TARGETS
-            and platform not in result
-            and desc["mediaType"] == MANIFEST
+            desc["mediaType"] == MANIFEST
             and digest(desc["digest"])
             and type(desc["size"]) is int
             and desc["size"] > 0,
             "invalid or duplicate OCI platform descriptor",
         )
-        result[platform] = desc
-    return result
+        if platform == "unknown/unknown":
+            annotations = desc.get("annotations", {})
+            subject = annotations.get("vnd.docker.reference.digest")
+            check(annotations.get("vnd.docker.reference.type") == "attestation-manifest" and digest(subject)
+                  and subject not in attestations, "invalid attached attestation descriptor")
+            attestations[subject] = desc
+        else:
+            check(platform in TARGETS and platform not in result, "unexpected or duplicate OCI platform")
+            result[platform] = desc
+    check(set(result) == set(TARGETS), "missing OCI runtime platform")
+    if require_attestations or attestations:
+        check(set(attestations) == {d["digest"] for d in result.values()}, "missing platform attestation")
+    return result, attestations
+
+
+def check_attestation_manifest(manifest, platform):
+    """BuildKit OCI artifacts bind an empty config and a subject descriptor to a runtime manifest."""
+    subject = {k: platform[k] for k in ("digest", "size", "mediaType")}
+    check(manifest.get("schemaVersion") == 2 and manifest.get("mediaType") == MANIFEST
+          and manifest.get("artifactType") == ATTESTATION and manifest.get("subject") == subject,
+          "attached BuildKit artifact type or subject differs from its platform manifest")
+    config = manifest["config"]
+    check(config["mediaType"] == EMPTY_CONFIG and config["size"] == 2 and config["digest"] == describe(b"{}"),
+          "attached BuildKit artifact must use the OCI empty JSON config")
 
 
 def verify_config(config, version, revision, platform):
@@ -279,7 +301,21 @@ def inspect_archive(path, *, version, revision, expected_files=None, expected_le
             "OCI index lacks matching source URL",
         )
         outputs = {}
-        for platform, desc in validate_platforms(index).items():
+        platforms, attestations = index_children(index, require_attestations=not version.startswith("0."))
+        for platform in platforms.values():
+            subject = platform["digest"]
+            if subject not in attestations:
+                continue
+            attestation = json.loads(blob(attestations[subject], MANIFEST, 2**20))
+            check_attestation_manifest(attestation, platform)
+            blob(attestation["config"], EMPTY_CONFIG, 2**20)
+            layers = attestation["layers"]
+            check(len(layers) == 1, "expected one BuildKit provenance layer")
+            statement = json.loads(blob(layers[0], "application/vnd.in-toto+json", 2**20))
+            check(statement["predicateType"] in ("https://slsa.dev/provenance/v0.2", "https://slsa.dev/provenance/v1")
+                  and any(s["digest"].get("sha256") == subject[7:] for s in statement["subject"]),
+                  "attached BuildKit provenance differs from its platform manifest")
+        for platform, desc in platforms.items():
             manifest = json.loads(blob(desc, MANIFEST, 2**20))
             check(
                 manifest.get("schemaVersion") == 2 and manifest.get("mediaType") == MANIFEST,
@@ -483,7 +519,7 @@ def assemble(args):
                 "build",
                 "--platform",
                 ",".join(TARGETS),
-                "--provenance=false",
+                "--provenance=mode=min",
                 "--build-arg",
                 "VERSION=" + version,
                 "--build-arg",
@@ -493,7 +529,7 @@ def assemble(args):
                 "--annotation",
                 "index:org.opencontainers.image.description=" + listing(version),
                 "--output",
-                f"type=oci,name={ref},dest={archive}",
+                f"type=oci,oci-artifact=true,name={ref},dest={archive}",
                 str(context),
             ],
             check=True,

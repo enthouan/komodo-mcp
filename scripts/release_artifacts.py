@@ -12,7 +12,8 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-from distribution import REPOSITORY as REPO, TARGETS, load_manifest, stem
+from distribution import REPOSITORY as REPO, TARGETS, load_manifest, sha256, stem
+import stable_evidence
 
 
 class ReleaseError(RuntimeError):
@@ -123,6 +124,20 @@ class Packages:
     native_dir: Path | None = None
     oci_dir: Path | None = None
 
+    @property
+    def files(self):
+        evidence = self.identity.get("stable_evidence", {})
+        files = list(self.identity["distribution"]["files"])
+        for scope in evidence.values():
+            files.extend(scope["files"])
+        return files
+
+    def upload_path(self, name):
+        for scope in self.identity.get("stable_evidence", {}):
+            if name in stable_evidence.names(scope):
+                return self.native_dir.parent / (scope + "-evidence") / name
+        return self.native_dir / name
+
     @classmethod
     def download(cls, github, root, revision, version, native_run, oci_run):
         registry = container_api()
@@ -137,6 +152,20 @@ class Packages:
                                  run_id=native_run["run_id"], run_attempt=native_run["run_attempt"])
         receipt = registry.load_candidate(oci, revision=revision, version=version, distribution=manifest)
         identity = {"native_run": native_run, "oci_run": oci_run, "distribution": manifest, "container": receipt}
+        if stable_evidence.required(version):
+            identity["stable_evidence"] = {}
+            for scope, record, run in (("native", manifest, native_run), ("oci", receipt, oci_run)):
+                directory = root / (scope + "-evidence")
+                names = stable_evidence.names(scope)
+                action = acquire(github, directory, revision, run["run_id"], stable_evidence.WORKFLOWS[scope],
+                                 f"komodo-mcp-evidence-{scope}-{revision}-{run['run_attempt']}", set(names))
+                stable_evidence.verify(scope, directory, version, revision, stable_evidence.subjects(scope, record),
+                                       run=run)
+                files = []
+                for name in names:
+                    path = directory / name
+                    files.append({"name": name, "bytes": path.stat().st_size, "sha256": sha256(path)})
+                identity["stable_evidence"][scope] = {"run": action, "files": files}
         cls.check_identity(identity, revision, version)
         return cls(identity, registry, native, oci)
 
@@ -182,8 +211,44 @@ class Packages:
                 and matches_download_url(receipt["source_url"], download_url(version, stem(version, "source")+".tar.gz")),
                 "candidate image or public source URL conflicts with the release version")
 
+        if stable_evidence.required(version):
+            evidence = identity.get("stable_evidence", {})
+            require(set(evidence) == set(stable_evidence.WORKFLOWS), "missing stable verification evidence")
+            for scope, record in evidence.items():
+                expected_run = identity[scope + "_run"]
+                run = record["run"]
+                require(all(run[k] == expected_run[k] for k in ("run_id", "run_attempt", "workflow"))
+                        and type(run["artifact_id"]) is int and run["artifact_id"] > 0
+                        and re.fullmatch("sha256:[0-9a-f]{64}", run["artifact_digest"]),
+                        "stable evidence workflow identity differs")
+                files = record["files"]
+                require(len(files) == 2 and {f["name"] for f in files} == set(stable_evidence.names(scope))
+                        and all(type(f["bytes"]) is int and 0 < f["bytes"] <= 16 * 1024**2
+                                and re.fullmatch("[0-9a-f]{64}", f["sha256"]) for f in files),
+                        "missing or invalid stable SBOM/provenance files")
+        else:
+            require("stable_evidence" not in identity, "unexpected stable evidence in historical receipt")
+
+    def verify_stable_downloads(self, assets, version, revision):
+        """Verify anonymously acquired release bytes and reauthenticate both public provenance bundles."""
+        with tempfile.TemporaryDirectory() as work:
+            directory = Path(work)
+            evidence_names = {n for scope in stable_evidence.WORKFLOWS for n in stable_evidence.names(scope)}
+            for name, asset in assets.items():
+                if name in evidence_names:
+                    with (directory / name).open("xb") as stream:
+                        read_public_asset(asset, stream)
+                else:
+                    read_public_asset(asset)
+            verified = {}
+            for scope, record in (("native", self.identity["distribution"]), ("oci", self.identity["container"])):
+                verified[scope] = stable_evidence.verify(scope, directory, version, revision,
+                                                         stable_evidence.subjects(scope, record),
+                                                         run=self.identity[scope + "_run"])
+            return verified
+
     def inventory(self, github, release, version, previous):
-        files = {f["name"]: f for f in self.identity["distribution"]["files"]}
+        files = {f["name"]: f for f in self.files}
         observed = {}
         ids = set()
         for asset in github.assets(release["id"]):
@@ -211,7 +276,7 @@ class Packages:
         return observed
 
 
-def verify_public_source(asset):
+def read_public_asset(asset, output=None):
     # Anonymous GET of the canonical GitHub download, including its normal CDN redirect.
     request = urllib.request.Request(asset["url"], headers={"User-Agent": "komodo-mcp-release"})
     try:
@@ -219,9 +284,15 @@ def verify_public_source(asset):
             hasher, size = hashlib.sha256(), 0
             while block := response.read(1024 * 1024):
                 size += len(block)
-                require(size <= asset["bytes"], "public source exceeds the expected size")
+                require(size <= asset["bytes"], "public asset exceeds the expected size")
                 hasher.update(block)
+                if output is not None:
+                    output.write(block)
     except (OSError, urllib.error.URLError) as error:
-        raise CommandError("cannot read the public Corresponding Source anonymously") from error
+        raise CommandError(f"cannot read {asset['url']} anonymously") from error
     require(size == asset["bytes"] and hasher.hexdigest() == asset["sha256"],
-            "anonymous public Corresponding Source differs from the release manifest")
+            f"anonymous public asset differs from receipt: {asset['url']}")
+
+
+def verify_public_source(asset):
+    read_public_asset(asset)

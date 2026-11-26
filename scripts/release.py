@@ -18,6 +18,8 @@ import tempfile
 import time
 import tomllib
 
+import stable_evidence
+
 from release_artifacts import (REPO, CommandError, Packages, ReleaseError, api_file,
                                hash_stream, require, verify_public_source)
 SCHEMA = "komodo-release-validation/v1"
@@ -369,7 +371,8 @@ def reconcile_packages(git, github, expected, commit, packages, previous=None,
     require(packaged_version(version), "historical releases cannot acquire package assets")
     require(not publish or (packages.native_dir and packages.oci_dir), "publication requires exact candidate files")
     state = dict(previous or {})
-    identity = {"schema": "komodo-release-publication/v2", "repository": REPO,
+    schema = "komodo-release-publication/v3" if stable_evidence.required(version) else "komodo-release-publication/v2"
+    identity = {"schema": schema, "repository": REPO,
                 "tag": tag, "commit": commit, "notes_sha256": expected["notes_sha256"],
                 "package_identity": packages.identity}
     require(not state or all(state.get(k) == value for k, value in identity.items()),
@@ -378,7 +381,7 @@ def reconcile_packages(git, github, expected, commit, packages, previous=None,
     visibility = github.preflight()
     require(visibility == "public", "packaged release requires a publicly accessible source repository")
     git.accepted_main(commit)
-    expected_names = {f["name"] for f in packages.identity["distribution"]["files"]}
+    expected_names = {f["name"] for f in packages.files}
     source_name = next(f["name"] for f in packages.identity["distribution"]["files"] if f["kind"] == "source")
     receipt = packages.identity["container"]
 
@@ -451,7 +454,7 @@ def reconcile_packages(git, github, expected, commit, packages, previous=None,
                 continue
             require(item["draft"] or item.get("immutable") is False,
                     "cannot append missing assets to an immutable or unconfirmed published Release")
-            write_once(lambda: github.upload(tag, packages.native_dir / name),
+            write_once(lambda: github.upload(tag, packages.upload_path(name)),
                        lambda: observe()[2] and state["assets"].get(name))
         _, _, item, releases = observe()
         require(expected_names == state["assets"].keys(), "incomplete release asset set")
@@ -470,7 +473,10 @@ def reconcile_packages(git, github, expected, commit, packages, previous=None,
         _, _, item, _ = observe()
         require(item and not item["draft"] and expected_names == state["assets"].keys(),
                 "public Release or its complete asset set is missing")
-        verify_public_source(state["assets"][source_name])
+        if stable_evidence.required(version):
+            state["verified_provenance"] = packages.verify_stable_downloads(state["assets"], version, commit)
+        else:
+            verify_public_source(state["assets"][source_name])
 
     published_source()
     if publish and image is None:

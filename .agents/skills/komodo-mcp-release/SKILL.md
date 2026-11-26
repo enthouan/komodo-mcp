@@ -13,7 +13,7 @@ including its prereleases, publication also requires the complete native and
 Corresponding Source distribution and the matching two-platform GHCR image.
 The authoritative publisher is
 `python3 scripts/release.py publish`; there is no automatic release workflow.
-CI is read-only and cannot publish. Do not introduce a second publisher. Run
+CI cannot publish releases or registry tags. On trusted main builds its isolated signing jobs can obtain a short-lived OIDC identity for Sigstore. Do not introduce a second publisher. Run
 one authorized publication sequence at a time.
 
 Honor the user's existing authorization for the exact release:
@@ -169,8 +169,9 @@ evidence and validation limits in the supporting docs and tracker. Earlier
 releases retain their original asset-free contract. The v0.8.0 series adds
 four exercised native targets, checksums, license, notices, Corresponding
 Source and the versioned GHCR image. The adapter from #41 must be present
-before a packaged release can be published. #51 tracks the later stable
-artifact verification and SBOM/provenance work.
+before a packaged release can be published. Starting with 1.x, include a link to
+[stable verification](../../../docs/stable-verification.md) and the four named
+SBOM/provenance downloads in the reviewed release notes.
 
 ## Release PR and completed review
 
@@ -309,6 +310,21 @@ length and SHA-256, and promotes the tested OCI index by digest. GHCR
 index and platform identities must be anonymously readable before evidence
 is complete. A private GHCR package requires the authorized maintainer to
 enable public visibility, after which read-only verification can finish.
+
+For 1.x and newer, require the native and OCI attestation jobs to have succeeded
+on the captured main SHA. Each scope produces a CycloneDX SBOM and a Sigstore
+bundle signed by its own workflow. The publisher uses `gh attestation verify`
+with the expected main workflow, commit and GitHub-hosted runner, compares every
+signed subject and run identity, and uploads all four files as release assets.
+The v3 receipt records the evidence artifacts, all twelve asset identities, and
+the authenticated provenance subjects. Independent `verify` reads every asset
+anonymously and reauthenticates the public bundles without Actions retention.
+Compare the two public platform manifest digests and the index with
+`published_image` in this receipt, then pass the verified index to #153. Preserve
+BuildKit's per-platform attestation manifests when copying the index. Follow
+[the stable verification runbook](../../../docs/stable-verification.md) for
+operator commands, evidence names, and coverage. Pre-1.x receipts retain the
+original verification contract.
 
 For a historic asset-free release, use the original commands:
 
