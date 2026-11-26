@@ -64,8 +64,13 @@ class Reader:
                         continue
                     if failure.code == 404 and failure.geturl() == url:
                         body = json.loads(failure.read(8192)).get("errors", [])
-                        absent = {"MANIFEST_UNKNOWN", "NAME_UNKNOWN"} if kind == "manifests" else {"BLOB_UNKNOWN"}
-                        if body and all(e.get("code") in absent for e in body):
+                        codes = {entry.get("code") for entry in body}
+                        hub_tag = self.image == DESTINATION and kind == "manifests" and not digest(reference)
+                        if codes == {"NAME_UNKNOWN"} and hub_tag:
+                            # A public, provisioned Hub repo can lack its Distribution namespace until the first push.
+                            repository_public()
+                            raise Missing(f"{self.image} has no published tags") from None
+                        if codes == ({"MANIFEST_UNKNOWN"} if kind == "manifests" else {"BLOB_UNKNOWN"}):
                             raise Missing(f"{self.image} is missing {kind}/{reference}") from None
                     raise RuntimeError(f"{self.image} {kind}/{reference}: HTTP {failure.code}") from None
 

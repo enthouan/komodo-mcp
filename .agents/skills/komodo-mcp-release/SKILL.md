@@ -47,7 +47,7 @@ python3 scripts/release.py mirror --version X.Y.Z --commit CAPTURED_MERGED_SHA \
   --receipt target/release-publication.json
 ```
 
-With separate authorization for the mirror, add `--authorized`. Only the manually dispatched
+When the release authorization includes the Docker Hub copy, add `--authorized`. Only the manually dispatched
 writer bound to the protected `dockerhub` environment receives the Docker Hub credential.
 It mirrors existing verified bytes. The primary tag, GitHub Release and GHCR image are
 published exclusively by `release.py publish`. Record the mirror result independently.

@@ -8,6 +8,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import Mock, patch
 
 import dockerhub_mirror as mirror
@@ -162,6 +163,28 @@ class MirrorPolicy(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", writer)
         self.assertIn("needs: preview", writer)
         self.assertIn("github.ref == 'refs/heads/main'", writer)
+
+
+class EmptyRegistry(unittest.TestCase):
+    def test_name_unknown_requires_an_independently_public_hub_repository(self):
+        def missing_name(image, ref):
+            reader = registry.Reader(image, {})
+            reader.token = "fixture"
+            url = f"https://{reader.host}/v2/{registry.REPOSITORY}/manifests/{ref}"
+            reader.opener = Mock()
+            response = io.BytesIO(b'{"errors":[{"code":"NAME_UNKNOWN"}]}')
+            reader.opener.open.side_effect = HTTPError(url, 404, "Not Found", {}, response)
+            return registry.tag_digest(reader, ref)
+
+        with patch.object(registry, "repository_public") as inspect:
+            self.assertIsNone(missing_name(registry.DESTINATION, "1.0.0"))
+            inspect.assert_called_once()
+            inspect.side_effect = RuntimeError("repository no longer public")
+            with self.assertRaisesRegex(RuntimeError, "no longer public"):
+                missing_name(registry.DESTINATION, "1.0.0")
+            for image, reference in [(registry.DESTINATION, DIGEST), (registry.SOURCE, "v1.0.0")]:
+                with self.assertRaisesRegex(RuntimeError, "HTTP 404"):
+                    missing_name(image, reference)
 
 
 class PublisherDispatch(unittest.TestCase):
