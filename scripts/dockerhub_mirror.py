@@ -136,7 +136,9 @@ class Mirror:
     def login(self):
         token = os.environ.get("DOCKERHUB_TOKEN")
         check(token, "configure the dedicated dockerhub environment token")
-        self.writer("registry", "login", "docker.io", "--user", "enthouan", "--pass-stdin", data=token.encode())
+        account = os.environ.get("DOCKERHUB_USERNAME") or "enthouan"
+        check(re.fullmatch("[a-z0-9][a-z0-9_-]{0,63}", account), "invalid dockerhub environment username")
+        self.writer("registry", "login", "docker.io", "--user", account, "--pass-stdin", data=token.encode())
 
     def copy(self):
         self.writer("image", "copy", "--force-recursive", "--referrers", SOURCE + "@" + self.identifier,

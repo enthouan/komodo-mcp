@@ -154,6 +154,15 @@ class MirrorPolicy(unittest.TestCase):
             self.run_mirror(True)
         self.m.login.assert_not_called()
 
+    def test_scoped_collaborator_login_preserves_the_fixed_destination(self):
+        m = mirror.Mirror(self.args, self.root)
+        with patch.dict("os.environ", {"DOCKERHUB_TOKEN": "fixture", "DOCKERHUB_USERNAME": "mirrorbot"}), \
+                patch.object(m, "writer") as write:
+            m.login()
+            write.assert_called_once_with("registry", "login", "docker.io", "--user", "mirrorbot",
+                                          "--pass-stdin", data=b"fixture")
+            self.assertEqual(m.hub.image, "docker.io/enthouan/komodo-mcp")
+
     def test_workflow_serializes_all_writer_tags(self):
         workflow = (mirror.ROOT / ".github/workflows/docker-hub-mirror.yml").read_text()
         preview, writer = workflow.split("\n  mirror:\n")

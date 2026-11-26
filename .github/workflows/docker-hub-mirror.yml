@@ -89,6 +89,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
           PREVIEW_TAG_OBJECT: ${{ needs.preview.outputs.tag_object }}
         run: |
           python3 scripts/dockerhub_mirror.py write --tag "$MIRROR_TAG" --revision "$MIRROR_REVISION" \
