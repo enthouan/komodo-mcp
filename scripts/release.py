@@ -553,7 +553,7 @@ def write_json(path, data):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("metadata", "validate", "publish", "verify"))
+    parser.add_argument("mode", choices=("metadata", "validate", "publish", "verify", "mirror"))
     parser.add_argument("--version", required=True, help="application SemVer without v")
     parser.add_argument("--commit", help="full validated release commit SHA; never a moving ref")
     parser.add_argument("--evidence", type=Path, help="validation JSON, required for validate/publish")
@@ -587,6 +587,10 @@ def main(argv=None):
         git.exact_checkout(args.commit)
         require_evidence(git, expected, args.commit, args.evidence)
         workflows = github.main_checks(args.commit)
+    if args.mode == "mirror":
+        require(version_info(args.version)[0] >= (1, 0, 0), "the Hub mirror begins at v1.0.0")
+        require(args.receipt and not (args.output or args.native_run or args.oci_run or args.evidence),
+                "use the existing --receipt for the mirror")
     if packaged_version(args.version):
         if args.mode == "publish":
             require(args.output and not args.receipt, "packaged publication requires its original --output path")
@@ -618,6 +622,18 @@ def main(argv=None):
         require(not (args.native_run or args.oci_run or args.receipt),
                 "historical release verification uses the original tag and asset-free Release")
         result = reconcile(git, github, expected, args.commit, publish=args.mode == "publish")
+    if args.mode == "mirror":
+        image = result["published_image"]
+        index = image["index_digest"]
+        require(result["verified_provenance"]["oci"]["subjects"].get("ghcr.io/" + REPO) == index.removeprefix("sha256:"),
+                "verified OCI provenance differs from the anonymous GHCR index")
+        # Only the protected environment receives the Hub credential. A separate dispatch recovers the mirror.
+        dispatch = github.call("workflow", "run", "docker-hub-mirror.yml", "--repo", REPO, "--ref", "main",
+                               "-f", "tag=" + result["tag"], "-f", "revision=" + result["commit"],
+                               "-f", "digest=" + index, "-f", "tag_object=" + result["tag_object"],
+                               "-f", "publish=" + str(args.authorized).lower())
+        print(dispatch.strip() or "Docker Hub mirror dispatched; inspect its preview and deployment in GitHub Actions")
+        return
     if workflows:
         result["main_workflows"] = workflows
     if args.output:

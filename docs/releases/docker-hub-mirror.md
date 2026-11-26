@@ -20,12 +20,12 @@ can be recovered on its own. The first production copy is for v1.0.0.
 ## Preview or recover
 
 Run the publisher's receipt-based verification first. Record its release tag, full commit,
-verified GHCR index digest and two platform digests on the release issue. Set
-`tag`, `revision` and `digest` from this record and use them for every recovery of that mirror.
+verified GHCR index digest and two platform digests on the release issue. Set `version` and
+`revision` from that record. Keep the original publication receipt for every recovery.
 
 ```sh
-gh workflow run docker-hub-mirror.yml --repo enthouan/komodo-mcp --ref main \
-  -f tag="$tag" -f revision="$revision" -f digest="$digest" -f publish=false
+python3 scripts/release.py mirror --version "$version" --commit "$revision" \
+  --receipt target/release-publication.json
 ```
 
 Inspect the preview log. It identifies the annotated tag object on main, release, current
@@ -37,7 +37,7 @@ discovers additional OCI referrers. GitHub access for release metadata and proof
 uses the workflow's read-only token.
 
 After release authorization, request the same preview followed by the protected writer
-with `-f publish=true`. Review the preview in that run before approving its deployment.
+by adding `--authorized` to the same command. Review the preview in that run before approving its deployment.
 The writer rechecks the original annotated tag, release eligibility and source evidence,
 then recursively copies by digest with `--referrers`. It verifies the immutable tag and
 the same signed proof against Hub's anonymously read graph. It advances `latest` only

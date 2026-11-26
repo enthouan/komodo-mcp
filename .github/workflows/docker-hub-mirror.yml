@@ -20,6 +20,10 @@ on:
         description: Independently verified GHCR index digest
         type: string
         required: true
+      tag_object:
+        description: Original annotated release tag object from the primary verification
+        type: string
+        required: true
       publish:
         description: Request the protected writer after the read-only preview
         type: boolean
@@ -59,10 +63,11 @@ jobs:
       - uses: ./.github/actions/setup-regctl
       - id: read
         env:
+          TAG_OBJECT: ${{ inputs.tag_object }}
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/dockerhub_mirror.py preview \
-            --tag "$MIRROR_TAG" --revision "$MIRROR_REVISION" --digest "$MIRROR_DIGEST"
+            --tag "$MIRROR_TAG" --revision "$MIRROR_REVISION" --digest "$MIRROR_DIGEST" --tag-object "$TAG_OBJECT"
 
   mirror:
     needs: preview

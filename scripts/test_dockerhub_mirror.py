@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 
 import dockerhub_mirror as mirror
 import mirror_registry as registry
+import release
 import test_container_release as fixture
 
 REVISION = "e" * 40
@@ -78,11 +79,19 @@ class MirrorPolicy(unittest.TestCase):
         for version in ("1.0.0", "1.2.0-rc.1"):
             self.m.version = self.m.hub_tag = version
             self.m.release_state.return_value = (False, [])
-            self.m.hub.tags = {version: RAW, "latest": b"newer stable"}
+            self.m.hub.tags = {"1.0.0": b"baseline", version: RAW, "latest": b"newer stable"}
+            self.m.source.tags = {"v1.0.0": self.m.hub.tags["1.0.0"]}
             self.run_mirror(True)
             self.assertEqual(self.m.hub.tags["latest"], b"newer stable")
         self.m.put_latest.assert_not_called()
         self.m.copy.assert_not_called()
+
+    def test_first_production_copy_requires_the_verified_stable_baseline(self):
+        self.m.version = self.m.hub_tag = "1.1.0-rc.1"
+        with self.assertRaisesRegex(ValueError, "first complete"):
+            self.run_mirror(True)
+        self.m.copy.assert_not_called()
+        self.m.login.assert_not_called()
 
     def test_latest_requires_verified_previous_pin(self):
         self.m.version = self.m.hub_tag = "1.1.0"
@@ -153,6 +162,33 @@ class MirrorPolicy(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", writer)
         self.assertIn("needs: preview", writer)
         self.assertIn("github.ref == 'refs/heads/main'", writer)
+
+
+class PublisherDispatch(unittest.TestCase):
+    def test_receipt_verification_precedes_preview_or_protected_writer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "receipt.json"
+            receipt.write_text('{"package_identity":{}}')
+            verified = {"tag": "v1.0.0", "commit": REVISION, "tag_object": "a" * 40,
+                        "published_image": {"index_digest": DIGEST},
+                        "verified_provenance": {"oci": {"subjects": {registry.SOURCE: DIGEST[7:]}}}}
+            args = ["mirror", "--version", "1.0.0", "--commit", REVISION, "--receipt", str(receipt)]
+            with patch.object(release, "Git"), patch.object(release, "GitHub") as github, \
+                    patch.object(release.Packages, "from_receipt"), contextlib.redirect_stdout(io.StringIO()), \
+                    patch.object(release, "reconcile_packages", return_value=verified) as verify:
+                for authorization, publish in [([], "false"), (["--authorized"], "true")]:
+                    release.main(args + authorization)
+                    verify.assert_called_once()
+                    verify.reset_mock()
+                    github.return_value.call.assert_called_once_with(
+                        "workflow", "run", "docker-hub-mirror.yml", "--repo", registry.REPOSITORY, "--ref", "main",
+                        "-f", "tag=v1.0.0", "-f", "revision=" + REVISION, "-f", "digest=" + DIGEST,
+                        "-f", "tag_object=" + "a" * 40, "-f", "publish=" + publish)
+                    github.return_value.call.reset_mock()
+                verified["published_image"]["index_digest"] = OTHER
+                with self.assertRaisesRegex(release.ReleaseError, "verified OCI provenance"):
+                    release.main(args + ["--authorized"])
+                github.return_value.call.assert_not_called()
 
 
 class LayoutReader(registry.Reader):

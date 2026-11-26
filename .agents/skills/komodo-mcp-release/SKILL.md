@@ -36,6 +36,23 @@ When user feedback establishes a reusable release convention, update the
 relevant instruction in this skill during the same task. Keep authorization
 for a particular merge or publication in that session's evidence.
 
+### Docker Hub mirror
+
+After the primary `publish` and independent receipt-based `verify` succeed, use the same
+release helper to dispatch a read-only mirror preview. The `mirror` command rechecks the
+original publication receipt, including the verified GHCR digest, before dispatch.
+
+```sh
+python3 scripts/release.py mirror --version X.Y.Z --commit CAPTURED_MERGED_SHA \
+  --receipt target/release-publication.json
+```
+
+With separate authorization for the mirror, add `--authorized`. Only the manually dispatched
+writer bound to the protected `dockerhub` environment receives the Docker Hub credential.
+It mirrors existing verified bytes. The primary tag, GitHub Release and GHCR image are
+published exclusively by `release.py publish`. Record the mirror result independently.
+See [the mirror runbook](../../../docs/releases/docker-hub-mirror.md) for recovery and public acceptance.
+
 ## Tools and initial inspection
 
 Use Git, Python 3.11+ (standard library only), the repository's pinned Rust

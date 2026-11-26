@@ -87,6 +87,12 @@ class Mirror:
                         "--index-digest", identity["index_digest"], "--amd64", identity["platforms"]["linux/amd64"],
                         "--arm64", identity["platforms"]["linux/arm64"]], check=True)
 
+    def check_first_version(self):
+        if self.version != "1.0.0":
+            baseline = tag_digest(self.hub, "1.0.0")
+            check(baseline and baseline == tag_digest(self.source, "v1.0.0"),
+                  "first complete the verified v1.0.0 mirror before later versions")
+
     def source_graph(self):
         check(tag_digest(self.source, "v" + self.hub_tag) == self.identifier,
               "GHCR version differs from the verified release digest")
@@ -141,6 +147,7 @@ class Mirror:
 
 
 def reconcile(mirror, write):
+    mirror.check_first_version()
     source = mirror.source_graph()
     exact = mirror.exact()
     try:
