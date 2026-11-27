@@ -54,7 +54,7 @@ Use the same deployment directory, Compose project, override files and private e
 
 ## Check the connection after each restart
 
-1. Initialize a fresh session over the original transport. Check `result.serverInfo.name` is `komodo-mcp` and record `result.serverInfo.version`. During a pre-cut rehearsal, use the candidate's actual Cargo version together with its commit and artifact digest. A healthy HTTP container alone establishes only that the listener answers.
+1. Initialize a fresh session over the original transport. Check `result.serverInfo.name` is `komodo-mcp` and record `result.serverInfo.version`. When rehearsing with a workflow build, match the reported version to the Cargo version at the recorded commit and check the artifact digest. A healthy HTTP container alone establishes only that the listener answers.
 2. Run `tools/list`, following any discovery cursor. Compare the names with the saved selection and local grants. For the read-only triage configuration expect exactly `get_stack`, `list_stacks` and `stack_diagnose`. If a harmless read such as `list_deployments` was excluded before the upgrade, call it directly and confirm the same unknown-tool error.
 3. In `tools/call`, submit the following parameters. Choose a scoped test account with a known first visible Stack and record its ID from `result.structuredContent.items`. Expect one matching item before and after the change. A successful empty page can be legitimate for an empty account, but cannot confirm access to your expected Stack.
 

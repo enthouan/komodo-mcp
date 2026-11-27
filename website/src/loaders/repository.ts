@@ -39,7 +39,7 @@ async function loadGuide(context: LoaderContext, slug: string) {
 }
 
 /**
- * Adds every repository guide in `docs/` to Starlight's docs collection.
+ * Adds the registered repository guides in `docs/` to Starlight's docs collection.
  * Content is rendered from the versioned Markdown at build time; nothing is copied.
  */
 export function repositoryGuidesLoader(): Loader {

@@ -15,7 +15,7 @@ You need access to a running Komodo Core and a scoped account with Read on a Sta
 
 Choose [native stdio](#native-stdio) if your client can launch a process on this machine. Choose [Docker Compose](#docker-compose) for a persistent Streamable HTTP endpoint. Both routes use the same three read-only tools.
 
-{previewCandidate && <p><strong>v1.0.0 installation preview.</strong> The packaged candidate at <code>{previewCandidate.revision}</code> reports <code>{previewCandidate.version}</code>. The <a href="https://komodo-mcp.com/getting-started/">live guide</a> serves the verified public release.</p>}
+{previewCandidate && <p><strong>Documentation preview.</strong> These commands install the signed build from <code>{previewCandidate.revision}</code>, which reports version <code>{previewCandidate.version}</code>. The <a href="https://komodo-mcp.com/getting-started/">live guide</a> serves the verified public release.</p>}
 
 ## Native stdio
 
@@ -136,6 +136,6 @@ See the [tool catalog](/reference/tools/), [troubleshooting](/guides/troubleshoo
 
 ## Release files
 
-{previewCandidate ? <p>The <a href={`${REPOSITORY_URL}/actions/runs/${previewCandidate.nativeRun}`}>candidate native distribution</a> includes its matching Corresponding Source archive, <code>LICENSE</code> and <code>THIRD-PARTY-NOTICES</code>. The native and container distribution runs also carry their signed provenance and SBOMs.</p> : <p><a href={RELEASE_URL}>{RELEASE_TAG} release</a> · <a href={INSTALLATION_SOURCE_URL}>Matching Corresponding Source</a> · <a href={LICENSE_URL}>License</a> · <a href={NOTICES_URL}>Third-party notices</a>.</p>}
+{previewCandidate ? <p>The <a href={`${REPOSITORY_URL}/actions/runs/${previewCandidate.nativeRun}`}>native distribution for this build</a> includes its matching Corresponding Source archive, <code>LICENSE</code> and <code>THIRD-PARTY-NOTICES</code>. The native and container distribution runs also carry their signed provenance and SBOMs.</p> : <p><a href={RELEASE_URL}>{RELEASE_TAG} release</a> · <a href={INSTALLATION_SOURCE_URL}>Matching Corresponding Source</a> · <a href={LICENSE_URL}>License</a> · <a href={NOTICES_URL}>Third-party notices</a>.</p>}
 
 For a source build, follow the [native build instructions](/getting-started/stdio/#build-and-launch).

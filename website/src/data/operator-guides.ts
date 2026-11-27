@@ -1,7 +1,7 @@
 /**
  * Presentation metadata for repository guides rendered from `docs/*.md`.
  * Page content always comes from the versioned Markdown file; a contract test
- * requires every guide in `docs/` to appear here exactly once.
+ * requires every published guide in `docs/` to appear here exactly once.
  */
 export type OperatorGuide = {
   slug: string;
@@ -86,7 +86,6 @@ export const OPERATOR_GUIDE_GROUPS = [
   {
     label: "Project",
     guides: [
-      { slug: "self-hosted-beta", label: "Installation guide", description: "Follow the current native stdio or Docker Compose installation instructions." },
       { slug: "container", label: "Docker Compose installation", description: "Run the multi-platform image with runtime credentials, verify the authenticated listener, and find matching source and notices." },
       { slug: "distribution", label: "Native binaries and matching source", description: "Verify a native archive, check its platform requirements, and rebuild from the bundled source and dependencies." },
       { slug: "stable-verification", label: "Verify a stable release", description: "Check native archives and image digests against signed provenance and inspect their bills of materials." },

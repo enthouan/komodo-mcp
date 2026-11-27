@@ -13,7 +13,7 @@ On Linux, HTTPS connections to Core use the machine's trust configuration. Suppl
 
 ## Verify and install
 
-For a GitHub Release that lists binary assets, obtain the executable archive and `SHA256SUMS` from that release. For a candidate, take both files from the same Native distribution workflow artifact. Earlier source-only releases provide the tagged project source. Use a separate, empty directory for these downloads. Replace the example version and target with the release version and the exact target for your machine.
+For a GitHub Release that lists binary assets, obtain the executable archive and `SHA256SUMS` from that release. When testing a workflow build, take both files from the same Native distribution artifact. Earlier source-only releases provide the tagged project source. Use a separate, empty directory for these downloads. Replace the example version and target with the release version and the exact target for your machine.
 
 ```sh
 version=0.9.0
@@ -51,8 +51,8 @@ The build script checks the native OS and CPU, compiles with Cargo's frozen offl
 
 ## Candidate and release identities
 
-The read-only **Native distribution** workflow builds the exact pull-request head or main commit. Its full run uses ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel and macos-15. The container build consumes the verified Linux executables from the complete, same-commit native distribution. Each run first creates a single matching source archive. Its native jobs independently rebuild directly from that archive on their respective processors. Only successful extracted-binary checks feed the assembled candidate.
+The read-only **Native distribution** workflow builds the exact pull-request head or main commit. Its full run uses ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel and macos-15. The container build consumes the verified Linux executables from the complete, same-commit native distribution. Each run first creates a single matching source archive. Its native jobs independently rebuild directly from that archive on their respective processors. The workflow assembles the distribution after all four extracted executables pass their checks.
 
-The Actions artifact name is `komodo-mcp-distribution-<full-commit>`. Its internal `distribution-manifest.json` records repository, source commit, Cargo version, Actions run ID and attempt, filename, byte count, SHA-256 and native executable SHA-256. Darwin entries also record the minimum OS version actually embedded in the executable. Obtain the artifact from the expected workflow, commit and run. A pre-release candidate carries the Cargo version that was built and is distinguished by that commit and run. Candidates are available to authorized workflow readers during retention. Published binaries, notices, checksums and Corresponding Source are release assets retained with the applicable version. Manual publication and recovery use the repository's release helper.
+The Actions artifact name is `komodo-mcp-distribution-<full-commit>`. Its internal `distribution-manifest.json` records repository, source commit, Cargo version, Actions run ID and attempt, filename, byte count, SHA-256 and native executable SHA-256. Darwin entries also record the minimum OS version actually embedded in the executable. Workflow builds can report the same Cargo version. Check the artifact against the expected workflow, commit, run ID and attempt before installing it. Authorized workflow readers can download the artifact during its retention period. Published binaries, notices, checksums and Corresponding Source are release assets retained with the applicable version. Manual publication and recovery use the repository's release helper.
 
 For releases starting at v1.0.0, follow [Verify a stable release](stable-verification.md) to authenticate an archive, its SBOM and the exact source revision.

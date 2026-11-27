@@ -1,0 +1,48 @@
+---
+import { Icon, LinkCard } from "@astrojs/starlight/components";
+import type { ComponentProps } from "astro/types";
+
+interface Props {
+  title: string;
+  description: string;
+  href: string;
+  icon: ComponentProps<typeof Icon>["name"];
+}
+
+const { icon, ...link } = Astro.props;
+---
+
+<div class="guide-card">
+  <LinkCard {...link} />
+  <span class="guide-icon" aria-hidden="true"><Icon name={icon} size="1rem" /></span>
+</div>
+
+<style>
+  .guide-card {
+    display: grid;
+  }
+
+  .guide-card > :global(.sl-link-card),
+  .guide-icon {
+    grid-area: 1 / 1;
+  }
+
+  .guide-card :global(.title) {
+    display: block;
+    padding-inline-start: 2rem;
+  }
+
+  .guide-icon {
+    place-self: start;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin: 1rem;
+    border: 1px solid var(--sl-color-accent);
+    border-radius: 0.25rem;
+    background: var(--sl-color-accent-low);
+    color: var(--sl-color-accent-high);
+    pointer-events: none;
+  }
+</style>

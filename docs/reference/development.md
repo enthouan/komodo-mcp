@@ -10,8 +10,8 @@ and the [official `km` CLI](../v0-9-0-cli-coverage.md).
 The Rust dependency and synthetic HTTP fixtures target Komodo Core 2.3.2.
 The fixtures exercise scoped non-admin reads and Core's permission errors.
 Running Core instances report their version through `GetVersion`. On Linux
-x86-64, the packaged v0.9 milestone candidate completed container diagnostics,
-configuration preview/apply and interrupted Deployment recovery against Core
+x86-64, the build from `e8432d39` reported `0.8.0` and completed container
+diagnostics, configuration preview/apply and interrupted Deployment recovery against Core
 and Periphery 2.3.2 over native stdio and authenticated Streamable HTTP.
 [Disposable regression evidence](../releases/v0.9.0/disposable-regression.md)
 

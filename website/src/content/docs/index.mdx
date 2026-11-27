@@ -4,7 +4,7 @@ description: Connect your MCP client to Komodo Core, list the Stacks you can acc
 template: splash
 hero:
   title: 'Operate Komodo<br>from your MCP client.'
-  tagline: Komodo MCP connects your MCP client to a Komodo Core instance you can access. Ask which Stack failed its last rollout and inspect the update and logs with your existing Core permissions.
+  tagline: A self-hosted Model Context Protocol (MCP) server for Komodo Core users. List Stacks, check server health, and diagnose failed rollouts from a server you run.
   image:
     html: '<img src="/favicon.svg" width="400" height="400" alt="komodo-mcp stacked-status mark">'
   actions:
@@ -24,7 +24,8 @@ tableOfContents: false
 lastUpdated: false
 ---
 
-import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+import { CardGrid } from '@astrojs/starlight/components';
+import GuideLinkCard from '../../components/GuideLinkCard.astro';
 
 ## Start by listing your stacks
 
@@ -38,8 +39,8 @@ Use list_stacks and do not change anything.
 To investigate a failed Stack, use its returned ID with `stack_diagnose`. The [diagnosis walkthrough](/docs/operator-quickstart/) shows how to follow the cited evidence.
 
 <CardGrid>
-  <LinkCard title="Tool catalog" description="Find a tool’s inputs, outputs and required permissions." href="/reference/tools/" />
-  <LinkCard title="Stable support policy" description="Check which platforms, Core versions, clients and transports have been exercised." href="/docs/stable-support/" />
-  <LinkCard title="Upgrade and rollback" description="Change a package pin, check access and restore a working installation." href="/docs/upgrade-v1/" />
-  <LinkCard title="Troubleshooting" description="Trace a connection, credential or tool discovery error." href="/guides/troubleshooting/" />
+  <GuideLinkCard icon="puzzle" title="Tool catalog" description="Find a tool’s inputs, outputs and required permissions." href="/reference/tools/" />
+  <GuideLinkCard icon="approve-check-circle" title="Stable support policy" description="Check which platforms, Core versions, clients and transports have been exercised." href="/docs/stable-support/" />
+  <GuideLinkCard icon="code-branch" title="Upgrade and rollback" description="Change a package pin, check access and restore a working installation." href="/docs/upgrade-v1/" />
+  <GuideLinkCard icon="magnifier" title="Troubleshooting" description="Trace a connection, credential or tool discovery error." href="/guides/troubleshooting/" />
 </CardGrid>

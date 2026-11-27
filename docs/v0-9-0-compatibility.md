@@ -1,6 +1,6 @@
 # Client, package and service compatibility for v0.9.0
 
-The v0.9 milestone candidate reports Cargo and MCP version `0.8.0`. Its source commit is `e8432d39d6c12c5278d26f17959f041884ab5a4c`. Live runs exercised Core 2.3.2 and Periphery 2.3.2. The distribution workflows also checked the four native archives and two OCI platforms against synthetic Core responses. [Candidate and artifact identities](releases/v0.9.0/candidate-record.json)
+The v0.9.0 compatibility study used packages built from `e8432d39d6c12c5278d26f17959f041884ab5a4c`. Their Cargo and MCP version was `0.8.0`. Live runs exercised Core 2.3.2 and Periphery 2.3.2. The distribution workflows also checked the four native archives and two OCI platforms against synthetic Core responses. [Candidate and artifact identities](releases/v0.9.0/candidate-record.json)
 
 ## Live calls on the selected candidate
 

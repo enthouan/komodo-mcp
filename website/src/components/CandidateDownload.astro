@@ -22,7 +22,6 @@ const acquire = `(
 )`;
 ---
 <p>
-  This review preview uses the packaged candidate from <a href={`${REPOSITORY_URL}/actions/runs/${run}`}>distribution run {run}</a>.
-  During the run’s artifact retention period, use a GitHub CLI login with Actions read access to download and verify it in an empty directory.
+  Use a GitHub CLI login with Actions read access to download the packages from <a href={`${REPOSITORY_URL}/actions/runs/${run}`}>distribution run {run}</a>. Run the commands in an empty directory while the run’s artifacts are available.
 </p>
-<Code lang="sh" title={isNative ? "Download the candidate native packages" : "Load the candidate image and Compose file"} code={acquire} />
+<Code lang="sh" title={isNative ? "Download the native packages" : "Load the image and download its Compose file"} code={acquire} />

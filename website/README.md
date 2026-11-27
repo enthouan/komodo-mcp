@@ -20,7 +20,7 @@ komodo-mcp executable, and nothing in this directory ships with it. The `"privat
 | `src/components/` | Footer, GitHub link, client tabs, code-block enhancements, repository sections |
 | `src/styles/custom.css` | Theme tokens (Starlight accent variables plus `--komodo-mcp-*`) |
 | `src/pages/` | `llms.txt`, `robots.txt`, and generated client icon CSS |
-| `public/` | Favicon/mark, request-flow diagram, social card, Cloudflare `_headers` |
+| `public/` | Favicon/mark, request-flow diagram, social card, Cloudflare `_headers` and `_redirects` |
 | `og-image.html`, `scripts/render-og-image.ts` | Social-card template and renderer |
 | `tests/contracts/` | Vitest contracts against the built `dist/` artifact |
 | `tests/browser/` | Playwright browser checks (Chromium matrix and WebKit smoke) |
@@ -29,9 +29,10 @@ komodo-mcp executable, and nothing in this directory ships with it. The `"privat
 
 The getting-started guide lives in `src/content/docs/getting-started/index.mdx`. The README and repository guides supply the reference material rendered alongside it:
 
-- Every file in `docs/` becomes `/docs/<name>/`. `src/data/operator-guides.ts` holds only its
-  sidebar label, group, and description; a contract fails if a guide is added, removed, or renamed
-  without updating it.
+- Register each published `docs/*.md` guide in `src/data/operator-guides.ts` with its sidebar
+  label, group and description to generate `/docs/<name>/`. The GitHub compatibility stub
+  `docs/self-hosted-beta.md` stays in the repository. Cloudflare redirects its former website
+  route to `/getting-started/`, where `#native-stdio` and `#docker-compose` remain valid.
 - Selected repository reference and README sections listed in `src/data/repository-sections.ts` are rendered verbatim on
   website pages. The build fails if a listed heading disappears.
 - Relative links are rewritten: published guides become site routes, source anchors embedded on the

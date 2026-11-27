@@ -163,14 +163,15 @@ describe("installation and client accuracy", () => {
 });
 
 describe("canonical documentation sources", () => {
-  it("publishes every repository guide exactly once", async () => {
+  it("registers every repository guide exactly once except the GitHub installation stub", async () => {
     const files = (await readdir(new URL("docs/", `file://${repositoryRoot}`)))
       .filter((file) => file.endsWith(".md"))
       .map((file) => file.replace(/\.md$/, ""))
       .sort();
     const slugs = OPERATOR_GUIDES.map(({ slug }) => slug);
     expect(new Set(slugs).size).toBe(slugs.length);
-    expect([...slugs].sort()).toEqual(files);
+    expect(files).toContain("self-hosted-beta");
+    expect([...slugs].sort()).toEqual(files.filter((slug) => slug !== "self-hosted-beta"));
   });
 
   it("renders each guide from its versioned Markdown", async () => {
@@ -267,7 +268,8 @@ describe("visitor-facing output", () => {
   it("introduces komodo-mcp as independent and makes stacks the first read", async () => {
     const text = normalizedVisibleText((await readRoute("/")).document);
     expect(text).toContain("not an official Komodo product");
-    expect(text).toContain("Komodo Core instance you can access");
+    expect(text).toContain("A self-hosted Model Context Protocol (MCP) server for Komodo Core users.");
+    expect(text).toContain("List Stacks, check server health, and diagnose failed rollouts from a server you run.");
     expect(text).toContain("Start by listing your stacks");
     expect(text).toContain("stack_diagnose");
   });
