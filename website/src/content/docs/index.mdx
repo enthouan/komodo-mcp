@@ -26,6 +26,7 @@ lastUpdated: false
 
 import { CardGrid } from '@astrojs/starlight/components';
 import GuideLinkCard from '../../components/GuideLinkCard.astro';
+import catalog from '../../../../docs/tool-catalog.json';
 
 ## Start by listing your stacks
 
@@ -39,8 +40,19 @@ Use list_stacks and do not change anything.
 To investigate a failed Stack, use its returned ID with `stack_diagnose`. The [diagnosis walkthrough](/docs/operator-quickstart/) shows how to follow the cited evidence.
 
 <CardGrid>
-  <GuideLinkCard icon="puzzle" title="Tool catalog" description="Find a tool’s inputs, outputs and required permissions." href="/reference/tools/" />
-  <GuideLinkCard icon="approve-check-circle" title="Stable support policy" description="Check which platforms, Core versions, clients and transports have been exercised." href="/docs/stable-support/" />
-  <GuideLinkCard icon="code-branch" title="Upgrade and rollback" description="Change a package pin, check access and restore a working installation." href="/docs/upgrade-v1/" />
-  <GuideLinkCard icon="magnifier" title="Troubleshooting" description="Trace a connection, credential or tool discovery error." href="/guides/troubleshooting/" />
+  <GuideLinkCard icon="puzzle" title="Tool catalog" href="/reference/tools/" action={`Browse all ${Object.keys(catalog.tools).length} tools`}>
+    Use `fleet_health` to find a workload that needs attention. For a failed Stack, `stack_diagnose` brings together its history, alerts and recent logs. Each catalog entry lists inputs, results, required grants and whether the tool makes changes.
+  </GuideLinkCard>
+
+  <GuideLinkCard icon="approve-check-circle" title="Stable support policy" href="/docs/stable-support/" action="Check your setup">
+    Live tests on Linux x86-64 cover native stdio and authenticated HTTP with Core and Periphery 2.3.2. Look up your platform and MCP client to see whether the evidence comes from a live connection, a test fixture or a configuration review.
+  </GuideLinkCard>
+
+  <GuideLinkCard icon="code-branch" title="Upgrade and rollback" href="/docs/upgrade-v1/" action="Follow the upgrade guide">
+    Keep your working native executable or record the current Compose image digest before you upgrade. After restarting, check that your client discovers the same tools and can read a familiar Stack. Repeat those checks if you restore the previous version.
+  </GuideLinkCard>
+
+  <GuideLinkCard icon="magnifier" title="Troubleshooting" href="/guides/troubleshooting/" action="Find your symptom">
+    A `401` from `/mcp` points to the bearer token your HTTP client sends. If `list_stacks` succeeds but returns an empty list, check the Core account’s Read permission on a Stack you expect to see.
+  </GuideLinkCard>
 </CardGrid>

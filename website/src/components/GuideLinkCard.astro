@@ -1,48 +1,59 @@
 ---
-import { Icon, LinkCard } from "@astrojs/starlight/components";
+import { Card, Icon } from "@astrojs/starlight/components";
 import type { ComponentProps } from "astro/types";
 
 interface Props {
   title: string;
-  description: string;
+  action: string;
   href: string;
   icon: ComponentProps<typeof Icon>["name"];
 }
 
-const { icon, ...link } = Astro.props;
+const { title, icon, href, action } = Astro.props;
 ---
 
-<div class="guide-card">
-  <LinkCard {...link} />
-  <span class="guide-icon" aria-hidden="true"><Icon name={icon} size="1rem" /></span>
-</div>
+<Card {title} {icon}>
+  <slot />
+  <a class="guide-link" {href}>{action}<Icon name="right-arrow" /></a>
+</Card>
 
 <style>
-  .guide-card {
-    display: grid;
+  :global(.card):has(.guide-link) {
+    position: relative;
   }
 
-  .guide-card > :global(.sl-link-card),
-  .guide-icon {
-    grid-area: 1 / 1;
+  :global(.card .body):has(> .guide-link) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: start;
   }
 
-  .guide-card :global(.title) {
-    display: block;
-    padding-inline-start: 2rem;
+  .guide-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375em;
+    margin-block-start: auto;
+    padding-block-start: 1rem;
   }
 
-  .guide-icon {
-    place-self: start;
-    display: grid;
-    place-items: center;
-    width: 1.5rem;
-    height: 1.5rem;
-    margin: 1rem;
-    border: 1px solid var(--sl-color-accent);
-    border-radius: 0.25rem;
-    background: var(--sl-color-accent-low);
-    color: var(--sl-color-accent-high);
-    pointer-events: none;
+  .guide-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  :global(.card):has(.guide-link:is(:hover, :focus-visible)) {
+    border-color: var(--sl-color-accent);
+    background: var(--sl-color-gray-7, var(--sl-color-gray-6));
+  }
+
+  .guide-link:focus-visible {
+    outline: none;
+  }
+
+  .guide-link:focus-visible::after {
+    outline: 3px solid var(--sl-color-accent);
+    outline-offset: 3px;
   }
 </style>
