@@ -13,7 +13,7 @@ For stdio, your MCP client launches komodo-mcp as a child process. For HTTP, run
 
 ## Is there a Docker image, binary download, or HTTP endpoint?
 
-Download a [native stdio binary](/docs/self-hosted-beta/#native-stdio) or run the [versioned Docker Compose service](/docs/self-hosted-beta/#docker-compose). Each connects to the Core instance and identity you configure. The Compose service listens on a loopback host port by default and takes a separate bearer token for incoming MCP requests.
+Download a [native stdio binary](/getting-started/#native-stdio) or run the [versioned Docker Compose service](/getting-started/#docker-compose). Each connects to the Core instance and identity you configure. The Compose service listens on a loopback host port by default and takes a separate bearer token for incoming MCP requests.
 
 ## Do I need Node.js?
 
@@ -37,7 +37,7 @@ The server sends its API key and secret to the configured Komodo Core. An HTTP c
 
 ## Which Komodo versions are supported?
 
-The v0.9 milestone candidate exercised Komodo Core 2.3.2 with Periphery 2.3.2 over native stdio and authenticated Streamable HTTP on Linux x86-64. Other Core and Periphery versions are untested. See the [client, platform and workflow matrix](/docs/v0-9-0-compatibility/).
+The [support policy](/docs/stable-support/) lists the tested combinations. Live tests exercised Komodo Core 2.3.2 with Periphery 2.3.2 over native stdio and authenticated Streamable HTTP on Linux x86-64. Other Core and Periphery versions are untested. See the [client, platform and workflow matrix](/docs/v0-9-0-compatibility/).
 
 ## What does an operation timeout mean?
 

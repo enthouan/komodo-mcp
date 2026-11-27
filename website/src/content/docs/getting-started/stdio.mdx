@@ -1,5 +1,5 @@
 ---
-title: Native stdio
+title: Build from source
 description: Build the komodo-mcp executable from source, run the synthetic demonstration, and launch it against a real Komodo Core over stdio.
 ---
 
@@ -11,18 +11,18 @@ import { EXECUTABLE_PLACEHOLDER } from '../../../data/clients.js';
 With native stdio, the MCP client starts the compiled executable, writes newline-delimited JSON-RPC to its stdin, and reads MCP responses from its stdout. The process opens no network listener.
 
 <Aside type="note" title="Native download">
-  For the prebuilt, checksum-verified archive, follow the [native installation guide](/docs/self-hosted-beta/#native-stdio). To compile your own executable, use Rust {RUST_TOOLCHAIN} and the steps below.
+  For the prebuilt, checksum-verified archive, follow the [native installation guide](/getting-started/#native-stdio). To compile your own executable, use Rust {RUST_TOOLCHAIN} and the steps below.
 </Aside>
 
 ## Fresh-checkout demo (synthetic Core)
 
 This demonstration needs no real Core, credentials, Node, or model service. It is fixture-based: it exercises the compiled executable and the MCP path, not Core's authorization engine. CI runs the same command on every pull request.
 
-<RepositorySection id="readme-fresh-checkout-demo" />
+<RepositorySection id="source-fresh-checkout-demo" />
 
 ## Build and launch
 
-<RepositorySection id="readme-build-and-launch" />
+<RepositorySection id="source-build-and-launch" />
 
 ## Connect a client
 

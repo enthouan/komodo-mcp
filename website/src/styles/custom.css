@@ -200,15 +200,6 @@ html[data-has-hero] .card-grid:first-of-type > .card:first-child {
   height: auto;
 }
 
-.install-methods {
-  margin-block: 1.5rem 1.75rem;
-}
-
-.install-method > p {
-  color: var(--sl-color-gray-2);
-  font-size: var(--sl-text-sm);
-}
-
 .legacy-anchor {
   display: block;
   scroll-margin-block-start: calc(var(--sl-nav-height) + 1rem);

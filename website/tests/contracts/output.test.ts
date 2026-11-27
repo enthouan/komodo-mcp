@@ -241,6 +241,9 @@ describe("SEO and machine-readable publication output", () => {
     expect(llms).not.toMatch(/\]\(\//);
     expect(llms).not.toContain("undefined");
     expect(llms).not.toContain("404");
+    expect(llms).not.toContain("/docs/self-hosted-beta");
+    const search = JSON.parse(await readDist("pagefind/pagefind-entry.json"));
+    expect(search.languages.en.page_count).toBe(DOCUMENT_ROUTES.length);
   });
 });
 
@@ -259,8 +262,17 @@ describe("Cloudflare-static publication contracts", () => {
     expect(headers).not.toMatch(/X-Robots-Tag/i);
   });
 
-  it("ships no legacy redirects from other projects", async () => {
-    await expect(readDist("_redirects")).rejects.toThrow();
+  it("redirects the retired installation route to the current guide and preserves its anchors", async () => {
+    const retired = "/docs/self-hosted-beta";
+    expect((await readDist("_redirects")).trim().split(/\r?\n/)).toEqual([
+      `${retired} /getting-started/ 301`,
+      `${retired}/ /getting-started/ 301`,
+    ]);
+    expect(existsSync(routeOutputPath(`${retired}/`))).toBe(false);
+    const { document } = await readRoute("/getting-started/");
+    for (const fragment of ["native-stdio", "docker-compose"]) {
+      expect(findById(document, fragment)).toHaveLength(1);
+    }
   });
 });
 

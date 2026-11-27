@@ -1,0 +1,59 @@
+---
+import { Card, Icon } from "@astrojs/starlight/components";
+import type { ComponentProps } from "astro/types";
+
+interface Props {
+  title: string;
+  action: string;
+  href: string;
+  icon: ComponentProps<typeof Icon>["name"];
+}
+
+const { title, icon, href, action } = Astro.props;
+---
+
+<Card {title} {icon}>
+  <slot />
+  <a class="guide-link" {href}>{action}<Icon name="right-arrow" /></a>
+</Card>
+
+<style>
+  :global(.card):has(.guide-link) {
+    position: relative;
+  }
+
+  :global(.card .body):has(> .guide-link) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: start;
+  }
+
+  .guide-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375em;
+    margin-block-start: auto;
+    padding-block-start: 1rem;
+  }
+
+  .guide-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  :global(.card):has(.guide-link:is(:hover, :focus-visible)) {
+    border-color: var(--sl-color-accent);
+    background: var(--sl-color-gray-7, var(--sl-color-gray-6));
+  }
+
+  .guide-link:focus-visible {
+    outline: none;
+  }
+
+  .guide-link:focus-visible::after {
+    outline: 3px solid var(--sl-color-accent);
+    outline-offset: 3px;
+  }
+</style>

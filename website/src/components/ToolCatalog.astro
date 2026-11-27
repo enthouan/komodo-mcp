@@ -25,7 +25,7 @@ const tools = (await getCollection("docs", (entry) => entry.id.startsWith("refer
     if (!catalog || !input || !label || !status || !label.hidden) return;
     const items = Array.from(catalog.querySelectorAll("li"));
     label.hidden = false;
-    input.addEventListener("input", () => {
+    const filterTools = () => {
       const query = input.value.trim().toLowerCase().replaceAll(/\s+/g, "_");
       let matches = 0;
       for (const item of items) {
@@ -33,7 +33,10 @@ const tools = (await getCollection("docs", (entry) => entry.id.startsWith("refer
         if (!item.hidden) matches++;
       }
       status.textContent = `${matches} ${matches === 1 ? "tool" : "tools"}`;
-    });
+    };
+    input.value = new URLSearchParams(window.location.search).get("q") ?? "";
+    filterTools();
+    input.addEventListener("input", filterTools);
   }
   initializeCatalog();
   document.addEventListener("astro:page-load", initializeCatalog);

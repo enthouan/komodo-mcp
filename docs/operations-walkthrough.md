@@ -27,7 +27,7 @@ the permission authority, including a denial recorded after acknowledgement.
    With tool selection unset and both optional grants disabled, discovery contains sixty-six read tools,
    including exact [discovery by tag](tags.md).
    Operate adds twenty tools; configuration editing independently adds typed
-   preview/apply tools. See [client configuration](../README.md#local-capabilities-and-core-permissions)
+   preview/apply tools. See [client configuration](reference/runtime.md#local-capabilities-and-core-permissions)
    and the [configuration workflow](configuration.md).
 2. Initialize your stdio client and call `tools/list`. Resolve an exact workload
    name with `get_stack` / `get_deployment`, then save the returned stable ID.

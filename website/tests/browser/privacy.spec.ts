@@ -30,7 +30,7 @@ test("the site fetches GitHub stars anonymously and uses only expected cookies a
   await gotoLoaded(page, "/getting-started/clients/");
   await page.locator('[data-client-setups] [role="tab"]', { hasText: "VS Code" }).click();
   await gotoLoaded(page, "/getting-started/");
-  await page.locator('[data-install-methods] [role="tab"]').nth(1).click();
+  await page.locator('main p a[href="#docker-compose"]').first().click();
   await page.locator("starlight-theme-select select:visible").first().selectOption("dark");
   await page.keyboard.press("Control+k");
   await page.locator(".pagefind-ui__search-input:visible").first().fill("stack");

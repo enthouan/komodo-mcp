@@ -1,7 +1,7 @@
 /**
  * Presentation metadata for repository guides rendered from `docs/*.md`.
  * Page content always comes from the versioned Markdown file; a contract test
- * requires every guide in `docs/` to appear here exactly once.
+ * requires every published guide in `docs/` to appear here exactly once.
  */
 export type OperatorGuide = {
   slug: string;
@@ -18,7 +18,6 @@ export const OPERATOR_GUIDE_GROUPS = [
   {
     label: "Inspect and diagnose",
     guides: [
-      { slug: "self-hosted-beta", label: "Self-hosted beta installation", description: "Verify a native archive and run stdio, or start authenticated HTTP with the version-matched Compose file." },
       { slug: "operator-quickstart", label: "First read, stack diagnosis and recovery", description: "Scope a Core account, connect a client, diagnose a Stack by its returned ID, and recover an interrupted staging operation." },
       { slug: "mock-stdio", label: "Interactive stdio walkthrough", description: "Run the synthetic mock Core, generate an MCP Inspector configuration, and troubleshoot startup with safe diagnostics." },
       { slug: "diagnostics", label: "Diagnostic tools", description: "Fleet health, incident history, bounded workload logs, and evidence-backed stack diagnosis." },

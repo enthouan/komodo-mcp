@@ -29,15 +29,15 @@ export function headingSlug(text: string) {
   return new GithubSlugger().slug(text);
 }
 
-/** Maps README anchors embedded on website pages to those pages. */
-const README_SECTION_ROUTES = new Map(
-  REPOSITORY_SECTIONS.map(({ heading, route }) => [headingSlug(heading), route]),
+/** Links to embedded sections stay on their corresponding documentation pages. */
+const SECTION_ROUTES = new Map(
+  REPOSITORY_SECTIONS.map(({ file, heading, route }) => [`${file}#${headingSlug(heading)}`, route]),
 );
 const GUIDE_SLUGS = new Set(OPERATOR_GUIDES.map(({ slug }) => slug));
 
 /**
  * Rewrites a relative link found in repository Markdown so it works on the
- * website: published guides become website routes, README anchors embedded on
+ * website: published guides become website routes, source anchors embedded on
  * the website become page anchors, and every other repository path becomes a
  * GitHub URL. A link to a missing repository path fails the build.
  */
@@ -52,26 +52,17 @@ export function rewriteRepositoryLink(
   const pathPart = hashIndex === -1 ? target : target.slice(0, hashIndex);
   const fragment = hashIndex === -1 ? "" : target.slice(hashIndex);
 
-  if (pathPart === "") {
-    if (sourcePath === "README.md") {
-      const route = README_SECTION_ROUTES.get(fragment.slice(1));
-      return route ? `${route}${fragment}` : repositoryFileUrl(`README.md${fragment}`);
-    }
-    return fragment;
-  }
+  const resolved = pathPart ? posix.normalize(posix.join(posix.dirname(sourcePath), pathPart)) : sourcePath;
+  const sectionRoute = SECTION_ROUTES.get(`${resolved}${fragment}`);
+  if (sectionRoute) return `${sectionRoute}${fragment}`;
+  if (!pathPart) return fragment;
 
-  const resolved = posix.normalize(posix.join(posix.dirname(sourcePath), pathPart));
   if (resolved.startsWith("../") || resolved === "..") {
     throw new Error(`${sourcePath} links outside the repository: ${target}`);
   }
 
   const guide = resolved.match(/^docs\/([a-z0-9-]+)\.md$/)?.[1];
   if (guide && GUIDE_SLUGS.has(guide)) return `${operatorGuideRoute(guide)}${fragment}`;
-
-  if (resolved === "README.md") {
-    const route = README_SECTION_ROUTES.get(fragment.slice(1));
-    if (route) return `${route}${fragment}`;
-  }
 
   const absolute = posix.join(repositoryRoot, resolved);
   if (!existsSync(absolute)) {
@@ -104,7 +95,7 @@ export function splitTitle(markdown: string, sourcePath: string) {
 }
 
 /**
- * Extracts one README section (without its heading). Subheadings are shifted so
+ * Extracts one Markdown section (without its heading). Subheadings are shifted so
  * the section nests under an h2 on the embedding page. With `stopAtSubheading`,
  * extraction ends at the first nested heading.
  */

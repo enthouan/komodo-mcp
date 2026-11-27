@@ -1,0 +1,27 @@
+---
+import { Code } from "@astrojs/starlight/components";
+import { REVIEW_CANDIDATE as candidate } from "../data/installation-preview.js";
+import { REPOSITORY_URL } from "../data/repository.js";
+
+interface Props {
+  kind: "native" | "container";
+}
+
+const isNative = Astro.props.kind === "native";
+const run = isNative ? candidate.nativeRun : candidate.containerRun;
+const file = isNative ? "SHA256SUMS" : "candidate.oci.tar";
+const hash = isNative ? candidate.checksumsSha256 : candidate.archiveSha256;
+const artifact = isNative ? "komodo-mcp-distribution" : "komodo-mcp-oci";
+const acquire = `(
+  set -eu
+  gh run download ${run} --repo enthouan/komodo-mcp --name ${artifact}-${candidate.revision}
+  printf '%s  %s\\n' ${hash} ${file} > preview.sha256
+  if command -v sha256sum >/dev/null; then sha256sum -c preview.sha256; else shasum -a 256 -c preview.sha256; fi${isNative ? "" : `
+  docker image load --input candidate.oci.tar
+  curl --fail --show-error --location --output compose.yaml https://raw.githubusercontent.com/enthouan/komodo-mcp/${candidate.revision}/compose.yaml`}
+)`;
+---
+<p>
+  Use a GitHub CLI login with Actions read access to download the packages from <a href={`${REPOSITORY_URL}/actions/runs/${run}`}>distribution run {run}</a>. Run the commands in an empty directory while the run’s artifacts are available.
+</p>
+<Code lang="sh" title={isNative ? "Download the native packages" : "Load the image and download its Compose file"} code={acquire} />

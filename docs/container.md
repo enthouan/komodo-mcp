@@ -8,10 +8,10 @@ to pin the verified multi-platform image.
 KOMODO_MCP_IMAGE=ghcr.io/enthouan/komodo-mcp:v0.9.0@sha256:0dac5c0d80dd463c8d4eed87a8538606f2059988eb90862f8404177016ab3b21
 ```
 
-To rehearse an unpublished candidate, load the verified
-`candidate.oci.tar` from a Container distribution run and set
-`KOMODO_MCP_IMAGE=komodo-mcp-candidate:git-<full revision>`. The candidate
-reports the Cargo version at that revision.
+To rehearse an upgrade with a workflow build, load the verified
+`candidate.oci.tar` from the Container distribution run and set
+`KOMODO_MCP_IMAGE=komodo-mcp-candidate:git-<full revision>`. The running
+server reports the Cargo version at that revision.
 
 Supply these settings in the process environment or a private env file:
 
@@ -20,13 +20,13 @@ Supply these settings in the process environment or a private env file:
 | `KOMODO_ADDRESS` | HTTPS address of your Core, reachable from the container. |
 | `KOMODO_API_KEY`, `KOMODO_API_SECRET` | A dedicated Core credential with Read on the resources you intend to inspect. |
 | `KOMODO_HTTP_TOKENS` | An independently generated bearer for each MCP client, comma-separated. Generate each with `openssl rand -hex 32`. |
-| `KOMODO_MCP_IMAGE` | An exact image reference, or the reviewed local candidate reference during rehearsal. |
+| `KOMODO_MCP_IMAGE` | An exact image reference, or the local image reference for the workflow run you are testing. |
 
 Keep the env file readable only by its owner. The Compose service forwards
 values at runtime. Anyone with Docker administrator access can inspect them.
 Use `KOMODO_ENABLED_TOOLS=list_stacks,get_stack,stack_diagnose` for a three-tool
 triage client. Configure `KOMODO_HTTP_ALLOWED_ORIGINS` with exact origins when
-using a browser client. See [HTTP transport](../README.md#authenticated-streamable-http) for authentication and
+using a browser client. See [HTTP transport](reference/runtime.md#authenticated-streamable-http) for authentication and
 client configuration.
 
 With the settings exported, run the following in the directory containing

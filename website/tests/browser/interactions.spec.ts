@@ -1,10 +1,27 @@
-import { COPY_FAILURE_MESSAGE } from "../support/site.js";
+import { COPY_FAILURE_MESSAGE, TOOL_CATALOG } from "../support/site.js";
 import { expect, gotoLoaded, monitorBrowserProblems, test } from "./support.js";
 
-test("filtering the catalog opens a registered tool and its schemas", async ({ page }) => {
-  await gotoLoaded(page, "/reference/tools/");
+test("homepage categories open the filtered catalog and its registered tool schemas", async ({ page }) => {
+  await gotoLoaded(page, "/");
+  const preview = page.locator("[data-catalog-preview]");
+  const categories = ["stack", "deployment", "server", "build", "resource_sync"];
+  const names = Object.keys(TOOL_CATALOG.tools);
+  await expect(preview).toContainText(`${names.length} tools`);
+  await expect(preview.locator("[data-catalog-preview-row]")).toHaveCount(categories.length);
+  for (const query of categories) {
+    const row = preview.locator(`[data-category="${query}"]`);
+    const count = names.filter((name) => name.includes(query)).length;
+    await expect(row.locator("dd strong")).toHaveText(String(count));
+    await expect(row.getByRole("link")).toHaveAttribute("href", `/reference/tools/?q=${query}#built-in-tools`);
+  }
+
+  await preview.getByRole("link", { name: "Stacks", exact: true }).click();
   const catalog = page.locator("[data-tool-catalog]");
   const filter = catalog.getByRole("searchbox", { name: "Filter by tool name" });
+  await expect(filter).toHaveValue("stack");
+  const stacks = names.filter((name) => name.includes("stack"));
+  await expect(catalog.getByRole("status")).toHaveText(`${stacks.length} tools`);
+  expect((await catalog.getByRole("link").allTextContents()).sort()).toEqual(stacks.sort());
   await filter.fill("STACK DIAGNOSE");
   await expect(catalog.getByRole("status")).toHaveText("1 tool");
   await catalog.getByRole("link", { name: "stack_diagnose", exact: true }).click();
@@ -58,28 +75,17 @@ test("client tabs honor deep links and switch recipes", async ({ page }) => {
   await expect(page.locator('[data-client-setups] [role="tabpanel"]:visible')).toContainText("{env:KOMODO_API_KEY}");
 });
 
-test("homepage client cards deep-link to the matching tab", async ({ page }) => {
-  await gotoLoaded(page, "/");
-  await page.locator('a[href="/getting-started/clients/#vscode"]').click();
-  await expect(page.locator('[data-client-setups] [role="tab"][aria-selected="true"]')).toHaveText("VS Code");
-});
-
-test("install tabs lead to both beta guides and matching source", async ({ page }) => {
-  for (const route of ["/", "/getting-started/"]) {
-    for (const [label, anchor] of [["Native stdio", "native-stdio"], ["Docker Compose", "docker-compose"]] as const) {
-      await gotoLoaded(page, route);
-      const methods = page.locator("[data-install-methods]");
-      await methods.getByRole("tab", { name: label }).click();
-      const panel = methods.getByRole("tabpanel").filter({ visible: true });
-      await expect(panel.getByRole("link", { name: /Install and connect/ })).toHaveAttribute("href", `/docs/self-hosted-beta/#${anchor}`);
-      await expect(panel.getByRole("link", { name: "Matching Corresponding Source" })).toHaveAttribute("href", /-source\.tar\.gz$/);
-      await panel.getByRole("link", { name: /Install and connect/ }).click();
-      await expect(page).toHaveURL(new RegExp(`/docs/self-hosted-beta/#${anchor}$`));
-      await expect(page.locator(`h2#${anchor}`)).toBeVisible();
-      await page.locator('main a[href="/docs/operator-quickstart/#discover-and-diagnose-with-three-tools"]').first().click();
-      await expect(page).toHaveURL(/\/docs\/operator-quickstart\/#discover-and-diagnose-with-three-tools$/);
-      await expect(page.locator("main")).toContainText("list_stacks,get_stack,stack_diagnose");
-    }
+test("the homepage guide reaches both installs and their first read", async ({ page }) => {
+  for (const anchor of ["native-stdio", "docker-compose"]) {
+    await gotoLoaded(page, "/");
+    await page.getByRole("link", { name: "Get started", exact: true }).click();
+    await page.locator(`main p a[href="#${anchor}"]`).first().click();
+    await expect(page).toHaveURL(new RegExp(`/getting-started/#${anchor}$`));
+    await expect(page.locator(`h2#${anchor}`)).toBeInViewport();
+    const start = page.locator(`h2#${anchor}`);
+    await start.locator('xpath=following::p//a[@href="#verify-your-first-read"]').first().click();
+    await expect(page).toHaveURL(/#verify-your-first-read$/);
+    await expect(page.locator("main")).toContainText("result.structuredContent.items");
   }
 });
 
@@ -164,16 +170,12 @@ test.describe("without JavaScript", () => {
   });
 
   test("installation paths and stdio instructions remain readable", async ({ page }) => {
-    for (const route of ["/", "/getting-started/"]) {
-      await page.goto(route);
-      const methods = page.locator("[data-install-methods]");
-      for (const [label, section] of [["Native stdio", "native-stdio"], ["Docker Compose", "docker-compose"]] as const) {
-        const fallback = methods.getByRole("region", { name: label, exact: true });
-        await expect(fallback.getByRole("heading", { name: label })).toBeVisible();
-        await expect(fallback.locator(`a[href="/docs/self-hosted-beta/#${section}"]`)).toBeVisible();
-      }
+    await page.goto("/");
+    await page.getByRole("link", { name: "Get started", exact: true }).click();
+    for (const section of ["native-stdio", "docker-compose", "verify-your-first-read"]) {
+      await expect(page.locator(`h2#${section}`)).toBeVisible();
     }
-    await expect(page.locator("main")).toContainText("cargo build --locked --release --bin komodo-mcp");
+    await expect(page.locator("main")).toContainText("list_stacks");
     await page.goto("/getting-started/stdio/");
     await expect(page.locator("main")).toContainText("KOMODO_API_SECRET");
   });

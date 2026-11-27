@@ -1,10 +1,10 @@
 ---
 title: Independent, self-hosted Rust MCP server for Komodo
-description: komodo-mcp is an independent, self-hosted Rust Model Context Protocol server for Komodo. Inspect stacks, diagnose failures, and run reviewed operations with your own Core credentials.
+description: Connect your MCP client to Komodo Core, list the Stacks you can access and diagnose a failed rollout.
 template: splash
 hero:
   title: 'Operate Komodo<br>from your MCP client.'
-  tagline: An independent, self-hosted Rust Model Context Protocol (MCP) server for Komodo. List your stacks, diagnose failures with bounded evidence, and opt into reviewed changes using your own Core credentials and permissions.
+  tagline: A self-hosted Model Context Protocol (MCP) server for Komodo Core users. List Stacks, check server health, and diagnose failed rollouts from a server you run.
   image:
     html: '<img src="/favicon.svg" width="400" height="400" alt="komodo-mcp stacked-status mark">'
   actions:
@@ -25,127 +25,96 @@ lastUpdated: false
 ---
 
 import { Aside, Card, CardGrid, LinkButton, LinkCard, Steps } from '@astrojs/starlight/components';
-import InstallMethods from '../../components/InstallMethods.astro';
-import { PROJECT_LICENSE, RELEASE_TAG, RELEASE_URL } from '../../data/project.js';
+import GuideLinkCard from '../../components/GuideLinkCard.astro';
+import ToolCatalogPreview from '../../components/ToolCatalogPreview.astro';
+import { CLIENT_SETUPS } from '../../data/clients.js';
+import catalog from '../../../../docs/tool-catalog.json';
 
-<Aside type="note" title="Independent project for Komodo">
-  komodo-mcp is an independent, community-maintained project. It is not an official Komodo product and is not affiliated with, endorsed by, or sponsored by the Komodo project.
+export const toolCount = Object.keys(catalog.tools).length;
 
-  Komodo itself is documented at [komo.do](https://komo.do/). komodo-mcp connects to a Komodo Core you already run.
+<Aside type="note" title="Independent integration for Komodo">
+  Komodo MCP is a community-maintained project. It connects your MCP client to a Komodo Core instance you can access. To install Core or add a Periphery server, follow the [official Komodo setup guide](https://komo.do/docs/setup).
 </Aside>
 
 <CardGrid>
-  <Card title="Read-only by default" icon="approve-check-circle">
-    By default, every profile includes all read tools. You can [select individual tools](/reference/configuration/#select-individual-tools) for each server instance. Operations, configuration edits, pruning, and terminal commands each need a separate local grant that defaults to `false`.
+  <Card title={`${toolCount} catalog-backed tools`} icon="puzzle">
+    Look up a Stack, inspect its latest rollout, or review pending ResourceSync changes. The [tool catalog](/reference/tools/) gives you the inputs, results and permissions for each call. Your client discovers the tools enabled on your instance.
   </Card>
-  <Card title="Your Core permissions decide" icon="padlock">
-    The server calls Core with one API key and secret from its process environment. Core decides what that identity can read or change; local grants never add Core permissions.
-  </Card>
+
   <Card title="Two ways to connect" icon="laptop">
-    Your MCP client can launch the native executable over stdio or connect to a persistent Docker Compose service over authenticated HTTP.
+    With [native stdio](/getting-started/#native-stdio), your client launches the executable on your machine. For a persistent endpoint, [Docker Compose](/getting-started/#docker-compose) serves authenticated Streamable HTTP on a loopback port by default.
   </Card>
-  <Card title="Bounded, honest evidence" icon="magnifier">
-    Pages, logs, history, and diagnosis are bounded. Cached, unavailable, permission-limited, and incomplete evidence is reported as such instead of guessed.
+
+  <Card title="One Core account per server" icon="padlock">
+    With stdio, your client passes a dedicated Core key and secret to the server process. With HTTP, the service holds the Core credentials and each client sends its own bearer token. All calls use the permissions of that Core account.
+  </Card>
+
+  <Card title="Read-only by default" icon="approve-check-circle">
+    List Stacks and investigate failures as soon as you connect. To deploy a Stack, you must enable operations on the server and give its Core account Execute permission on that Stack.
   </Card>
 </CardGrid>
 
-## Install the self-hosted beta
-
-<InstallMethods />
-
 ## Start by listing your stacks
 
-The first successful read lists the Stacks your Core identity can see. It changes nothing in Komodo.
+Once you’ve [connected to Core](/getting-started/), ask your client to find a Stack you recognize. The first read uses your account’s permissions and returns the ID you can use to investigate a rollout.
 
-```text title="First read: list your stacks"
+```text wrap title="Ask your MCP client"
 List the stacks I can access in Komodo and show their current status.
 Use list_stacks and do not change anything.
 ```
 
 <Steps>
-1. **Connect.** Follow the [native stdio](/docs/self-hosted-beta/#native-stdio) or [Docker Compose](/docs/self-hosted-beta/#docker-compose) instructions. Run `tools/list` after initialization to see the tools available to this instance.
+1. **Check the available tools.** Open your client’s tool list. The getting-started configuration exposes `list_stacks`, `get_stack` and `stack_diagnose`.
 
-2. **Approve one read.** Your client should propose `list_stacks`. It is read-only and returns at most 30 Stacks per page by default.
+2. **Read one page.** Ask the client to call `list_stacks` with `page: 0` and `page_size: 10`. Find the Stack’s name, state and ID in the result. Follow `next_page` if you need the next ten.
 
-3. **Review the answer.** Each Stack has a stable ID, its Core state such as `running`, `stopped`, or `unknown`, and its active Server or Swarm target (`null` when unassigned). Follow `next_page` until `has_more` is false; an empty list is valid when the identity can read no Stacks.
+3. **Follow up on a failure.** Pass the returned ID to `get_stack` to confirm the target, then to `stack_diagnose`. Ask for the affected services, the evidence behind the diagnosis and anything Core couldn’t report. The [diagnosis walkthrough](/docs/operator-quickstart/) shows an example.
 </Steps>
-
-## Diagnose a failed stack without changing it
-
-When a Stack looks unhealthy, keep the investigation read-only and let the server report what it could and could not observe.
-
-```text title="Read-only diagnosis prompt"
-One of my Komodo stacks looks unhealthy. Find it with list_stacks,
-confirm its exact ID with get_stack, then run stack_diagnose on that ID.
-Report the outcome, the affected services, and any evidence gaps.
-Do not deploy, restart, or change anything.
-```
-
-<Steps>
-1. **Discover the visible Stack.** Use `list_stacks` to find the Stack you want to diagnose. Copy its returned ID.
-
-2. **Resolve its exact identity.** `get_stack` accepts an exact, case-sensitive name or a 24-character ID. Ambiguous or incomplete name resolution fails safely and asks you to retry by ID.
-
-3. **Inspect the evidence.** `stack_diagnose` combines inventory, service state, recent updates and alerts, and one bounded log tail in at most seven Core reads. It returns `healthy`, `unhealthy`, or `inconclusive` with supporting IDs.
-
-4. **Report gaps.** Keep the supporting IDs and any unavailable evidence. If you use an instance that exposes `get_update` or `get_stack_logs`, those tools can inspect the cited update or logs.
-</Steps>
-
-[Read the diagnosis bounds and evidence model](/docs/diagnostics/#stack-diagnosis).
 
 ## Pick your MCP client
 
-Each desktop or CLI recipe configures the native executable over stdio. The [compatibility evidence](/getting-started/compatibility/) records which clients connected and which used a fixture. The [candidate matrix](/docs/v0-9-0-compatibility/) identifies the scripted clients that exercised stdio and authenticated Streamable HTTP against Core and Periphery 2.3.2.
-
-First time connecting? [Prepare a Komodo Core identity and API key](/getting-started/komodo-credentials/) before configuring your client.
+Start with a [scoped Core account and API key](/getting-started/komodo-credentials/), then open the recipe for your client. Each recipe shows how to launch the native executable over stdio. The [compatibility evidence](/getting-started/compatibility/) records which connections and reads have been exercised.
 
 <CardGrid>
-  <LinkCard title="Codex" description="Configuration reviewed for native stdio." href="/getting-started/clients/#codex" data-client-icon="openai" />
-  <LinkCard title="Claude Code" description="Configuration reviewed for native stdio." href="/getting-started/clients/#claude-code" data-client-icon="claude" />
-  <LinkCard title="Claude Desktop" description="Configuration reviewed for native stdio." href="/getting-started/clients/#claude-desktop" data-client-icon="claude" />
-  <LinkCard title="VS Code" description="Configuration reviewed for native stdio." href="/getting-started/clients/#vscode" data-client-icon="vscode" />
-  <LinkCard title="OpenCode" description="Configuration reviewed for native stdio." href="/getting-started/clients/#opencode" data-client-icon="opencode" />
-  <LinkCard title="All compatibility evidence" description="See tested scope, Core version evidence, and what remains unverified." href="/getting-started/compatibility/" data-client-icon="evidence" />
+  {CLIENT_SETUPS.map(({ key, label, icon, configTitle }) => (
+    <LinkCard title={label} description={`Configure native stdio in ${configTitle}.`} href={`/getting-started/clients/#${key}`} data-client-icon={icon} />
+  ))}
+  <LinkCard title="All compatibility evidence" description="See which configurations have been reviewed and which clients have connected to Core." href="/getting-started/compatibility/" data-client-icon="evidence" />
 </CardGrid>
 
-<Aside type="caution" title="Before enabling changes">
-  Start read-only. Enable a grant such as `KOMODO_ALLOW_OPERATE=true` only for the process that needs it, review each proposed call, and never let a client automatically repeat an operation whose outcome is uncertain.
+For a client that connects to a URL, follow the [authenticated HTTP setup](/getting-started/#docker-compose). The [client setup guide](/getting-started/clients/) covers configuration files and version-specific instructions.
+
+<Aside type="caution" title="Before approving a change">
+  Confirm the Core instance, the Stack ID and the proposed action. A deploy uses the Stack’s saved configuration. Keep the update ID from the receipt so you can check the outcome if the client disconnects.
 </Aside>
 
 ## Useful by design
 
-Ask in natural language; the client chains the tools the server exposes for the identity and grants you configured.
+To try these workflows after the three-tool setup, add the tools shown below to your server’s [tool selection](/reference/configuration/#select-individual-tools), then restart and reconnect your client.
 
 <CardGrid>
-  <Card title="Inventory and fleet health" icon="list-format">
-    Page through Servers, Stacks, and Deployments, then rank what needs attention across the fleet.
+  <Card title="Find the workload that needs attention" icon="list-format">
+    Start with the Servers and Stacks your account can see. Ask for a fleet health summary to find which workloads are unhealthy and where observations are missing.
 
     `list_servers → list_stacks → fleet_health`
   </Card>
-  <Card title="Stack diagnosis and bounded logs" icon="magnifier">
-    Diagnose one Stack, then follow its failed update and a bounded, redacted log tail.
+
+  <Card title="Explain a failed rollout" icon="magnifier">
+    Diagnose one Stack, then follow the cited update and inspect a short log tail. Use the affected service and its evidence to explain what went wrong.
 
     `stack_diagnose → get_update → get_stack_logs`
   </Card>
-  <Card title="Reviewed configuration and explicit operations" icon="pencil">
-    Preview a typed change before applying it, deploy once with an update receipt, and wait or reconcile without resubmitting.
 
-    `preview_stack_update → apply_stack_update → deploy_stack → wait_for_update`
+  <Card title="Deploy a staging Stack" icon="rocket">
+    Confirm the target and scope on a staging instance with the operate grant. Submit the approved deploy once, wait on its update ID, then check the Stack’s health.
+
+    `get_stack → deploy_stack → wait_for_update → stack_diagnose`
   </Card>
-  <Card title="ResourceSync review and apply" icon="seti:config">
-    Inspect cached pending changes, review an explicit selection, and apply that exact review at most once.
 
-    `get_resource_sync_pending → review_resource_sync_pending → apply_resource_sync`
-  </Card>
-  <Card title="Swarm inspection and scaling" icon="seti:pipeline">
-    Inspect Swarm services and tasks, preview a replica change, deploy it explicitly, and observe tasks separately.
+  <Card title="Review pending ResourceSync changes" icon="code-branch">
+    Read a sync’s cached changes and review the resources you select. The review shows proposed creates, updates and deletions and leaves them unapplied.
 
-    `list_swarm_services → preview_deployment_scale → deploy_scaled_deployment`
-  </Card>
-  <Card title="Administration with explicit boundaries" icon="setting">
-    Inspect groups and effective permissions, then preview and apply one scoped change with both grants and Core admin authority.
-
-    `get_effective_permission → preview_access_change → apply_access_change`
+    `get_resource_sync_pending → review_resource_sync_pending`
   </Card>
 </CardGrid>
 
@@ -153,23 +122,36 @@ Ask in natural language; the client chains the tools the server exposes for the 
   Follow the workflow guide
 </LinkButton>
 
-## Tool reference
+## One canonical, searchable tool catalog
 
-Search the [built-in tool catalog](/reference/tools/#built-in-tools) for input bounds, output shapes, local grants and mutation behavior. Use `tools/list` in your MCP client to inspect your instance. The [operator guides](/guides/workflows/#operator-guides) explain how to use the tools against Core.
+Search by tool name to find its input and output schemas, required grants and effects. The reference is generated from the server’s registered tools. Use `tools/list` in your client to see which of them your own server exposes.
+
+<ToolCatalogPreview />
 
 <LinkButton href="/reference/tools/" variant="primary" icon="right-arrow">
-  Open the tool reference
+  Browse all {toolCount} tools
 </LinkButton>
 
 ## Know when to use it
 
-Choose komodo-mcp when you run your own Komodo Core and want an MCP client to inspect it or make approved changes under that identity's permissions. The [beta installation guide](/docs/self-hosted-beta/) covers both the native executable and the persistent HTTP service.
+Use Komodo MCP to inspect your fleet, trace a failed rollout or carry out a reviewed operation from your MCP client. Use Komodo Core directly to set up the instance, create API keys and decide which resources an account can access.
 
-The current release is <a href={RELEASE_URL}>{RELEASE_TAG}</a>, licensed {PROJECT_LICENSE}. This site documents the repository's `main` branch.
+See [Security & Data](/guides/security/) for what your client receives, [Configuration](/reference/configuration/) for server settings, or the [FAQ](/guides/faq/) for hosting and permission questions.
 
 <CardGrid>
-  <LinkCard title="Security & Data" description="Follow credentials, Core data, local grants, logs, and operations across every trust boundary." href="/guides/security/" />
-  <LinkCard title="Configuration" description="Every environment variable, its default, and the boundary it controls." href="/reference/configuration/" />
-  <LinkCard title="Troubleshooting" description="Separate build, client, Core authentication, permission, reachability, version, grant, and timeout problems." href="/guides/troubleshooting/" />
-  <LinkCard title="FAQ" description="Hosting, credentials, transports, Core permissions, and what komodo-mcp is not." href="/guides/faq/" />
+  <GuideLinkCard icon="puzzle" title="Tool catalog" href="/reference/tools/" action="Look up a tool">
+    Use `fleet_health` to find a workload that needs attention. For a failed Stack, `stack_diagnose` brings together its history, alerts and recent logs. Each catalog entry lists inputs, results, required grants and whether the tool makes changes.
+  </GuideLinkCard>
+
+  <GuideLinkCard icon="approve-check-circle" title="Stable support policy" href="/docs/stable-support/" action="Check your setup">
+    Live tests on Linux x86-64 cover native stdio and authenticated HTTP with Core and Periphery 2.3.2. Look up your platform and MCP client to see whether the evidence comes from a live connection, a test fixture or a configuration review.
+  </GuideLinkCard>
+
+  <GuideLinkCard icon="code-branch" title="Upgrade and rollback" href="/docs/upgrade-v1/" action="Follow the upgrade guide">
+    Keep your working native executable or record the current Compose image digest before you upgrade. After restarting, check that your client discovers the same tools and can read a familiar Stack. Repeat those checks if you restore the previous version.
+  </GuideLinkCard>
+
+  <GuideLinkCard icon="magnifier" title="Troubleshooting" href="/guides/troubleshooting/" action="Find your symptom">
+    A `401` from `/mcp` points to the bearer token your HTTP client sends. If `list_stacks` succeeds but returns an empty list, check the Core account’s Read permission on a Stack you expect to see.
+  </GuideLinkCard>
 </CardGrid>

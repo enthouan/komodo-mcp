@@ -16,7 +16,7 @@ Start with the **published v0.9.0** installation and an MCP client that can show
    cmp "/absolute/path/from/v0.9.0-archive/komodo-mcp" "/absolute/path/from/client/komodo-mcp"
    ```
 
-2. Get `komodo-mcp-v1.0.0-<target>.tar.gz` and the verification records from the stable release. Use the target matching the machine that launches the server. Verify the archive checksum, provenance, source revision and build identity against the release evidence. Extract into a **new version-specific directory**. Keep the old path available. Record the new absolute executable path and archive digest.
+2. Get `komodo-mcp-v1.0.0-<target>.tar.gz` and the verification records from the stable release. Use the target matching the machine that launches the server. Follow the [stable verification commands](stable-verification.md#verify-a-native-download) to check the archive checksum, provenance, source revision and build identity. Extract into a **new version-specific directory**. Keep the old path available. Record the new absolute executable path and archive digest.
 3. Stop the MCP server in your client. Change just the executable path in the saved stdio entry to the new one and relaunch. Keep the same arguments, environment and credential references. Run the connection checks below with expected version `1.0.0`.
 4. **Roll back** by stopping the server, restoring the saved client entry with its original v0.9.0 path and environment, and relaunching. Repeat the executable comparison and connection checks. Require the original artifact, `0.9.0`, the original discovery and the same scoped read.
 
@@ -40,7 +40,7 @@ Use the same deployment directory, Compose project, override files and private e
    docker pull "$previous" && test "$(docker image inspect --format '{{.Id}}' "$previous")" = "$image_id"
    ```
 
-2. From the verified v1.0.0 release evidence, copy the **GHCR index digest**. In the private env file set `KOMODO_MCP_IMAGE=ghcr.io/enthouan/komodo-mcp@sha256:<verified-index-hex>`, replacing the placeholder. Keep the same service definition, credentials, mounts and port. Validate the effective pin and recreate just the MCP service.
+2. Use the [container verification commands](stable-verification.md#verify-the-container-and-its-sbom) and record the verified v1.0.0 **GHCR index digest**. In the private env file set `KOMODO_MCP_IMAGE=ghcr.io/enthouan/komodo-mcp@sha256:<verified-index-hex>`, replacing the placeholder. Keep the same service definition, credentials, mounts and port. Validate the effective pin and recreate just the MCP service.
 
    ```sh
    docker compose --env-file .env config --images
@@ -54,7 +54,7 @@ Use the same deployment directory, Compose project, override files and private e
 
 ## Check the connection after each restart
 
-1. Initialize a fresh session over the original transport. Check `result.serverInfo.name` is `komodo-mcp` and record `result.serverInfo.version`. During a pre-cut rehearsal, use the candidate's actual Cargo version together with its commit and artifact digest. A healthy HTTP container alone establishes only that the listener answers.
+1. Initialize a fresh session over the original transport. Check `result.serverInfo.name` is `komodo-mcp` and record `result.serverInfo.version`. When rehearsing with a workflow build, match the reported version to the Cargo version at the recorded commit and check the artifact digest. A healthy HTTP container alone establishes only that the listener answers.
 2. Run `tools/list`, following any discovery cursor. Compare the names with the saved selection and local grants. For the read-only triage configuration expect exactly `get_stack`, `list_stacks` and `stack_diagnose`. If a harmless read such as `list_deployments` was excluded before the upgrade, call it directly and confirm the same unknown-tool error.
 3. In `tools/call`, submit the following parameters. Choose a scoped test account with a known first visible Stack and record its ID from `result.structuredContent.items`. Expect one matching item before and after the change. A successful empty page can be legitimate for an empty account, but cannot confirm access to your expected Stack.
 
