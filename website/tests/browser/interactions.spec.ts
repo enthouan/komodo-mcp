@@ -1,10 +1,27 @@
-import { COPY_FAILURE_MESSAGE } from "../support/site.js";
+import { COPY_FAILURE_MESSAGE, TOOL_CATALOG } from "../support/site.js";
 import { expect, gotoLoaded, monitorBrowserProblems, test } from "./support.js";
 
-test("filtering the catalog opens a registered tool and its schemas", async ({ page }) => {
-  await gotoLoaded(page, "/reference/tools/");
+test("homepage categories open the filtered catalog and its registered tool schemas", async ({ page }) => {
+  await gotoLoaded(page, "/");
+  const preview = page.locator("[data-catalog-preview]");
+  const categories = ["stack", "deployment", "server", "build", "resource_sync"];
+  const names = Object.keys(TOOL_CATALOG.tools);
+  await expect(preview).toContainText(`${names.length} tools`);
+  await expect(preview.locator("[data-catalog-preview-row]")).toHaveCount(categories.length);
+  for (const query of categories) {
+    const row = preview.locator(`[data-category="${query}"]`);
+    const count = names.filter((name) => name.includes(query)).length;
+    await expect(row.locator("dd strong")).toHaveText(String(count));
+    await expect(row.getByRole("link")).toHaveAttribute("href", `/reference/tools/?q=${query}#built-in-tools`);
+  }
+
+  await preview.getByRole("link", { name: "Stacks", exact: true }).click();
   const catalog = page.locator("[data-tool-catalog]");
   const filter = catalog.getByRole("searchbox", { name: "Filter by tool name" });
+  await expect(filter).toHaveValue("stack");
+  const stacks = names.filter((name) => name.includes("stack"));
+  await expect(catalog.getByRole("status")).toHaveText(`${stacks.length} tools`);
+  expect((await catalog.getByRole("link").allTextContents()).sort()).toEqual(stacks.sort());
   await filter.fill("STACK DIAGNOSE");
   await expect(catalog.getByRole("status")).toHaveText("1 tool");
   await catalog.getByRole("link", { name: "stack_diagnose", exact: true }).click();

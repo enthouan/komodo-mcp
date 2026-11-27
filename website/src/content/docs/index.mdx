@@ -24,23 +24,122 @@ tableOfContents: false
 lastUpdated: false
 ---
 
-import { CardGrid } from '@astrojs/starlight/components';
+import { Aside, Card, CardGrid, LinkButton, LinkCard, Steps } from '@astrojs/starlight/components';
 import GuideLinkCard from '../../components/GuideLinkCard.astro';
+import ToolCatalogPreview from '../../components/ToolCatalogPreview.astro';
+import { CLIENT_SETUPS } from '../../data/clients.js';
 import catalog from '../../../../docs/tool-catalog.json';
+
+export const toolCount = Object.keys(catalog.tools).length;
+
+<Aside type="note" title="Independent integration for Komodo">
+  Komodo MCP is a community-maintained project. It connects your MCP client to a Komodo Core instance you can access. To install Core or add a Periphery server, follow the [official Komodo setup guide](https://komo.do/docs/setup).
+</Aside>
+
+<CardGrid>
+  <Card title={`${toolCount} catalog-backed tools`} icon="puzzle">
+    Look up a Stack, inspect its latest rollout, or review pending ResourceSync changes. The [tool catalog](/reference/tools/) gives you the inputs, results and permissions for each call. Your client discovers the tools enabled on your instance.
+  </Card>
+
+  <Card title="Two ways to connect" icon="laptop">
+    With [native stdio](/getting-started/#native-stdio), your client launches the executable on your machine. For a persistent endpoint, [Docker Compose](/getting-started/#docker-compose) serves authenticated Streamable HTTP on a loopback port by default.
+  </Card>
+
+  <Card title="One Core account per server" icon="padlock">
+    With stdio, your client passes a dedicated Core key and secret to the server process. With HTTP, the service holds the Core credentials and each client sends its own bearer token. All calls use the permissions of that Core account.
+  </Card>
+
+  <Card title="Read-only by default" icon="approve-check-circle">
+    List Stacks and investigate failures as soon as you connect. To deploy a Stack, you must enable operations on the server and give its Core account Execute permission on that Stack.
+  </Card>
+</CardGrid>
 
 ## Start by listing your stacks
 
-Connect over [native stdio](/getting-started/#native-stdio) or [Docker Compose with authenticated HTTP](/getting-started/#docker-compose). Both start read-only.
+Once you’ve [connected to Core](/getting-started/), ask your client to find a Stack you recognize. The first read uses your account’s permissions and returns the ID you can use to investigate a rollout.
 
-```text title="Ask your MCP client"
+```text wrap title="Ask your MCP client"
 List the stacks I can access in Komodo and show their current status.
 Use list_stacks and do not change anything.
 ```
 
-To investigate a failed Stack, use its returned ID with `stack_diagnose`. The [diagnosis walkthrough](/docs/operator-quickstart/) shows how to follow the cited evidence.
+<Steps>
+1. **Check the available tools.** Open your client’s tool list. The getting-started configuration exposes `list_stacks`, `get_stack` and `stack_diagnose`.
+
+2. **Read one page.** Ask the client to call `list_stacks` with `page: 0` and `page_size: 10`. Find the Stack’s name, state and ID in the result. Follow `next_page` if you need the next ten.
+
+3. **Follow up on a failure.** Pass the returned ID to `get_stack` to confirm the target, then to `stack_diagnose`. Ask for the affected services, the evidence behind the diagnosis and anything Core couldn’t report. The [diagnosis walkthrough](/docs/operator-quickstart/) shows an example.
+</Steps>
+
+## Pick your MCP client
+
+Start with a [scoped Core account and API key](/getting-started/komodo-credentials/), then open the recipe for your client. Each recipe shows how to launch the native executable over stdio. The [compatibility evidence](/getting-started/compatibility/) records which connections and reads have been exercised.
 
 <CardGrid>
-  <GuideLinkCard icon="puzzle" title="Tool catalog" href="/reference/tools/" action={`Browse all ${Object.keys(catalog.tools).length} tools`}>
+  {CLIENT_SETUPS.map(({ key, label, icon, configTitle }) => (
+    <LinkCard title={label} description={`Configure native stdio in ${configTitle}.`} href={`/getting-started/clients/#${key}`} data-client-icon={icon} />
+  ))}
+  <LinkCard title="All compatibility evidence" description="See which configurations have been reviewed and which clients have connected to Core." href="/getting-started/compatibility/" data-client-icon="evidence" />
+</CardGrid>
+
+For a client that connects to a URL, follow the [authenticated HTTP setup](/getting-started/#docker-compose). The [client setup guide](/getting-started/clients/) covers configuration files and version-specific instructions.
+
+<Aside type="caution" title="Before approving a change">
+  Confirm the Core instance, the Stack ID and the proposed action. A deploy uses the Stack’s saved configuration. Keep the update ID from the receipt so you can check the outcome if the client disconnects.
+</Aside>
+
+## Useful by design
+
+To try these workflows after the three-tool setup, add the tools shown below to your server’s [tool selection](/reference/configuration/#select-individual-tools), then restart and reconnect your client.
+
+<CardGrid>
+  <Card title="Find the workload that needs attention" icon="list-format">
+    Start with the Servers and Stacks your account can see. Ask for a fleet health summary to find which workloads are unhealthy and where observations are missing.
+
+    `list_servers → list_stacks → fleet_health`
+  </Card>
+
+  <Card title="Explain a failed rollout" icon="magnifier">
+    Diagnose one Stack, then follow the cited update and inspect a short log tail. Use the affected service and its evidence to explain what went wrong.
+
+    `stack_diagnose → get_update → get_stack_logs`
+  </Card>
+
+  <Card title="Deploy a staging Stack" icon="rocket">
+    Confirm the target and scope on a staging instance with the operate grant. Submit the approved deploy once, wait on its update ID, then check the Stack’s health.
+
+    `get_stack → deploy_stack → wait_for_update → stack_diagnose`
+  </Card>
+
+  <Card title="Review pending ResourceSync changes" icon="code-branch">
+    Read a sync’s cached changes and review the resources you select. The review shows proposed creates, updates and deletions and leaves them unapplied.
+
+    `get_resource_sync_pending → review_resource_sync_pending`
+  </Card>
+</CardGrid>
+
+<LinkButton href="/guides/workflows/" variant="primary" icon="right-arrow">
+  Follow the workflow guide
+</LinkButton>
+
+## One canonical, searchable tool catalog
+
+Search by tool name to find its input and output schemas, required grants and effects. The reference is generated from the server’s registered tools. Use `tools/list` in your client to see which of them your own server exposes.
+
+<ToolCatalogPreview />
+
+<LinkButton href="/reference/tools/" variant="primary" icon="right-arrow">
+  Browse all {toolCount} tools
+</LinkButton>
+
+## Know when to use it
+
+Use Komodo MCP to inspect your fleet, trace a failed rollout or carry out a reviewed operation from your MCP client. Use Komodo Core directly to set up the instance, create API keys and decide which resources an account can access.
+
+See [Security & Data](/guides/security/) for what your client receives, [Configuration](/reference/configuration/) for server settings, or the [FAQ](/guides/faq/) for hosting and permission questions.
+
+<CardGrid>
+  <GuideLinkCard icon="puzzle" title="Tool catalog" href="/reference/tools/" action="Look up a tool">
     Use `fleet_health` to find a workload that needs attention. For a failed Stack, `stack_diagnose` brings together its history, alerts and recent logs. Each catalog entry lists inputs, results, required grants and whether the tool makes changes.
   </GuideLinkCard>
 

@@ -1,6 +1,7 @@
+import { CLIENT_SETUPS } from "../../src/data/clients.js";
 import { REPOSITORY_URL } from "../../src/data/repository.js";
 import { HERO_TITLE, PRIMARY_NAVIGATION, RESPONSIVE_VIEWPORTS } from "../support/site.js";
-import { assertNoPageOverflow, expect, gotoLoaded, monitorBrowserProblems, test } from "./support.js";
+import { assertNoPageOverflow, expect, getClientPickerGrid, gotoLoaded, monitorBrowserProblems, test } from "./support.js";
 
 test("homepage presents the Komodo hero, actions, and independence statement", async ({ page }) => {
   const problems = monitorBrowserProblems(page);
@@ -19,6 +20,42 @@ test("homepage presents the Komodo hero, actions, and independence statement", a
     "komodo-mcp source repository, 1.2K stars",
   );
   expect(problems).toEqual([]);
+});
+
+test("homepage moves from the first read through client setup and workflows to the guides", async ({ page }) => {
+  await gotoLoaded(page, "/");
+  const main = page.locator("main");
+  const blocks = main.locator("h1, h2, .starlight-aside, .card-grid, .sl-steps, [data-catalog-preview]");
+  const outline = await blocks.evaluateAll((nodes) => nodes.map((node) => {
+    if (node.matches("h1, h2")) return node.id;
+    if (node.matches(".card-grid")) return `${node.children.length} cards`;
+    if (node.matches(".sl-steps")) return `${node.children.length} steps`;
+    if (node.matches(".starlight-aside--note")) return "note";
+    if (node.matches(".starlight-aside--caution")) return "caution";
+    return "catalog preview";
+  }));
+  expect(outline).toEqual([
+    "_top", "note", "4 cards", "start-by-listing-your-stacks", "3 steps",
+    "pick-your-mcp-client", "6 cards", "caution", "useful-by-design", "4 cards",
+    "one-canonical-searchable-tool-catalog", "catalog preview", "know-when-to-use-it", "4 cards",
+  ]);
+
+  const grids = main.locator(".card-grid");
+  await expect(grids.nth(2).locator(".card")).toContainText([
+    "fleet_health", "stack_diagnose", "deploy_stack", "review_resource_sync_pending",
+  ]);
+  const guideLinks = await grids.last().locator("a.guide-link").evaluateAll(
+    (links) => links.map((link) => link.getAttribute("href")),
+  );
+  expect(guideLinks).toEqual([
+    "/reference/tools/", "/docs/stable-support/", "/docs/upgrade-v1/", "/guides/troubleshooting/",
+  ]);
+
+  const picker = getClientPickerGrid(page);
+  for (const { key, label } of CLIENT_SETUPS) {
+    await expect(picker.getByRole("link", { name: label, exact: true })).toHaveAttribute("href", `/getting-started/clients/#${key}`);
+  }
+  await expect(picker.getByRole("link", { name: "All compatibility evidence" })).toHaveAttribute("href", "/getting-started/compatibility/");
 });
 
 test("desktop sidebar exposes every primary destination", async ({ page }) => {
